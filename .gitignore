@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Wealthsimple session tokens (live credentials — never commit)
+backend/.ws_session.json
+*.ws_session.json
+
+# Logs
+*.log
+backend_run.log
+frontend_run.log
+
+# Env (credentials)
+.env
+backend/.env
+frontend/.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.orig
+
+# Next.js (covered by frontend/.gitignore — listed here for root-level awareness)
+frontend/.next/
+frontend/out/
+frontend/node_modules/

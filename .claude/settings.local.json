@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Recurse -Force)",
+      "Bash(Select-Object -Property FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\" -Recurse -File -Filter \"*.py\")",
+      "Bash(Select-Object FullName)",
+      "Bash(ConvertTo-Csv -NoTypeInformation)",
+      "Bash(Out-String)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\.claude\" -Recurse -Force)",
+      "Bash(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\.claude\\\\skills\")",
+      "Bash(Out-Null)",
+      "Bash(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\.claude\\\\agents\")",
+      "Bash(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\.claude\\\\context\")",
+      "Bash(Write-Host \"Dirs created\")",
+      "PowerShell(& \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\pip.exe\" install \"pandas-ta>=0.3.14b0\" 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\pip.exe\" install ta 2>&1)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(python -c ' *)",
+      "PowerShell(cd \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\"; \\(Get-Item \".env\"\\).Length)",
+      "Bash(claude mcp *)",
+      "Bash(python -c \"from ws_api import WSAPISession; import inspect; print\\(inspect.getsource\\(WSAPISession\\)\\)\")",
+      "Bash(python -c \"from ws_api import WealthsimpleAPI; import inspect; src = inspect.getsource\\(WealthsimpleAPI.login\\); print\\(src[:3000]\\)\")"
+    ]
+  }
+}
