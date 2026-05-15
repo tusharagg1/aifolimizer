@@ -4,6 +4,31 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-05-14 — Phase 6: Performance pass (no behavior change)
+
+### Backend
+- `app/api/ws.py`
+  - `_PORTFOLIO_CACHE` key now `(session_id, account_id)` — per-tab caching, account-switch hits cache
+  - `asyncio.Lock` per cache key with double-checked locking — concurrent dashboard fetches dedupe to one WS+yfinance round-trip
+  - `/portfolio` endpoint now routed through `_get_portfolio` (was bypassing cache)
+- `app/services/market_data.py`
+  - New `_TICKER_CACHE` (5-min TTL) for `yf.Ticker.info` + `fast_info`. Old code: 1 HTTP per holding per `enrich()` call. New: 1 per holding per 5 min. Measured: 2.0s → 0.0s on cached path.
+- `app/services/technicals.py`
+  - `get_technicals` now batches all uncached symbols into one `yf.download(group_by="ticker")` call. Old: serial loop, 1 HTTP per symbol. Measured: 5 syms in 0.5s vs ~1.4s sequential.
+- `app/services/fundamentals.py`
+  - `get_fundamentals` now uses `ThreadPoolExecutor(max_workers=8)` for uncached symbols. Each `_fetch_one` makes 3 HTTP calls (info, calendar, dividends) which now overlap. Measured: 5 syms in 1.2s.
+
+### Frontend
+- New `components/CountdownLabel.tsx` — isolates 5-second re-render tick from dashboard tree (was re-rendering all charts/tables every 5s)
+- `React.memo` added to: `AllocationChart`, `HealthScoreWidget`, `MacroWidget`, `BenchmarkWidget`, `OptimizerWidget`, `AlertsPanel`, `RecommendationsPanel` (PortfolioTable already memoized)
+- `lib/api.ts` — all `wsGet*` helpers now accept optional `signal?: AbortSignal`
+- `app/dashboard/page.tsx`
+  - Per-loader `AbortController` ref — new fetch cancels prior in-flight one (fixes account-tab race + stale-state stomp)
+  - Stale-while-revalidate: skeleton only shown on initial load (no data yet); background refresh keeps stale data visible
+  - Cleanup effect aborts all in-flight fetches on unmount
+
+---
+
 ## 2026-05-14 — Phase 5: Multi-Provider LLM Narrative Layer
 
 ### Goal

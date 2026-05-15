@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Position } from "@/lib/api";
 
@@ -11,12 +12,12 @@ interface Props {
 
 const COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#10b981", "#f43f5e", "#a78bfa", "#34d399"];
 
-export default function AllocationChart({ positions, cashAvailable, totalValue }: Props) {
+function AllocationChart({ positions, cashAvailable, totalValue }: Props) {
   const grouped: Record<string, number> = {};
 
   for (const p of positions) {
     const key = p.asset_class.charAt(0).toUpperCase() + p.asset_class.slice(1);
-    grouped[key] = (grouped[key] || 0) + p.market_value;
+    grouped[key] = (grouped[key] || 0) + p.market_value_cad;
   }
 
   if (cashAvailable > 0) {
@@ -60,3 +61,5 @@ export default function AllocationChart({ positions, cashAvailable, totalValue }
     </div>
   );
 }
+
+export default memo(AllocationChart);

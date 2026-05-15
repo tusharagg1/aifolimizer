@@ -30,6 +30,7 @@ import RecommendationsPanel from "@/components/RecommendationsPanel";
 import MacroWidget from "@/components/MacroWidget";
 import BenchmarkWidget from "@/components/BenchmarkWidget";
 import OptimizerWidget from "@/components/OptimizerWidget";
+import CountdownLabel from "@/components/CountdownLabel";
 
 function currency(val: number) {
   return val.toLocaleString("en-CA", { style: "currency", currency: "CAD" });
@@ -91,8 +92,21 @@ export default function DashboardPage() {
   const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
 
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL_MS / 1000);
-  const lastRefreshRef = useRef<number>(Date.now());
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  // Per-loader AbortController so a new fetch cancels the prior in-flight one.
+  // Prevents stale responses from stomping fresher state (e.g. account-tab race).
+  const abortersRef = useRef<Record<string, AbortController>>({});
+
+  const abortable = useCallback((key: string): AbortSignal => {
+    abortersRef.current[key]?.abort();
+    const ctrl = new AbortController();
+    abortersRef.current[key] = ctrl;
+    return ctrl.signal;
+  }, []);
+
+  useEffect(() => () => {
+    for (const c of Object.values(abortersRef.current)) c.abort();
+  }, []);
 
   useEffect(() => {
     const sid = sessionStorage.getItem("ws_session_id");
@@ -102,93 +116,104 @@ export default function DashboardPage() {
     if (prof) setProfile(JSON.parse(prof));
   }, [router]);
 
+  const isAbort = (err: unknown) =>
+    err instanceof DOMException && err.name === "AbortError";
+
   const loadPortfolio = useCallback(async (accountId: string = selectedAccount) => {
     if (!sessionId) return;
+    const signal = abortable("portfolio");
     setPortfolioLoading(true);
     setPortfolioError(null);
     try {
-      const data = await wsGetPortfolio(sessionId, accountId);
+      const data = await wsGetPortfolio(sessionId, accountId, signal);
       setPortfolio(data);
       if (!selectedTicker && data.positions.length > 0) {
         setSelectedTicker(data.positions[0].symbol);
       }
     } catch (err: unknown) {
+      if (isAbort(err)) return;
       const msg = err instanceof Error ? err.message : "Failed to load portfolio";
       if (msg.includes("expired")) router.push("/login");
       else setPortfolioError(msg);
     } finally {
-      setPortfolioLoading(false);
+      if (!signal.aborted) setPortfolioLoading(false);
     }
-  }, [sessionId, router, selectedTicker, selectedAccount]);
+  }, [sessionId, router, selectedTicker, selectedAccount, abortable]);
 
   const loadHealthScore = useCallback(async () => {
     if (!sessionId) return;
-    setHealthLoading(true);
-    try { setHealthScore(await wsGetHealthScore(sessionId)); }
-    catch { /* non-fatal */ }
-    finally { setHealthLoading(false); }
-  }, [sessionId]);
+    const signal = abortable("health");
+    if (!healthScore) setHealthLoading(true);
+    try { setHealthScore(await wsGetHealthScore(sessionId, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setHealthLoading(false); }
+  }, [sessionId, abortable, healthScore]);
 
   const loadAlerts = useCallback(async () => {
     if (!sessionId) return;
-    setAlertsLoading(true);
-    try { setAlerts(await wsGetAlerts(sessionId)); }
-    catch { /* non-fatal */ }
-    finally { setAlertsLoading(false); }
-  }, [sessionId]);
+    const signal = abortable("alerts");
+    if (alerts.length === 0) setAlertsLoading(true);
+    try { setAlerts(await wsGetAlerts(sessionId, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setAlertsLoading(false); }
+  }, [sessionId, abortable, alerts.length]);
 
   const loadNarratives = useCallback(async () => {
     if (!sessionId) return;
-    setNarrativesLoading(true);
+    const signal = abortable("narratives");
+    if (Object.keys(narratives).length === 0) setNarrativesLoading(true);
     try {
-      const res = await wsGetNarratives(sessionId);
+      const res = await wsGetNarratives(sessionId, signal);
       if (!res.error) {
         setNarratives(res.narratives);
         setNarrativeProviders(res.providers ?? []);
       }
-    } catch { /* non-fatal — narratives are supplementary */ }
-    finally { setNarrativesLoading(false); }
-  }, [sessionId]);
+    } catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setNarrativesLoading(false); }
+  }, [sessionId, abortable, narratives]);
 
   const loadRecommendations = useCallback(async () => {
     if (!sessionId) return;
-    setRecsLoading(true);
+    const signal = abortable("recs");
+    if (!recommendations) setRecsLoading(true);
     try {
-      const res = await wsGetRecommendations(sessionId);
+      const res = await wsGetRecommendations(sessionId, signal);
       setRecommendations(res.recommendations);
       if (res.signal_changes?.length) setSignalChanges(res.signal_changes);
       loadNarratives();
-    } catch { /* non-fatal */ }
-    finally { setRecsLoading(false); }
-  }, [sessionId, loadNarratives]);
+    } catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setRecsLoading(false); }
+  }, [sessionId, loadNarratives, abortable, recommendations]);
 
   const loadMacro = useCallback(async () => {
     if (!sessionId) return;
-    setMacroLoading(true);
-    try { setMacro(await wsGetMacro(sessionId)); }
-    catch { /* non-fatal */ }
-    finally { setMacroLoading(false); }
-  }, [sessionId]);
+    const signal = abortable("macro");
+    if (!macro) setMacroLoading(true);
+    try { setMacro(await wsGetMacro(sessionId, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setMacroLoading(false); }
+  }, [sessionId, abortable, macro]);
 
   const loadBenchmark = useCallback(async () => {
     if (!sessionId) return;
-    setBenchmarkLoading(true);
-    try { setBenchmark(await wsGetBenchmark(sessionId)); }
-    catch { /* non-fatal */ }
-    finally { setBenchmarkLoading(false); }
-  }, [sessionId]);
+    const signal = abortable("benchmark");
+    if (!benchmark) setBenchmarkLoading(true);
+    try { setBenchmark(await wsGetBenchmark(sessionId, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setBenchmarkLoading(false); }
+  }, [sessionId, abortable, benchmark]);
 
   const loadOptimizer = useCallback(async () => {
     if (!sessionId) return;
-    setOptimizerLoading(true);
-    try { setOptimizer(await wsGetOptimizer(sessionId)); }
-    catch { /* non-fatal */ }
-    finally { setOptimizerLoading(false); }
-  }, [sessionId]);
+    const signal = abortable("optimizer");
+    if (!optimizer) setOptimizerLoading(true);
+    try { setOptimizer(await wsGetOptimizer(sessionId, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setOptimizerLoading(false); }
+  }, [sessionId, abortable, optimizer]);
 
   const refreshAll = useCallback(() => {
-    lastRefreshRef.current = Date.now();
-    setCountdown(REFRESH_INTERVAL_MS / 1000);
+    setLastRefresh(Date.now());
     loadPortfolio();
     loadHealthScore();
     loadAlerts();
@@ -214,14 +239,6 @@ export default function DashboardPage() {
     const interval = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [sessionId, refreshAll]);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      const elapsed = (Date.now() - lastRefreshRef.current) / 1000;
-      setCountdown(Math.max(0, Math.round(REFRESH_INTERVAL_MS / 1000 - elapsed)));
-    }, 5000);
-    return () => clearInterval(tick);
-  }, []);
 
   const copySkill = (name: string) => {
     navigator.clipboard.writeText(name).catch(() => {});
@@ -266,9 +283,7 @@ export default function DashboardPage() {
             )}
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-600">
-              refresh in {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, "0")}
-            </span>
+            <CountdownLabel intervalMs={REFRESH_INTERVAL_MS} resetKey={lastRefresh} />
             <button
               onClick={refreshAll}
               disabled={portfolioLoading}

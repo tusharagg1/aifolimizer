@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { HealthScore } from "@/lib/api";
 
 const GRADE_STYLE: Record<string, string> = {
@@ -23,7 +24,7 @@ interface Props {
   loading: boolean;
 }
 
-export default function HealthScoreWidget({ data, loading }: Props) {
+function HealthScoreWidget({ data, loading }: Props) {
   if (loading) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
@@ -67,3 +68,5 @@ export default function HealthScoreWidget({ data, loading }: Props) {
     </div>
   );
 }
+
+export default memo(HealthScoreWidget);

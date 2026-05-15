@@ -29,30 +29,61 @@ from app.services.llm_router import (
 router = APIRouter()
 
 # Short-lived cache so concurrent page-load requests share one WS+yfinance fetch.
-# Key: session_id. Invalidated after 10s so data stays fresh on manual refresh.
-_PORTFOLIO_CACHE: dict[str, tuple] = {}
+# Key: (session_id, account_id) — "" = aggregate; per-tab caching for free.
+# Invalidated after 10s so data stays fresh on manual refresh.
+_PORTFOLIO_CACHE: dict[tuple[str, str], tuple] = {}
 _PORTFOLIO_CACHE_TTL = 10
+# Per-key lock — concurrent callers wait for one fetch, not a race.
+_PORTFOLIO_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 # Track previous recommendation actions per session to detect signal changes.
 # Key: session_id → {symbol: action}
 _PREV_REC_ACTIONS: dict[str, dict[str, str]] = {}
 
 
-async def _get_portfolio(session_id: str, session: dict):
-    """Return enriched portfolio for all accounts, using a 10s in-process cache."""
-    entry = _PORTFOLIO_CACHE.get(session_id)
+async def _get_portfolio(
+    session_id: str, session: dict, account_id: str = ""
+):
+    """Return enriched portfolio (10s in-process cache).
+    account_id="" means aggregate across all accounts.
+    Lock dedupes concurrent callers — dashboard fires 6 parallel endpoints.
+    """
+    key = (session_id, account_id)
+    entry = _PORTFOLIO_CACHE.get(key)
     if entry and (time.time() - entry[1]) < _PORTFOLIO_CACHE_TTL:
         return entry[0]
 
-    profile = session.get("profile")
-    cash = sum(a.cash_balance for a in profile.accounts) if profile else 0.0
-    ws_total = sum(a.invested_value for a in profile.accounts) if profile else 0.0
-    pnl = float(session.get("unrealized_pnl_cad") or 0.0)
+    lock = _PORTFOLIO_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        # Double-check — another caller may have populated while we waited.
+        entry = _PORTFOLIO_CACHE.get(key)
+        if entry and (time.time() - entry[1]) < _PORTFOLIO_CACHE_TTL:
+            return entry[0]
 
-    raw = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
-    portfolio = market_data.enrich(raw, cash, ws_total, pnl)
-    _PORTFOLIO_CACHE[session_id] = (portfolio, time.time())
-    return portfolio
+        profile = session.get("profile")
+        per_account = session.get("per_account", {})
+
+        if account_id and account_id in per_account:
+            acc = per_account[account_id]
+            cash = float(acc.get("cash_balance") or 0.0)
+            ws_total = float(acc.get("invested_value") or 0.0)
+            pnl = float(acc.get("unrealized_pnl_cad") or 0.0)
+            raw = await asyncio.to_thread(
+                wealthsimple.get_positions, session_id, account_id
+            )
+        else:
+            cash = sum(a.cash_balance for a in profile.accounts) if profile else 0.0
+            ws_total = sum(
+                a.invested_value for a in profile.accounts
+            ) if profile else 0.0
+            pnl = float(session.get("unrealized_pnl_cad") or 0.0)
+            raw = await asyncio.to_thread(
+                wealthsimple.get_all_positions, session_id
+            )
+
+        portfolio = market_data.enrich(raw, cash, ws_total, pnl)
+        _PORTFOLIO_CACHE[key] = (portfolio, time.time())
+        return portfolio
 
 
 class LoginRequest(BaseModel):
@@ -107,46 +138,14 @@ async def get_portfolio(
         raise HTTPException(
             status_code=401, detail="Session expired — please log in again"
         )
-
-    profile = session.get("profile")
-    per_account = session.get("per_account", {})
-
-    if account_id and account_id in per_account:
-        acc_data = per_account[account_id]
-        cash_balance = float(acc_data.get("cash_balance") or 0.0)
-        ws_account_total = float(acc_data.get("invested_value") or 0.0)
-        unrealized_pnl_cad = float(
-            acc_data.get("unrealized_pnl_cad") or 0.0
-        )
-    else:
-        cash_balance = 0.0
-        ws_account_total = 0.0
-        if profile:
-            for acc in profile.accounts:
-                cash_balance += acc.cash_balance
-                ws_account_total += acc.invested_value
-        unrealized_pnl_cad = float(
-            session.get("unrealized_pnl_cad") or 0.0
-        )
-
     try:
-        if account_id:
-            raw_positions = await asyncio.to_thread(
-                wealthsimple.get_positions, session_id, account_id
-            )
-        else:
-            raw_positions = await asyncio.to_thread(
-                wealthsimple.get_all_positions, session_id
-            )
+        return await _get_portfolio(session_id, session, account_id)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         print(f"PORTFOLIO ERROR: {type(e).__name__}: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=502, detail=f"Wealthsimple error: {e}")
-
-    portfolio = market_data.enrich(raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad)
-    return portfolio
 
 
 @router.get("/profile")

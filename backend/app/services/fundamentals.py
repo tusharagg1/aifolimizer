@@ -1,9 +1,11 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date as date_type
 import yfinance as yf
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 6 * 3600  # 6 hours
+_MAX_WORKERS = 8  # yfinance.info hits Yahoo HTTP, ~8 parallel safe
 
 
 def _cached(symbol: str, fetch_fn) -> dict:
@@ -85,7 +87,29 @@ def _fetch_one(symbol: str) -> dict:
 
 
 def get_fundamentals(symbols: list[str]) -> dict[str, dict]:
-    return {sym: _cached(sym, _fetch_one) for sym in symbols}
+    """Parallel-fetch uncached symbols. yfinance.info is HTTP-bound — threads
+    overlap network latency. Cached symbols return instantly.
+    """
+    now = time.time()
+    out: dict[str, dict] = {}
+    to_fetch: list[str] = []
+    for sym in symbols:
+        entry = _cache.get(sym)
+        if entry and (now - entry[1]) < _CACHE_TTL:
+            out[sym] = entry[0]
+        else:
+            to_fetch.append(sym)
+
+    if not to_fetch:
+        return out
+
+    workers = min(_MAX_WORKERS, len(to_fetch))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = list(ex.map(_fetch_one, to_fetch))
+    for sym, result in zip(to_fetch, results):
+        _cache[sym] = (result, time.time())
+        out[sym] = result
+    return out
 
 
 _EM_CACHE: dict[str, tuple[dict, float]] = {}

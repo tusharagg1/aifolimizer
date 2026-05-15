@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { BenchmarkResult } from "@/lib/api";
 
 const PERIOD_ORDER = ["1mo", "3mo", "6mo", "1y", "3y"];
@@ -26,7 +27,7 @@ interface Props {
   loading: boolean;
 }
 
-export default function BenchmarkWidget({ data, loading }: Props) {
+function BenchmarkWidget({ data, loading }: Props) {
   if (loading) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
@@ -90,3 +91,5 @@ export default function BenchmarkWidget({ data, loading }: Props) {
     </div>
   );
 }
+
+export default memo(BenchmarkWidget);

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { MacroSnapshot } from "@/lib/api";
 
 const REGIME_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -22,7 +23,7 @@ interface Props {
   loading: boolean;
 }
 
-export default function MacroWidget({ data, loading }: Props) {
+function MacroWidget({ data, loading }: Props) {
   if (loading) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 h-full">
@@ -106,6 +107,8 @@ export default function MacroWidget({ data, loading }: Props) {
     </div>
   );
 }
+
+export default memo(MacroWidget);
 
 function MacroRow({
   label,

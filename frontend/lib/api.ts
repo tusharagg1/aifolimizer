@@ -26,27 +26,40 @@ export async function wsVerifyOtp(session_id: string, otp: string) {
   });
 }
 
-export async function wsGetPortfolio(session_id: string, account_id: string = "") {
+export async function wsGetPortfolio(
+  session_id: string,
+  account_id: string = "",
+  signal?: AbortSignal,
+) {
   const qs = account_id ? `&account_id=${encodeURIComponent(account_id)}` : "";
-  return apiFetch<PortfolioResponse>(`/ws/portfolio?session_id=${session_id}${qs}`);
+  return apiFetch<PortfolioResponse>(
+    `/ws/portfolio?session_id=${session_id}${qs}`,
+    { signal },
+  );
 }
 
 export async function wsGetPriceHistory(
   session_id: string,
   symbol: string,
-  period: string = "1y"
+  period: string = "1y",
+  signal?: AbortSignal,
 ) {
   return apiFetch<PriceHistory>(
-    `/ws/price-history?session_id=${session_id}&symbol=${encodeURIComponent(symbol)}&period=${period}`
+    `/ws/price-history?session_id=${session_id}&symbol=${encodeURIComponent(symbol)}&period=${period}`,
+    { signal },
   );
 }
 
-export async function wsGetHealthScore(session_id: string) {
-  return apiFetch<HealthScore>(`/ws/health-score?session_id=${session_id}`);
+export async function wsGetHealthScore(session_id: string, signal?: AbortSignal) {
+  return apiFetch<HealthScore>(
+    `/ws/health-score?session_id=${session_id}`, { signal },
+  );
 }
 
-export async function wsGetAlerts(session_id: string) {
-  return apiFetch<Alert[]>(`/ws/alerts?session_id=${session_id}`);
+export async function wsGetAlerts(session_id: string, signal?: AbortSignal) {
+  return apiFetch<Alert[]>(
+    `/ws/alerts?session_id=${session_id}`, { signal },
+  );
 }
 
 export interface SignalChange {
@@ -65,25 +78,33 @@ export interface RecommendationsResponse {
   signal_changes: SignalChange[];
 }
 
-export async function wsGetRecommendations(session_id: string) {
-  return apiFetch<RecommendationsResponse>(`/ws/recommendations?session_id=${session_id}`);
+export async function wsGetRecommendations(session_id: string, signal?: AbortSignal) {
+  return apiFetch<RecommendationsResponse>(
+    `/ws/recommendations?session_id=${session_id}`, { signal },
+  );
 }
 
-export async function wsGetMacro(session_id: string) {
-  return apiFetch<MacroSnapshot>(`/ws/macro?session_id=${session_id}`);
+export async function wsGetMacro(session_id: string, signal?: AbortSignal) {
+  return apiFetch<MacroSnapshot>(
+    `/ws/macro?session_id=${session_id}`, { signal },
+  );
 }
 
-export async function wsGetBenchmark(session_id: string) {
-  return apiFetch<BenchmarkResult>(`/ws/benchmark?session_id=${session_id}`);
+export async function wsGetBenchmark(session_id: string, signal?: AbortSignal) {
+  return apiFetch<BenchmarkResult>(
+    `/ws/benchmark?session_id=${session_id}`, { signal },
+  );
 }
 
-export async function wsGetOptimizer(session_id: string) {
-  return apiFetch<OptimizerResult>(`/ws/optimize?session_id=${session_id}`);
+export async function wsGetOptimizer(session_id: string, signal?: AbortSignal) {
+  return apiFetch<OptimizerResult>(
+    `/ws/optimize?session_id=${session_id}`, { signal },
+  );
 }
 
-export async function wsGetNarratives(session_id: string) {
+export async function wsGetNarratives(session_id: string, signal?: AbortSignal) {
   return apiFetch<NarrativesResponse>(
-    `/ws/ai-narratives?session_id=${session_id}`
+    `/ws/ai-narratives?session_id=${session_id}`, { signal },
   );
 }
 

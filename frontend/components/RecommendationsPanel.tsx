@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Recommendation } from "@/lib/api";
 
 type Action = "BUY" | "HOLD" | "WATCH" | "SELL";
@@ -52,7 +53,7 @@ interface Props {
   narrativeProviders?: string[];
 }
 
-export default function RecommendationsPanel({
+function RecommendationsPanel({
   data,
   loading,
   narratives,
@@ -143,6 +144,8 @@ export default function RecommendationsPanel({
     </div>
   );
 }
+
+export default memo(RecommendationsPanel);
 
 function RecommendationGroup({
   action,

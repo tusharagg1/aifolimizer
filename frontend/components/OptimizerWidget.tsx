@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { OptimizerResult } from "@/lib/api";
 
 const ACTION_COLOR: Record<string, string> = {
@@ -14,7 +15,7 @@ interface Props {
   loading: boolean;
 }
 
-export default function OptimizerWidget({ data, loading }: Props) {
+function OptimizerWidget({ data, loading }: Props) {
   if (loading) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
@@ -114,3 +115,5 @@ export default function OptimizerWidget({ data, loading }: Props) {
     </div>
   );
 }
+
+export default memo(OptimizerWidget);

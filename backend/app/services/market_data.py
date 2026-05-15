@@ -6,6 +6,43 @@ from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
 _FX_CACHE: tuple[float, float] | None = None  # (timestamp, cad_per_usd)
 _FX_TTL = 300  # 5 min — forex moves during market hours
 
+# Per-symbol price+sector cache. enrich() runs on every portfolio fetch and
+# without this it makes one yf.Ticker(...).info HTTP call per holding in serial.
+# 5 min TTL: matches FX freshness, beats the 10s portfolio cache by 30x.
+_TICKER_CACHE: dict[str, tuple[dict, float]] = {}
+_TICKER_TTL = 300
+
+
+def _ticker_meta(symbol: str) -> dict:
+    """Cached {currency, last_price, prev_close, sector} per symbol."""
+    entry = _TICKER_CACHE.get(symbol)
+    now = time.time()
+    if entry and (now - entry[1]) < _TICKER_TTL:
+        return entry[0]
+    meta: dict = {
+        "currency": None,
+        "last_price": 0.0,
+        "prev_close": 0.0,
+        "sector": None,
+    }
+    try:
+        ticker = yf.Ticker(symbol)
+        fast_info = ticker.fast_info
+        meta["last_price"] = float(fast_info.last_price or 0)
+        meta["prev_close"] = float(fast_info.regular_market_previous_close or 0)
+        try:
+            info = ticker.info or {}
+            yf_cur = str(info.get("currency") or "").upper()
+            if yf_cur in ("USD", "CAD"):
+                meta["currency"] = yf_cur
+            meta["sector"] = info.get("sector") or info.get("category")
+        except Exception:
+            pass
+    except Exception:
+        pass
+    _TICKER_CACHE[symbol] = (meta, now)
+    return meta
+
 
 def _get_cad_per_usd() -> float:
     """Live CAD/USD rate. Primary: yfinance USDCAD=X. Fallback: FRED DEXCAUS."""
@@ -113,26 +150,16 @@ def enrich(
         day_change_pct = 0.0
         sector = None
 
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            fast_info = ticker.fast_info
-
-            # Only use yfinance currency when WS didn't provide one.
-            # WS already converts market_value to account base currency (CAD).
-            if currency not in ("USD", "CAD"):
-                yf_cur = str(info.get("currency") or "").upper()
-                if yf_cur in ("USD", "CAD"):
-                    currency = yf_cur
-
-            yf_price = float(fast_info.last_price or 0)
-            prev = float(fast_info.regular_market_previous_close or 0)
-            if prev and yf_price:
-                day_change_pct = round(((yf_price - prev) / prev) * 100, 2)
-
-            sector = info.get("sector") or info.get("category")
-        except Exception:
-            pass  # keep WS values
+        meta = _ticker_meta(symbol)
+        # Only use yfinance currency when WS didn't provide one.
+        # WS already converts market_value to account base currency (CAD).
+        if currency not in ("USD", "CAD") and meta["currency"]:
+            currency = meta["currency"]
+        yf_price = meta["last_price"]
+        prev = meta["prev_close"]
+        if prev and yf_price:
+            day_change_pct = round(((yf_price - prev) / prev) * 100, 2)
+        sector = meta["sector"]
 
         fx = cad_per_usd if currency == "USD" else 1.0
 

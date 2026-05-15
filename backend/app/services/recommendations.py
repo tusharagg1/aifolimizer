@@ -105,6 +105,8 @@ def _score_position(
     is_etf = asset_class in _ETF_ASSET_CLASSES
     is_crypto = asset_class in _CRYPTO_ASSET_CLASSES
 
+    em = earnings_move or {}
+
     tech_score = 0.0
     fund_score = 0.0
     macro_score = 0.0
@@ -416,7 +418,6 @@ def _score_position(
         hedge_reason = f"RSI {rsi:.0f} overbought with {weight:.0f}% weight — consider partial trim"
 
     # ── Earnings risk flag ────────────────────────────────────────────────────
-    em = earnings_move or {}
     earnings_risk: str | None = None
     days_to_earnings: int | None = em.get("days_to_earnings")
     expected_move_pct: float | None = em.get("expected_move_pct")

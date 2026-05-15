@@ -1,7 +1,7 @@
 "use client";
 
 import { Alert } from "@/lib/api";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 const SEVERITY: Record<
   string,
@@ -26,7 +26,7 @@ interface Props {
   loading: boolean;
 }
 
-export default function AlertsPanel({ alerts, loading }: Props) {
+function AlertsPanel({ alerts, loading }: Props) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   if (loading || !alerts.length) return null;
@@ -65,3 +65,5 @@ export default function AlertsPanel({ alerts, loading }: Props) {
     </div>
   );
 }
+
+export default memo(AlertsPanel);
