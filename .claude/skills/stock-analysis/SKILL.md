@@ -13,7 +13,8 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` — P/E, EPS, dividend yield, market cap, analyst target, institutional ownership, beta
 5. Call `mcp__aifolimizer__get_technicals` with `symbols=[ticker]` — SMA20/50/200, RSI, MACD, Bollinger Bands, trend signal
 6. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` — recent news
-7. Use MCP data as primary source. WebSearch only for: recent earnings call quotes, analyst upgrade/downgrade news, or gaps in MCP response
+7. Call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]` — crowding score, institutional ownership, short interest, headline velocity. Use to flag "edge already priced" before issuing a buy
+8. Use MCP data as primary source. WebSearch only for: recent earnings call quotes, analyst upgrade/downgrade news, or gaps in MCP response
 
 ## Investor profile
 
@@ -45,6 +46,12 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 17. Risk-to-reward ratio
 18. Confidence rating: Strong Buy / Buy / Neutral / Sell / Strong Sell
 
+### CROWDING (Goldman / BlackRock 2025 — AI consensus risk)
+19. **Crowding score** /100 + label (consensus / neutral / contrarian) from `get_positioning_signals`
+20. **Edge-already-priced flag** — if `consensus_flag=True`, downgrade confidence by 1 notch and state "AI/retail consensus already long; late entry has negative expected alpha"
+21. **Contrarian opportunity flag** — if `contrarian_flag=True` AND fundamentals + technicals are strong, upgrade confidence by 1 notch
+22. Headline velocity ratio — `>2.0` = retail attention surge, late-cycle; `<0.5` = forgotten name, potential setup
+
 ## Rules
 
 - Under 600 words
@@ -59,3 +66,6 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 - `minervini_score` requires all 7 sub-criteria present — if any field is null, score is invalid; state "incomplete data".
 - `pct_from_52w_high/low` from technicals — use these directly, do NOT recompute from a price guess.
 - For .TO tickers, yfinance fundamentals are sparse — institutional ownership and analyst recs often empty. Note "TSX coverage gap" rather than fabricating.
+- `crowding_score` uses 4 weighted signals; if 3+ inputs are null (common for small caps / TSX), label is unreliable — state "positioning data sparse".
+- Crowding ≠ overvalued. A consensus name can still grind higher on earnings beats. The flag adjusts conviction, doesn't invert the call.
+- Headline velocity counts yfinance news only — misses Reddit/X chatter. Underestimates retail surge.

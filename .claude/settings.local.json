@@ -30,7 +30,23 @@
       "Bash(git update-ref *)",
       "Bash(git push *)",
       "Bash(git fetch *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(\"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import yfinance as yf; t = yf.Ticker\\('AAPL'\\); print\\('earnings_dates:'\\); print\\(t.earnings_dates.head\\(\\) if hasattr\\(t, 'earnings_dates'\\) else 'N/A'\\); print\\(\\); print\\('earnings_history:'\\); print\\(t.earnings_history.head\\(\\) if hasattr\\(t, 'earnings_history'\\) else 'N/A'\\)\")",
+      "Bash(gh repo *)",
+      "Bash(\"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import yfinance as yf; t = yf.Ticker\\('AAPL'\\); print\\('has earnings_history:', hasattr\\(t, 'earnings_history'\\)\\); import pandas as pd; pd.set_option\\('display.max_columns', None\\); pd.set_option\\('display.width', 200\\); eh = t.earnings_history; print\\(type\\(eh\\)\\); print\\(eh\\)\")",
+      "Bash(gh api *)",
+      "Bash(\"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import sys; sys.path.insert\\(0, r'c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend'\\); from app.services.fundamentals import get_earnings_history; import json; print\\(json.dumps\\(get_earnings_history\\(['AAPL', 'MSFT'], 4\\), indent=2, default=str\\)\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/services/alerts.py'\\).read\\(\\)\\); ast.parse\\(open\\('mcp_server.py'\\).read\\(\\)\\); ast.parse\\(open\\('scripts/run_alerts.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(.venv/Scripts/python -c \"import sys; sys.path.insert\\(0, '.'\\); from app.services import alerts; print\\('import ok'\\); print\\('exports:', [n for n in dir\\(alerts\\) if not n.startswith\\('_'\\)]\\)\")",
+      "Bash(.venv/Scripts/python -c \"import sys; sys.path.insert\\(0, '.'\\); import mcp_server; print\\('mcp ok'\\); tools = [n for n in dir\\(mcp_server\\) if 'alert' in n.lower\\(\\)]; print\\('alert tools:', tools\\)\")",
+      "Bash(.venv/Scripts/python scripts/run_alerts.py --dry-run)",
+      "Bash(rm ../.claude/context/alerts.jsonl ../.claude/context/alerts_state.json && echo \"cleaned\")",
+      "Bash(.venv/Scripts/python -c ' *)",
+      "Bash(.venv/Scripts/python.exe -c \"from app.services.positioning import get_positioning; import json; print\\(json.dumps\\(get_positioning\\(['AAPL', 'NVDA', 'XEQT.TO']\\), indent=2\\)\\)\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
     ]
   }
 }

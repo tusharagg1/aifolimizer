@@ -4,6 +4,151 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-05-16 — Positioning / crowding signals (AI-consensus risk guard)
+
+### Why
+Goldman / BlackRock 2025 research: AI-driven retail + quant flows pile into the same names, making late entries into consensus trades have negative expected alpha. Defensive guard for stock-analysis / cash-deployment / adversarial-research skills.
+
+### Added
+- `backend/app/services/positioning.py` — per-symbol crowding signal:
+  - `institutional_ownership_pct`, `short_pct_float`, `insider_ownership_pct`, `analyst_count`, `analyst_recommendation` (yfinance.info)
+  - `headlines_7d`, `headlines_30d`, `headline_velocity_ratio` (per-day 7d vs 30d ratio from yfinance.news timestamps)
+  - `crowding_score` 0-100 — weighted (inst 35%, short 20%, analyst 20%, news 25%)
+  - `crowding_label` `consensus` (≥70) / `neutral` / `contrarian` (≤30)
+  - `consensus_flag`, `contrarian_flag` booleans
+  - Cache 6h, parallel fetch ThreadPoolExecutor(8)
+- `backend/mcp_server.py` — `get_positioning_signals(account_id, symbols)` MCP tool. Defaults to top 15 holdings if `symbols=[]`. Total tool count 17 → 18.
+- Skill wiring:
+  - `stock-analysis` SKILL.md — Stage 7 tool call, output section CROWDING (items 19-22), 3 new gotchas
+  - `cash-deployment` SKILL.md — Stage 7 tool call, Setup Score expanded /5 → /6, new disqualified bucket "Consensus-crowded", 2 new gotchas
+  - `adversarial-research` SKILL.md — Stage 1 6th tool call, **third Consensus sub-agent** in Stage 2 (marginal-buyer thesis lens), Stage 4 output adds "Consensus / crowding read" line, 3 new gotchas
+- `CLAUDE.md` — investor profile gains "Crowding awareness" rule; MCP tool table + skill table + `list_analysis_modes` updated
+
+### Smoke test
+- AAPL: inst 65.7%, short 0.9%, 43 analysts, velocity 4.29 → crowding 85.0 → `consensus` ✓
+- NVDA: inst 70.6%, short 1.2%, 57 analysts, velocity 4.29 → crowding 88.3 → `consensus` ✓
+- XEQT.TO: all fields null (ETF coverage gap) → crowding 39.0 → `neutral` (graceful fallback) ✓
+
+### Known limits
+- yfinance.news returns max ~10 articles regardless of timespan → headline velocity ratio caps artificially high (consistent bias, not noise). Acceptable; flagged in stock-analysis gotchas.
+- TSX / .TO tickers sparse on institutional + analyst fields — crowding label unreliable when 3+ inputs null. Flagged in gotchas.
+- Crowding ≠ overvaluation. The flag adjusts conviction, doesn't invert the call.
+- Reddit / X chatter not measured — retail surge under-counted.
+
+### Next
+- Restart MCP server for Claude Code to discover `get_positioning_signals`
+- (Optional) Add positioning-aware backtest strategy `crowd_fade` to `backtest.py` to validate the thesis on user's universe
+- (Optional) Persist crowding history to detect score changes (regime shifts) over time
+
+---
+
+## 2026-05-16 — Backtesting service + `backtest_portfolio` MCP tool
+
+### Added
+- `backend/app/services/backtest.py` — per-position rule-replay over historical OHLCV. Strategies:
+  - `buy_hold` — passive baseline
+  - `rsi_swing` — buy RSI<30, sell RSI>70
+  - `sma_cross` — long when close > SMA50
+- Metrics per (symbol, strategy): `total_return_pct`, `cagr_pct`, `sharpe` (rf=0, ann.√252), `max_drawdown_pct`, `num_trades`, `days`.
+- Portfolio aggregation: weighted total / CAGR per strategy, worst single-position drawdown.
+- `delta_vs_buy_hold_pct` — negative means active rules underperformed passive (the honest answer most of the time).
+- Cache: 1h per `(symbol, strategy, lookback_days)`.
+- `backend/mcp_server.py` — `backtest_portfolio(account_id, symbols, lookback_days, strategies, top_n)`. Defaults to top 15 holdings, 365d, all 3 strategies. `lookback_days` clamped 30..730.
+
+### Smoke test
+- AAPL 365d: buy_hold +42.7% (sharpe 1.7, DD -13.8%); rsi_swing +11.9% (-30.8 vs buy_hold); sma_cross +32.9% (-9.8). Both active strategies lose to passive in this regime — expected for momentum names in uptrend.
+
+### Skipped
+- Transaction costs / slippage (overstates strategy returns ~5-15bps/trade)
+- Position sizing / stop-loss layers
+- Walk-forward / out-of-sample split
+
+---
+
+## 2026-05-16 — Alerts service + ntfy.sh push + 2 new MCP tools
+
+### Added
+- `backend/app/services/alerts.py` — rule evaluator (6 rules) + ntfy.sh dispatcher + JSONL history reader. Dedup: same `(rule, symbol, day)` only fires once. State file `.claude/context/alerts_state.json` (auto-trimmed to 7d). History `.claude/context/alerts.jsonl` (append-only).
+- `backend/scripts/run_alerts.py` — CLI runner. `--dry-run` skips push but still logs history. `--account TFSA` filters. Reads cached WS session from `.ws_session.json`.
+- `backend/mcp_server.py` — `get_triggered_alerts(since_hours, limit)` reads history; `run_alerts_now(account_id, price_drop_pct, dry_run)` evaluates live and dispatches.
+
+### Rules shipped
+- `price_drop_intraday` (default −5%)
+- `rsi_oversold` (≤30) / `rsi_overbought` (≥75) on top 15 holdings
+- `earnings_imminent` (next 3 days)
+- `concentration_single` (>10%) / `concentration_sector` (>35%)
+
+### Config
+- New env var: `NTFY_TOPIC` in `backend/.env`. If unset, alerts only logged (no push). Treat as private — anyone with the topic URL can read your alerts.
+- ntfy.sh free tier — no signup, install ntfy mobile app, subscribe to topic.
+
+### Schedule
+- Manual: `cd backend && .venv/Scripts/python scripts/run_alerts.py`
+- Cron (Linux/Mac) or Task Scheduler (Windows) every 1h during market hours.
+
+### Smoke test
+- Synthetic portfolio with day_change_pct=-7.5 + weight=15 fires both `price_drop_intraday` and `concentration_single`. Dispatch wrote 2 history entries, deduped 0.
+
+---
+
+## 2026-05-16 — New skill: `cash-deployment` (add-to-winners with discipline)
+
+### Added
+- `.claude/skills/cash-deployment/SKILL.md` — routes uninvested cash to existing holdings ranked by setup quality. Excludes concentration-flagged, stage 3/4, overbought, deteriorating names. Outputs Setup Score /5 table + dollar/share allocation per ticker
+- `backend/mcp_server.py` — `list_analysis_modes` updated to 12 skills; `cash_deployment` entry added
+- Pure reuse: no new MCP tool. Calls `get_profile`, `get_portfolio`, `get_concentration_warnings`, `get_fundamentals`, `get_technicals`
+
+### Triggers (skill description)
+"where do I put my cash?", "I have $X to invest", "deploy my cash", "add to my best names", "what should I buy with my settled funds?"
+
+### Gotchas captured
+- Cash is account-specific — no cross-account deploy without contribution-room impact
+- USD-in-CAD-account FX spread (~1.5%) for .TO buys
+- Settled vs unsettled cash (T+1 on equity sales)
+- Superficial-loss-rule check if cash came from a tax-loss sale
+- Cap any single add at 5% even for "aggressive growth" lens
+- Don't double-count recurring auto-deposits already going into the same ticker
+
+---
+
+## 2026-05-16 — New skill: `earnings-postmortem` + new MCP tool `get_earnings_results`
+
+### Added
+- `.claude/skills/earnings-postmortem/SKILL.md` — post-report breakdown skill. Covers headline beat/miss, 4-quarter trend table, management guidance shift, analyst reaction, valuation re-rate, Canadian tax-aware action recommendation
+- `backend/mcp_server.py` — new `get_earnings_results(account_id, symbols, quarters=4)` MCP tool returning last N quarters of EPS estimate/actual/surprise/outcome per ticker. Cached 12h (reported data is immutable)
+- `backend/app/services/fundamentals.py` — `get_earnings_history(symbols, quarters)` using yfinance `Ticker.earnings_history`. Parallel via ThreadPoolExecutor(max_workers=8). Normalized output: `{quarter, eps_actual, eps_estimate, eps_difference, surprise_pct, outcome}`
+- MCP `list_analysis_modes` updated to 11 skills; `earnings_postmortem` entry added
+
+### Triggers (skill description)
+"did X beat?", "what did Y report?", "how did earnings go?", pasted earnings reports, words like "reported", "earnings call", "Q1 results"
+
+### Smoke test
+`get_earnings_history(['AAPL', 'MSFT'], 4)` returned 4 quarters each, all "beat" outcomes, surprise_pct in 3-13% range. Source: yfinance Ticker.earnings_history (no lxml dependency — different code path than `earnings_dates`)
+
+### Gotchas captured in skill
+- EPS only — no revenue figure in earnings_history. Revenue beats/misses need WebSearch
+- TSX (.TO) coverage sparse — fallback to WebSearch + IR press release
+- "Beat" outcome strict to EPS — company can beat EPS via buybacks while missing revenue
+- Pre-earnings consensus revisions matter: beat vs lowered estimate weaker than vs raised
+- Forward guidance NOT in yfinance — WebSearch required
+
+---
+
+## 2026-05-16 — New skill: `stock-compare` (head-to-head A vs B)
+
+### Added
+- `.claude/skills/stock-compare/SKILL.md` — Goldman/Citadel-style side-by-side matchup. Strategy lens (growth/income/value) + horizon. Reuses `get_fundamentals`, `get_technicals`, `get_news_headlines` with two tickers in one call. No new MCP tool — pure reuse.
+- Output: verdict-first → side-by-side matrix (15 rows) → moat → catalysts/risks → valuation → technical setup → Canadian tax-aware placement recommendation
+- Gotchas: cache-staleness symmetry, mismatched fiscal years, asymmetric analyst-target % upside, US/.TO cross-border coverage gap, US-div withholding in Non-Reg, beta benchmark mismatch (S&P vs TSX)
+
+### Backend
+- `backend/mcp_server.py` — `list_analysis_modes` now reports 10 skills; added `stock_compare` entry
+
+### Triggers (skill description)
+"X vs Y", "which is better A or B", "should I pick X or Y", side-by-side matchup requests
+
+---
+
 ## 2026-05-14 — Phase 6: Performance pass (no behavior change)
 
 ### Backend

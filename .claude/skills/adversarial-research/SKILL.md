@@ -13,15 +13,16 @@ Modelled on a multi-agent hedge fund workflow. Two sub-agents argue opposing sid
 
 Call `mcp__aifolimizer__get_profile` first — account types, capital, and cash available. Used to tailor Canadian tax placement in Stage 4.
 
-### Stage 1 — Data collection (call all 5 MCP tools in parallel)
+### Stage 1 — Data collection (call all 6 MCP tools in parallel)
 
 1. Call `mcp__aifolimizer__get_portfolio` — confirm the ticker is held + get cost basis, weight, total return
 2. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` — P/E, EPS, growth, dividend, analyst target, ownership
 3. Call `mcp__aifolimizer__get_technicals` with `symbols=[ticker]` — SMA, RSI, MACD, Bollinger Bands, trend
 4. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` — latest headlines
 5. Call `mcp__aifolimizer__get_macro_snapshot` — rates, CPI, CAD/USD context
+6. Call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]` — crowding score, institutional ownership, short interest, headline velocity (feeds Consensus agent in Stage 2)
 
-### Stage 2 — Adversarial sub-agents (spawn BOTH in parallel via Agent tool)
+### Stage 2 — Adversarial sub-agents (spawn ALL THREE in parallel via Agent tool)
 
 **Bull Agent prompt:**
 > You are a senior equity analyst at a long-only growth fund. Given the following data for [TICKER], construct the strongest possible 12-month bull case. No hedging. Be specific about catalysts, price targets, and entry rationale. Data: [paste full fundamentals + technicals + news + macro snapshot]
@@ -29,7 +30,10 @@ Call `mcp__aifolimizer__get_profile` first — account types, capital, and cash 
 **Bear Agent prompt:**
 > You are a short-seller at a quantitative hedge fund. Given the following data for [TICKER], construct the strongest possible bear case for the next 12 months. No hedging. Be specific about failure modes, downside targets, and what would trigger a sell. Data: [paste full fundamentals + technicals + news + macro snapshot]
 
-Run both agents in parallel — do NOT wait for one before starting the other.
+**Consensus Agent prompt (NEW — crowding/positioning lens):**
+> You are a positioning analyst at a multi-strategy hedge fund. Given the positioning data for [TICKER] (institutional ownership, short interest, analyst coverage, headline velocity, crowding score), determine: (1) Is this name already consensus-crowded by AI-driven retail + quant flows? (2) What is the marginal buyer thesis — who is left to buy if everyone is already long? (3) What's the contrarian view that current price ignores? (4) If consensus is wrong, what's the unwind path (which holders sell first, where does it cascade)? No hedging. Data: [paste positioning_signals + fundamentals + news]
+
+Run all three agents in parallel — do NOT wait between spawns.
 
 ### Stage 3 — Scenario modeling
 
@@ -58,6 +62,7 @@ Format the final output as:
 **Bull case (35%):** [Key thesis in 3 bullets]
 **Bear case (25%):** [Key risks in 3 bullets]
 **Base case (40%):** [Most likely path in 2 bullets]
+**Consensus / crowding read:** [crowding score + label; marginal-buyer thesis in 1 line; "edge already priced" or "contrarian opportunity" verdict]
 
 **Entry zone:** $X–$X
 **Stop-loss:** $X (invalidates bull thesis if breached)
@@ -72,7 +77,7 @@ Format the final output as:
 
 ## Rules
 
-- Always run Stage 2 agents in parallel (single message, two Agent tool calls)
+- Always run Stage 2 agents in parallel (single message, THREE Agent tool calls — Bull, Bear, Consensus)
 - Never invent data — if MCP returns empty for a field, note "data unavailable"
 - Keep the full output under 700 words
 - Reference the user's actual cost basis and current portfolio weight in the decision framing
@@ -87,3 +92,6 @@ Format the final output as:
 - `get_macro_snapshot` cached 12h — for rate-decision-week analyses, WebSearch before relying on it.
 - Stop-loss must invalidate the BULL thesis specifically, not just be a generic % drop — tie to a thesis breakpoint (e.g. "below 200-SMA breaks the uptrend assumption").
 - Confidence rating must reflect data completeness — if 2+ MCP fields are null, max rating is Neutral.
+- Consensus agent should NOT default to bearish — a crowded long can keep working. Its job is to surface the marginal-buyer thesis, not to argue short. Reject its output if it just restates the Bear case.
+- When `crowding_score >= 70` AND `Bull case` is the dominant scenario, downgrade confidence one notch (consensus risk on late entries).
+- When `crowding_score <= 30` AND `Bull case` is dominant AND data complete, this is a contrarian setup — flag explicitly.

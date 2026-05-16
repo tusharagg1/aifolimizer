@@ -3,7 +3,8 @@
 ## Session Startup (read this every new session)
 1. Read `.claude/context/changes.md` — what's built and when
 2. Read `.claude/context/architecture.md` — data flow, API contracts, file index
-3. Call `mcp__aifolimizer__get_profile` before any analysis — never hardcode account types or capital
+3. Read `.claude/context/lessons.md` — past corrections, do-not-repeat rules
+4. Call `mcp__aifolimizer__get_profile` before any analysis — never hardcode account types or capital
 
 ## What This Is
 AI-powered investment advisor for Canadian Wealthsimple user (age 32, growth + income + crypto).
@@ -42,7 +43,7 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code —
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (14 total — exposed to Claude)
+## MCP Tools (18 total — exposed to Claude)
 
 | Tool | Returns | Cache |
 |---|---|---|
@@ -57,23 +58,30 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `get_fundamentals` | P/E, EPS, div yield, payout, market cap, earnings date, analyst target, beta | 6h |
 | `get_technicals` | SMA20/50/200, RSI(14), MACD, Bollinger Bands, trend, RSI signal | 1h |
 | `get_earnings_calendar` | Next earnings dates per holding, flags next-14-days | 6h |
+| `get_earnings_results` | Last N quarters EPS estimate/actual/surprise/outcome per ticker | 12h |
 | `get_news_headlines` | Recent headlines per ticker from yfinance news | 30m |
+| `get_positioning_signals` | Crowding score, institutional ownership, short interest, headline velocity — flag consensus-crowded names | 6h |
 | `get_crypto_data` | CoinGecko: price CAD, market cap, 24h/7d/30d change, ATH distance | 5m |
-| `list_analysis_modes` | All 9 available skills with tool lists | static |
+| `get_triggered_alerts` | Recent alert events from local jsonl log (price drop, RSI, earnings, concentration) | live |
+| `run_alerts_now` | Evaluate alert rules vs live portfolio, append triggers to history | live |
+| `list_analysis_modes` | All 12 available skills with tool lists | static |
 
-## Analysis Skills (9 — in `.claude/skills/`)
+## Analysis Skills (12 — in `.claude/skills/`)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|
 | `portfolio-health` | BlackRock Portfolio Builder | get_profile, get_portfolio, get_xray, get_concentration_warnings |
 | `risk-assessment` | Bridgewater Risk Assessment | get_profile, get_portfolio, get_risk_metrics, get_correlation_matrix |
-| `stock-analysis` | Goldman Sachs + Citadel TA | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines |
+| `stock-analysis` | Goldman Sachs + Citadel TA | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_positioning_signals |
+| `stock-compare` | Head-to-head A vs B matchup | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines |
 | `macro-impact` | McKinsey Macro | get_profile, get_portfolio, get_macro_snapshot |
 | `dividend-strategy` | Harvard Endowment Dividend | get_profile, get_portfolio, get_fundamentals |
 | `earnings-analyzer` | JPMorgan Earnings | get_profile, get_portfolio, get_earnings_calendar, get_fundamentals |
+| `earnings-postmortem` | Post-report EPS beat/miss breakdown | get_profile, get_portfolio, get_earnings_results, get_fundamentals, get_news_headlines |
 | `sector-rotation` | Renaissance / Sector Rotation | get_profile, get_portfolio, get_xray |
 | `tax-loss-review` | Canadian tax-loss harvesting | get_profile, get_tax_loss_candidates |
-| `adversarial-research` | Multi-agent bull/bear pipeline | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot |
+| `adversarial-research` | Multi-agent bull/bear/consensus pipeline | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot, get_positioning_signals |
+| `cash-deployment` | Add-to-winners cash deployment with concentration + crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
 
 Each skill: auto-triggers from description frontmatter, calls get_profile FIRST, then MCP tools, runs analysis in Claude's context.
 
@@ -85,6 +93,7 @@ Each skill: auto-triggers from description frontmatter, calls get_profile FIRST,
 - Time horizons: day trading + short-term (<3yr) + long-term (10yr+)
 - Tax: TFSA (gains tax-free), RRSP (tax-deferred), Non-Reg (50% capital gains inclusion)
 - **Capital and account balances: ALWAYS pull from `get_profile` — never hardcode**
+- **Crowding awareness**: when AI recommends adding to a name, call `get_positioning_signals` first. Consensus-crowded names (score ≥ 70) have negative expected alpha for late entries per Goldman / BlackRock 2025 research on AI-driven retail + quant crowding. Defer adds on consensus names; favor contrarian setups (score ≤ 30) when fundamentals support
 
 ## Tech Stack
 
@@ -131,6 +140,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - Append to `.claude/context/changes.md` after significant changes
 - Auto skills builder: `python backend/scripts/build_skills.py` lists all tools + skills
 - Scaffold new skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`
+
+## Workflow Rules
+
+- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise the changed code with realistic input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
+- **Lessons loop.** After any user correction or surprise bug, append a short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
+- **Pause for elegance on non-trivial changes** (3+ files or a new abstraction). Ask "is there a cleaner path?" before commit. Skip for one-line fixes — don't over-engineer trivial work.
 
 ## Commit Rules
 

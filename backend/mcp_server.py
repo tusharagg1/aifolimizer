@@ -25,6 +25,9 @@ from app.services import (
     technicals as technicals_svc,
     news as news_svc,
     crypto_data as crypto_svc,
+    alerts as alerts_svc,
+    backtest as backtest_svc,
+    positioning as positioning_svc,
 )
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
@@ -365,6 +368,63 @@ async def get_earnings_calendar(account_id: str = "") -> list[dict]:
 
 
 @mcp.tool()
+async def get_earnings_results(
+    account_id: str = "", symbols: list[str] = [], quarters: int = 4
+) -> dict:
+    """
+    Historical EPS beat/miss results per ticker: last N quarters with
+    actual vs estimate EPS, surprise %, and beat/meet/miss outcome.
+    Use for post-earnings analysis (postmortem) — pairs with get_earnings_calendar
+    which only shows next upcoming date. Cached 12h per symbol (reported data is fixed).
+    If symbols=[], uses top 15 holdings by weight. quarters clamped 1-12.
+    """
+    session_id = await _ensure_session()
+    session = wealthsimple.get_session(session_id)
+    profile = session.get("profile") if session else None
+    _validate_account_id(account_id, profile)
+
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+    return await asyncio.to_thread(fundamentals_svc.get_earnings_history, symbols, quarters)
+
+
+@mcp.tool()
+async def get_positioning_signals(
+    account_id: str = "", symbols: list[str] = []
+) -> dict:
+    """
+    Crowding / positioning signals per ticker. Use BEFORE recommending an add
+    to a name — flags when a position is already consensus-crowded (negative
+    expected alpha for late entries) vs contrarian (potential edge).
+
+    Fields per symbol:
+      institutional_ownership_pct, short_pct_float, insider_ownership_pct,
+      analyst_count, analyst_recommendation, headlines_7d, headlines_30d,
+      headline_velocity_ratio (per-day ratio 7d vs 30d, >1 = surge),
+      crowding_score (0-100), crowding_label (consensus|neutral|contrarian),
+      consensus_flag (score >= 70), contrarian_flag (score <= 30).
+
+    Cached 6h per symbol. If symbols=[], uses top 15 holdings by weight.
+    Goldman / BlackRock 2025: AI-driven retail + quant crowding is the new
+    structural risk — late entries into consensus names underperform.
+    """
+    session_id = await _ensure_session()
+    session = wealthsimple.get_session(session_id)
+    profile = session.get("profile") if session else None
+    _validate_account_id(account_id, profile)
+
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+    return await asyncio.to_thread(positioning_svc.get_positioning, symbols)
+
+
+@mcp.tool()
 async def get_news_headlines(ticker: str = "", limit: int = 5) -> dict:
     """
     Recent news headlines for a specific ticker or top holdings.
@@ -407,27 +467,111 @@ async def get_crypto_data(
 
 
 @mcp.tool()
+async def get_triggered_alerts(since_hours: int = 24, limit: int = 50) -> dict:
+    """
+    Returns recent alert events from the local alert log (no live re-eval).
+    Source: .claude/context/alerts.jsonl, written by backend/scripts/run_alerts.py.
+    Each alert: {rule, symbol, severity, title, body, ts}.
+    Rules: price_drop_intraday, rsi_oversold, rsi_overbought,
+    earnings_imminent, concentration_single, concentration_sector.
+    since_hours: lookback window (default 24h). limit: max records (default 50).
+    """
+    since_hours = max(1, min(int(since_hours), 24 * 30))
+    limit = max(1, min(int(limit), 500))
+    items = await asyncio.to_thread(
+        alerts_svc.read_recent_history, since_hours, limit
+    )
+    return {"since_hours": since_hours, "count": len(items), "alerts": items}
+
+
+@mcp.tool()
+async def run_alerts_now(
+    account_id: str = "",
+    price_drop_pct: float = 5.0,
+    dry_run: bool = True,
+) -> dict:
+    """
+    Evaluate alert rules against live portfolio and append triggers to history.
+    dry_run=True (default): log + dedup but do NOT push to ntfy.
+    dry_run=False: also push to ntfy.sh/<NTFY_TOPIC> if env var is set.
+    Returns counts: {triggered, pushed, deduped}.
+    Use sparingly — this fetches live WS + yfinance data.
+    """
+    portfolio = await _load_portfolio(account_id)
+    triggered = await asyncio.to_thread(
+        alerts_svc.evaluate, portfolio, price_drop_pct=price_drop_pct
+    )
+    topic = None if dry_run else os.getenv("NTFY_TOPIC")
+    counts = await asyncio.to_thread(
+        alerts_svc.dispatch, triggered, ntfy_topic=topic
+    )
+    return {"account": account_id or "all", "ntfy": "off" if not topic else "on", **counts}
+
+
+@mcp.tool()
+async def backtest_portfolio(
+    account_id: str = "",
+    symbols: list[str] = [],
+    lookback_days: int = 365,
+    strategies: list[str] = [],
+    top_n: int = 15,
+) -> dict:
+    """
+    Replay simple rule-based strategies on historical OHLCV for portfolio holdings.
+    Strategies: 'buy_hold' (baseline), 'rsi_swing' (RSI<30 buy / >70 sell),
+    'sma_cross' (close vs SMA50). Defaults to all 3 if strategies=[].
+    Returns per-symbol metrics, weight-aggregated portfolio totals, and
+    delta-vs-buy-hold (positive = strategy beat passive). lookback_days clamped 30..730.
+    If symbols=[], uses top_n holdings by weight. Cached 1h per (symbol, strategy, lookback).
+    """
+    lookback_days = max(30, min(int(lookback_days), 730))
+    top_n = max(1, min(int(top_n), 25))
+    if not strategies:
+        strategies = ["buy_hold", "rsi_swing", "sma_cross"]
+
+    portfolio = await _load_portfolio(account_id)
+    if not symbols:
+        top = sorted(
+            portfolio.positions, key=lambda p: p.weight, reverse=True
+        )[:top_n]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+
+    weights = {p.symbol: p.weight for p in portfolio.positions if p.symbol in symbols}
+    return await asyncio.to_thread(
+        backtest_svc.backtest_portfolio,
+        symbols, weights, lookback_days, strategies,
+    )
+
+
+@mcp.tool()
 def list_analysis_modes() -> list[dict]:
-    """Lists the 9 institutional analysis frameworks available as Claude Code skills."""
+    """Lists the 12 institutional analysis frameworks available as Claude Code skills."""
     return [
         {"name": "portfolio_health", "style": "BlackRock Portfolio Builder",
          "tools_used": ["get_profile", "get_portfolio", "get_xray", "get_concentration_warnings"]},
         {"name": "risk_assessment", "style": "Bridgewater Risk Assessment",
          "tools_used": ["get_portfolio", "get_risk_metrics", "get_correlation_matrix", "get_concentration_warnings"]},
         {"name": "stock_analysis", "style": "Goldman Sachs + Citadel TA",
-         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines"]},
+         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines", "get_positioning_signals"]},
+        {"name": "stock_compare", "style": "Head-to-head A vs B matchup",
+         "tools_used": ["get_profile", "get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines"]},
         {"name": "macro_impact", "style": "McKinsey Macro",
          "tools_used": ["get_portfolio", "get_macro_snapshot", "get_market_breadth"]},
         {"name": "dividend_strategy", "style": "Harvard Endowment Dividend",
          "tools_used": ["get_profile", "get_portfolio", "get_fundamentals"]},
         {"name": "earnings_analyzer", "style": "JPMorgan Earnings",
          "tools_used": ["get_portfolio", "get_earnings_calendar", "get_fundamentals"]},
+        {"name": "earnings_postmortem", "style": "Post-report EPS beat/miss analysis",
+         "tools_used": ["get_profile", "get_portfolio", "get_earnings_results", "get_fundamentals", "get_news_headlines"]},
         {"name": "sector_rotation", "style": "Renaissance / Sector Rotation",
          "tools_used": ["get_portfolio", "get_xray", "get_market_breadth"]},
         {"name": "tax_loss_review", "style": "Canadian tax-loss harvesting",
          "tools_used": ["get_tax_loss_candidates", "get_profile"]},
-        {"name": "adversarial_research", "style": "Bull/Bear parallel agent synthesis",
-         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines"]},
+        {"name": "adversarial_research", "style": "Bull/Bear/Consensus parallel agent synthesis",
+         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines", "get_positioning_signals"]},
+        {"name": "cash_deployment", "style": "Add-to-winners cash deployment",
+         "tools_used": ["get_profile", "get_portfolio", "get_concentration_warnings", "get_fundamentals", "get_technicals", "get_positioning_signals"]},
     ]
 
 

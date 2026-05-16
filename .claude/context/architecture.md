@@ -25,7 +25,10 @@ MCP Server  (backend/mcp_server.py — FastMCP, stdio transport)
     ├─ get_earnings_calendar()    → fundamentals.py earnings dates → pii_filter.py
     ├─ get_news_headlines()       → news.py (yfinance news, 30m cache) → pii_filter.py
     ├─ get_crypto_data()          → crypto_data.py (CoinGecko, 5m cache) → pii_filter.py
-    └─ list_analysis_modes()      → static list (15 tools)
+    ├─ get_triggered_alerts()     → alerts.py read_recent_history (JSONL log)
+    ├─ run_alerts_now()           → alerts.py evaluate + dispatch (live WS + yfinance)
+    ├─ backtest_portfolio()       → backtest.py run buy_hold / rsi_swing / sma_cross
+    └─ list_analysis_modes()      → static list (18 tools)
 
 FastAPI REST API  (backend/main.py + app/api/ws.py — port 8000)
     │   ← used by Next.js dashboard only (not by Claude)
@@ -130,6 +133,7 @@ WS_EMAIL=...
 WS_PASSWORD=...
 SUPABASE_URL=...        # optional
 SUPABASE_SERVICE_KEY=...  # optional
+NTFY_TOPIC=...          # optional — ntfy.sh topic for alerts push (random string, treat as private)
 
 # frontend/.env.local (LOCAL ONLY)
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -155,6 +159,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/app/services/quant.py` | Risk metrics (pure Python) |
 | `backend/app/services/macro.py` | FRED macro data |
 | `backend/app/services/pii_filter.py` | PII stripping |
+| `backend/app/services/alerts.py` | Rule eval + ntfy.sh dispatch + JSONL history |
+| `backend/scripts/run_alerts.py` | CLI: evaluate alerts, push to ntfy (cron-friendly) |
+| `backend/app/services/backtest.py` | Per-position backtest: buy_hold / rsi_swing / sma_cross |
 | `backend/app/models/portfolio.py` | Pydantic data models |
 | `backend/app/core/config.py` | Env var loading |
 | `frontend/app/dashboard/page.tsx` | Main dashboard |

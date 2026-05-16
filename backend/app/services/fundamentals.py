@@ -112,6 +112,69 @@ def get_fundamentals(symbols: list[str]) -> dict[str, dict]:
     return out
 
 
+_HISTORY_CACHE: dict[str, tuple[list, float]] = {}
+_HISTORY_TTL = 12 * 3600  # 12h — reported quarters don't change
+
+
+def _fetch_earnings_history_one(symbol: str, quarters: int) -> list[dict]:
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.earnings_history
+        if df is None or df.empty:
+            return []
+        df = df.tail(quarters).iloc[::-1]
+        out = []
+        for idx, row in df.iterrows():
+            q = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)
+            eps_actual = row.get("epsActual")
+            eps_estimate = row.get("epsEstimate")
+            surprise = row.get("surprisePercent")
+            if eps_actual is None or eps_estimate is None:
+                continue
+            if eps_actual > eps_estimate:
+                outcome = "beat"
+            elif eps_actual < eps_estimate:
+                outcome = "miss"
+            else:
+                outcome = "meet"
+            out.append({
+                "quarter": q,
+                "eps_actual": float(eps_actual) if eps_actual is not None else None,
+                "eps_estimate": float(eps_estimate) if eps_estimate is not None else None,
+                "eps_difference": float(row.get("epsDifference")) if row.get("epsDifference") is not None else None,
+                "surprise_pct": float(surprise) * 100 if surprise is not None else None,
+                "outcome": outcome,
+            })
+        return out
+    except Exception as e:
+        print(f"[earnings_history] {symbol}: {type(e).__name__}: {e}")
+        return []
+
+
+def get_earnings_history(symbols: list[str], quarters: int = 4) -> dict[str, list[dict]]:
+    """Last N quarters of EPS estimate/actual/surprise per ticker. Cached 12h."""
+    quarters = max(1, min(quarters, 12))
+    now = time.time()
+    out: dict[str, list[dict]] = {}
+    to_fetch: list[str] = []
+    for sym in symbols:
+        key = f"{sym}:{quarters}"
+        entry = _HISTORY_CACHE.get(key)
+        if entry and (now - entry[1]) < _HISTORY_TTL:
+            out[sym] = entry[0]
+        else:
+            to_fetch.append(sym)
+    if not to_fetch:
+        return out
+    workers = min(_MAX_WORKERS, len(to_fetch))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = list(ex.map(lambda s: _fetch_earnings_history_one(s, quarters), to_fetch))
+    for sym, result in zip(to_fetch, results):
+        _HISTORY_CACHE[f"{sym}:{quarters}"] = (result, time.time())
+        out[sym] = result
+    return out
+
+
 _EM_CACHE: dict[str, tuple[dict, float]] = {}
 _EM_TTL = 7200  # 2h — options prices change but not rapidly
 
