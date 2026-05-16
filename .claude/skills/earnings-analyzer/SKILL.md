@@ -32,3 +32,11 @@ description: Run a JPMorgan-style pre-earnings analysis on a specific ticker. Us
 - Then full breakdown below
 - Under 500 words
 - Reference the user's actual cost basis from portfolio data to frame the recommendation
+
+## Gotchas
+
+- `get_earnings_calendar` from yfinance can show next-FY date instead of next quarter for newly-listed or low-coverage tickers — sanity-check via WebSearch if days_until > 100.
+- Options-implied move is NOT in MCP — must come from WebSearch (CBOE / OptionStrat / broker IV). Never fabricate IV.
+- Historical EPS beat/miss from `get_fundamentals` is current quarter only — last 4 quarters require WebSearch.
+- "Hold through earnings" is account-dependent: in a non-reg account, an early sell to lock gain triggers capital gains tax — call this out before recommending.
+- Don't confuse forward EPS estimate with reported EPS — clearly label estimate vs actual.

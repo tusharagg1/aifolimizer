@@ -39,3 +39,12 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 - Quantitative research memo format with sector scorecard table
 - Under 500 words
 - Use live data via WebSearch — sector rotation analysis is time-sensitive
+
+## Gotchas
+
+- `get_xray` ETF expansion is a static sector mapping — not live ETF holdings. Use it for "true sector tilt" approximation, NOT for precise weight claims.
+- `get_market_breadth` cached — verify with WebSearch on volatile days before sizing a rotation trade.
+- 13F filings lag 45 days — never present 13F-derived positioning as "current".
+- Rotation trades in non-reg accounts trigger capital gains; in TFSA they're tax-free — always pair recommendation with the right account.
+- Seasonal patterns are statistical priors, NOT predictions — present as base rate, not directive.
+- Don't confuse sector ETF performance with the underlying sector — track the index, not just the ETF, when comparing.

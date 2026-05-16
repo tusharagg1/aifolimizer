@@ -39,3 +39,10 @@ Deliver a BlackRock Portfolio Builder report with these sections:
 - Use the actual ticker symbols and weights from the returned data
 - Never reference account IDs, names, or PII (MCP returns filtered data only)
 - Be direct and specific — no hedging
+
+## Gotchas
+
+- `get_xray` ETF expansion is mapping-based, not live holdings — exotic / new ETFs may fall back to single-asset weight. Flag when unknown.
+- `get_concentration_warnings` only fires on threshold breaches; do NOT skip narrative concentration analysis just because the tool returned no warnings.
+- Health score is a heuristic, not a backtest — never present it as a return forecast.
+- Allocation targets must reference the user's actual age + risk tier from `get_profile`; do not paste a generic 60/40 template.

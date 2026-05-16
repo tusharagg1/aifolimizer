@@ -77,3 +77,13 @@ Format the final output as:
 - Keep the full output under 700 words
 - Reference the user's actual cost basis and current portfolio weight in the decision framing
 - For Canadian tickers (.TO suffix): use TSX context and note CAD/USD impact if applicable
+
+## Gotchas
+
+- Bull/Bear agents MUST see the same data snapshot — collect Stage 1 first, then pass identical data to both. Asymmetric inputs invalidate the comparison.
+- Spawn both agents in ONE message with two tool calls; sequential spawning is not parallel and wastes context.
+- Sub-agents must NOT hedge — if either agent returns "on the other hand..." reasoning, the prompt failed. Reject and re-prompt.
+- Probability weights (35/40/25) are a default — adjust to evidence, do NOT force the template when data clearly leans one way.
+- `get_macro_snapshot` cached 12h — for rate-decision-week analyses, WebSearch before relying on it.
+- Stop-loss must invalidate the BULL thesis specifically, not just be a generic % drop — tie to a thesis breakpoint (e.g. "below 200-SMA breaks the uptrend assumption").
+- Confidence rating must reflect data completeness — if 2+ MCP fields are null, max rating is Neutral.

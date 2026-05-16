@@ -102,10 +102,12 @@ Each skill: auto-triggers from description frontmatter, calls get_profile FIRST,
 
 ## Privacy Rules (NON-NEGOTIABLE)
 
+<important if="touching backend/, .env, mcp_server.py, pii_filter.py, or any MCP tool response">
 - WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI
 - WS access token: server RAM only (Python dict), 8h TTL, never persisted
 - `pii_filter.py` MUST run before every MCP tool response
 - Account IDs, numbers, email, full name: NEVER leave server
+</important>
 
 ## Environment Variables
 
@@ -129,3 +131,9 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - Append to `.claude/context/changes.md` after significant changes
 - Auto skills builder: `python backend/scripts/build_skills.py` lists all tools + skills
 - Scaffold new skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`
+
+## Commit Rules
+
+- NEVER add `Co-Authored-By: Claude ...` trailer to commit messages
+- NEVER add "Generated with Claude Code" footer or any AI-attribution to commits, PRs, or PR bodies
+- Commit messages are authored solely by the human user — no AI co-author lines, no tool advertisements

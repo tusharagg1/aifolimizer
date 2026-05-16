@@ -21,7 +21,16 @@
       "PowerShell(cd \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\"; \\(Get-Item \".env\"\\).Length)",
       "Bash(claude mcp *)",
       "Bash(python -c \"from ws_api import WSAPISession; import inspect; print\\(inspect.getsource\\(WSAPISession\\)\\)\")",
-      "Bash(python -c \"from ws_api import WealthsimpleAPI; import inspect; src = inspect.getsource\\(WealthsimpleAPI.login\\); print\\(src[:3000]\\)\")"
+      "Bash(python -c \"from ws_api import WealthsimpleAPI; import inspect; src = inspect.getsource\\(WealthsimpleAPI.login\\); print\\(src[:3000]\\)\")",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch -f --msg-filter \"sed '/^Co-Authored-By: Claude/d'\" -- --all)",
+      "Bash(git stash *)",
+      "Bash(xargs -n 1 git update-ref -d)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)",
+      "Bash(git update-ref *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git add *)"
     ]
   }
 }

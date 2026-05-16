@@ -39,3 +39,11 @@ description: Run a Bridgewater-style risk assessment on the user's portfolio. Us
 - Format as a risk management report with a heat-map table at top
 - Under 600 words
 - Use actual ticker data from MCP — never invent positions
+
+## Gotchas
+
+- `get_risk_metrics` is cached 1h — state the as-of timestamp; never claim "real-time" risk.
+- `get_correlation_matrix` covers top-N holdings only; small positions excluded — do NOT claim full-portfolio correlation.
+- VaR / ES are historical-distribution estimates — fail in regime changes. State this when stress-testing.
+- Sharpe / Sortino use yfinance daily closes — illiquid tickers (e.g. some .TO microcaps) produce unreliable annualized vol. Flag tickers with <60 days of returns as low-confidence.
+- Crypto positions are NOT in `get_risk_metrics` — pull separately via `get_crypto_data` and discuss qualitatively.

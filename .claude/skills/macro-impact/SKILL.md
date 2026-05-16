@@ -40,3 +40,11 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 - Executive briefing format with action plan table at top
 - Under 500 words
 - Use current real macro data (search for it), not stale assumptions
+
+## Gotchas
+
+- `get_macro_snapshot` is cached 12h — Fed / BoC decision days break this. If the user mentions a recent rate move, WebSearch to confirm before using MCP data.
+- FRED has NO geopolitics, NO earnings, NO breaking news — WebSearch is mandatory for those factors, do NOT extrapolate from rates alone.
+- `market_regime` is a composite (VIX + SPY vs SMA200) — bear_high_fear ≠ recession; state the components, not just the label.
+- CAD/USD impact applies only to USD-denominated holdings; .TO tickers are already CAD-quoted — don't double-count FX.
+- BoC and Fed rate differentials matter more than absolute levels for CAD/USD direction; cite the spread, not just one rate.

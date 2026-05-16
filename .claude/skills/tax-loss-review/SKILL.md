@@ -33,3 +33,12 @@ description: Canadian tax-loss harvesting review. Use when the user asks about t
 - Never recommend selling a position in TFSA/RRSP for tax reasons
 - Always flag the 30-day superficial loss risk
 - Suggest substitutes that avoid "substantially identical" designation
+
+## Gotchas
+
+- Superficial loss rule covers the user AND spouse/common-law partner AND any controlled corp — ask before assuming the buy-back window is clean.
+- 30-day window is 30 calendar days BEFORE and AFTER the sale — both sides count.
+- Same-class ETFs tracking the same index (e.g. VFV ↔ VOO) are likely "substantially identical" per CRA — recommend a different index proxy (e.g. VFV → XUS uses different index methodology, safer).
+- TFSA losses are PERMANENT — contribution room is not restored. Mention this when discussing TFSA exits.
+- USD-denominated cost basis must be converted at the transaction-date FX rate, not current — `get_tax_loss_candidates` may show a CAD-converted loss that misstates the actual ACB. Flag and recommend the user verify with their broker statement.
+- Capital losses cannot offset interest / dividend income — only capital gains. Don't suggest harvesting to "offset T5 income".

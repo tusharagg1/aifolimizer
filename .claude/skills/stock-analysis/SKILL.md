@@ -50,3 +50,12 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 - Under 600 words
 - Cite the user's actual cost basis from the portfolio data to frame the recommendation
 - For Canadian tickers (.TO suffix), use TSX context
+
+## Gotchas
+
+- `get_fundamentals` cached 6h — `analyst_target` can be stale within a trading day; flag if last update >24h.
+- `get_technicals` cached 1h — entry zones / stop-loss are stale on high-volatility days. Mention timestamp.
+- Never invent a price target — only quote `analyst_target` from MCP or derive from explicit valuation math you show.
+- `minervini_score` requires all 7 sub-criteria present — if any field is null, score is invalid; state "incomplete data".
+- `pct_from_52w_high/low` from technicals — use these directly, do NOT recompute from a price guess.
+- For .TO tickers, yfinance fundamentals are sparse — institutional ownership and analyst recs often empty. Note "TSX coverage gap" rather than fabricating.
