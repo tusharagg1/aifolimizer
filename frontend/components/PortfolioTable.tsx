@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Position, CrowdingMap, CrowdingSignal } from "@/lib/api";
 
 interface Props {
@@ -95,39 +95,63 @@ const TableRow = memo(function TableRow({
   );
 });
 
+const ROW_LIMIT = 8;
+
 function PortfolioTable({ positions, crowding, onSelectTicker, selectedTicker }: Props) {
+  const [showAll, setShowAll] = useState(false);
   if (!positions.length) return <p className="text-slate-400 text-sm">No positions found.</p>;
 
+  const visible = showAll ? positions : positions.slice(0, ROW_LIMIT);
+  const hiddenCount = positions.length - ROW_LIMIT;
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-700">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-slate-800 text-slate-400 text-left">
-            <th className="px-4 py-3 font-medium">Symbol</th>
-            <th className="px-4 py-3 font-medium">Name</th>
-            <th className="px-4 py-3 font-medium text-right">Qty</th>
-            <th className="px-4 py-3 font-medium text-right">Book Cost (CAD)</th>
-            <th className="px-4 py-3 font-medium text-right">Mkt Value (CAD)</th>
-            <th className="px-4 py-3 font-medium text-right">Day %</th>
-            <th className="px-4 py-3 font-medium text-right">Total %</th>
-            <th className="px-4 py-3 font-medium text-right">Weight</th>
-            <th className="px-4 py-3 font-medium">Class</th>
-            <th className="px-4 py-3 font-medium" title="Crowding score 0-100 (consensus ≥70, contrarian ≤30). Late entries on consensus names have negative expected alpha per 2025 Goldman/BlackRock research.">Crowding</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-700/50">
-          {positions.map((p) => (
-            <TableRow
-              key={p.symbol}
-              position={p}
-              crowding={crowding?.[p.symbol]}
-              isSelected={selectedTicker === p.symbol}
-              onSelect={onSelectTicker || (() => {})}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="overflow-x-auto rounded-xl border border-slate-700">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-800 text-slate-400 text-left">
+              <th className="px-4 py-3 font-medium">Symbol</th>
+              <th className="px-4 py-3 font-medium">Name</th>
+              <th className="px-4 py-3 font-medium text-right">Qty</th>
+              <th className="px-4 py-3 font-medium text-right">Book Cost (CAD)</th>
+              <th className="px-4 py-3 font-medium text-right">Mkt Value (CAD)</th>
+              <th className="px-4 py-3 font-medium text-right">Day %</th>
+              <th className="px-4 py-3 font-medium text-right">Total %</th>
+              <th className="px-4 py-3 font-medium text-right">Weight</th>
+              <th className="px-4 py-3 font-medium">Class</th>
+              <th className="px-4 py-3 font-medium" title="Crowding score 0-100 (consensus ≥70, contrarian ≤30). Late entries on consensus names have negative expected alpha per 2025 Goldman/BlackRock research.">Crowding</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-700/50">
+            {visible.map((p) => (
+              <TableRow
+                key={p.symbol}
+                position={p}
+                crowding={crowding?.[p.symbol]}
+                isSelected={selectedTicker === p.symbol}
+                onSelect={onSelectTicker || (() => {})}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!showAll && hiddenCount > 0 && (
+        <button
+          onClick={() => setShowAll(true)}
+          className="mt-2 w-full text-xs text-slate-500 hover:text-slate-300 transition-colors py-1.5 border border-slate-800 hover:border-slate-700 rounded-lg"
+        >
+          Show {hiddenCount} more positions
+        </button>
+      )}
+      {showAll && positions.length > ROW_LIMIT && (
+        <button
+          onClick={() => setShowAll(false)}
+          className="mt-2 w-full text-xs text-slate-500 hover:text-slate-300 transition-colors py-1.5 border border-slate-800 hover:border-slate-700 rounded-lg"
+        >
+          ▲ collapse
+        </button>
+      )}
+    </>
   );
 }
 

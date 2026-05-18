@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Recommendation } from "@/lib/api";
 
 type Action = "BUY" | "HOLD" | "WATCH" | "SELL";
@@ -147,6 +147,8 @@ function RecommendationsPanel({
 
 export default memo(RecommendationsPanel);
 
+const COMPACT_LIMIT = 4;
+
 function RecommendationGroup({
   action,
   items,
@@ -159,15 +161,28 @@ function RecommendationGroup({
   narrativesLoading?: boolean;
 }) {
   const cfg = ACTION_CONFIG[action];
+  const [expanded, setExpanded] = useState(false);
+  const showAll = expanded || items.length <= COMPACT_LIMIT;
+  const visible = showAll ? items : items.slice(0, COMPACT_LIMIT);
+  const hiddenCount = items.length - COMPACT_LIMIT;
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
         <p className={`text-xs font-semibold tracking-wide ${cfg.text}`}>{action}</p>
         <span className="text-xs text-slate-600">{items.length}</span>
+        {items.length > COMPACT_LIMIT && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="ml-auto text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            {expanded ? "▲ collapse" : `▼ show all ${items.length}`}
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-        {items.map(rec => (
+        {visible.map(rec => (
           <RecCard
             key={rec.symbol}
             rec={rec}
@@ -177,6 +192,14 @@ function RecommendationGroup({
           />
         ))}
       </div>
+      {!expanded && hiddenCount > 0 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="mt-2 w-full text-xs text-slate-500 hover:text-slate-300 transition-colors py-1.5 border border-slate-800 hover:border-slate-700 rounded-lg text-center"
+        >
+          +{hiddenCount} more {action.toLowerCase()}
+        </button>
+      )}
     </div>
   );
 }

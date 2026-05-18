@@ -61,6 +61,29 @@ const SKILLS = [
   { name: "/earnings-postmortem", desc: "Post-report EPS beat/miss breakdown", icon: "◆" },
 ];
 
+function useCountUp(target: number, duration = 700): number {
+  const [display, setDisplay] = useState(target);
+  const frameRef = useRef<number | null>(null);
+  const prevRef = useRef<number>(target);
+  useEffect(() => {
+    const from = prevRef.current;
+    prevRef.current = target;
+    if (from === target) return;
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - t0) / duration, 1);
+      const ease = 1 - (1 - p) ** 3;
+      setDisplay(from + (target - from) * ease);
+      if (p < 1) frameRef.current = requestAnimationFrame(tick);
+      else frameRef.current = null;
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => { if (frameRef.current !== null) cancelAnimationFrame(frameRef.current); };
+  }, [target, duration]);
+  return display;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -252,9 +275,9 @@ export default function DashboardPage() {
     loadAlerts();
     loadRecommendations();
     loadMacro();
-    loadBenchmark();
-    loadOptimizer();
     loadCrowding();
+    const t = setTimeout(() => { loadBenchmark(); loadOptimizer(); }, 1500);
+    return () => clearTimeout(t);
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -276,11 +299,14 @@ export default function DashboardPage() {
   const totalCost = summary?.total_cost ?? 0;
   const dayChangeCad = summary?.day_change_cad ?? 0;
 
+  const animatedTotalValue = useCountUp(totalValue);
+  const animatedDayChange = useCountUp(dayChangeCad);
+
   const summaryCards = [
-    { label: "Portfolio Value", value: currency(totalValue), color: "text-white" },
+    { label: "Portfolio Value", value: currency(animatedTotalValue), color: "text-white" },
     {
       label: "Day Change",
-      value: `${dayChangeCad >= 0 ? "+" : ""}${currency(dayChangeCad)}`,
+      value: `${dayChangeCad >= 0 ? "+" : ""}${currency(animatedDayChange)}`,
       color: dayChangeCad >= 0 ? "text-emerald-400" : "text-rose-400",
     },
     {
@@ -359,9 +385,11 @@ export default function DashboardPage() {
           {summaryCards.map(card => (
             <div key={card.label} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
               <p className="text-xs text-slate-500 mb-1">{card.label}</p>
-              <p className={`text-base font-semibold ${card.color}`}>
-                {portfolioLoading ? "…" : card.value}
-              </p>
+              {portfolioLoading && !totalValue ? (
+                <div className="h-5 w-24 bg-slate-800 rounded animate-pulse mt-0.5" />
+              ) : (
+                <p className={`text-base font-semibold ${card.color}`}>{card.value}</p>
+              )}
             </div>
           ))}
         </div>
