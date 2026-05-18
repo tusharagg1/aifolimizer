@@ -34,6 +34,7 @@ function PriceChart({ symbol, sessionId }: Props) {
 
   useEffect(() => {
     if (!symbol || !sessionId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     wsGetPriceHistory(sessionId, symbol, period)
