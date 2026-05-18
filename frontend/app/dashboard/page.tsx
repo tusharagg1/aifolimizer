@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
 
+  // eslint-disable-next-line react-hooks/purity
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   // Per-loader AbortController so a new fetch cancels the prior in-flight one.
   // Prevents stale responses from stomping fresher state (e.g. account-tab race).
@@ -121,6 +122,7 @@ export default function DashboardPage() {
     const sid = sessionStorage.getItem("ws_session_id");
     const prof = sessionStorage.getItem("ws_profile");
     if (!sid) { router.push("/login"); return; }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSessionId(sid);
     if (prof) setProfile(JSON.parse(prof));
   }, [router]);
@@ -244,6 +246,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPortfolio();
     loadHealthScore();
     loadAlerts();

@@ -1,3 +1,6 @@
+import csv
+import io
+import math
 import time
 import yfinance as yf
 from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
@@ -66,9 +69,6 @@ def _get_cad_per_usd() -> float:
             "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXCAUS",
             timeout=5.0,
         )
-        import csv
-        import io
-        import math
         rows = list(csv.reader(io.StringIO(resp.text)))
         for date, val in reversed(rows[1:]):
             try:

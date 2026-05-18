@@ -52,8 +52,6 @@ def optimize(
     """
     from pypfopt import EfficientFrontier, risk_models, expected_returns
     from pypfopt.black_litterman import BlackLittermanModel
-    from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices  # noqa: F401
-
     symbols = [p["symbol"] for p in positions]
     current_weights = {p["symbol"]: (p.get("weight") or 0) / 100 for p in positions}
 
