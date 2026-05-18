@@ -43,3 +43,7 @@ frontend/node_modules/
 .claude/context/track_record_full.jsonl
 backend/.pytest_cache/
 backend/.cache/
+backend/.claude/
+
+# Backup files created by skill scaffolding / plugin tools
+*.original.md
