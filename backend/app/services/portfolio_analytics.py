@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.portfolio import Position, PortfolioResponse
+from app.models.portfolio import PortfolioResponse
 
 
 # ETF underlying exposures (curated; based on iShares/Vanguard published holdings)

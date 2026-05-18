@@ -1,0 +1,8 @@
+[lint]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"mcp_server.py" = ["E402"]
+"mcp_login.py" = ["E402"]
+"run_mcp_tools.py" = ["E402"]
+"tests/test_kpi_suite.py" = ["E402"]

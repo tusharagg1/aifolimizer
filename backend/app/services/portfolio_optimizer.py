@@ -12,7 +12,6 @@ from __future__ import annotations
 import time
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 
@@ -53,11 +52,10 @@ def optimize(
     """
     from pypfopt import EfficientFrontier, risk_models, expected_returns
     from pypfopt.black_litterman import BlackLittermanModel
-    from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices
+    from pypfopt.discrete_allocation import DiscreteAllocation, get_latest_prices  # noqa: F401
 
     symbols = [p["symbol"] for p in positions]
     current_weights = {p["symbol"]: (p.get("weight") or 0) / 100 for p in positions}
-    total_value = sum(p.get("market_value_cad") or 0 for p in positions)
 
     cache_key = ",".join(sorted(symbols))
     entry = _CACHE.get(cache_key)

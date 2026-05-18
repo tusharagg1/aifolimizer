@@ -19,7 +19,6 @@ import concurrent.futures
 import hashlib
 import time
 import xml.etree.ElementTree as ET
-from typing import Any
 
 import httpx
 
@@ -118,7 +117,6 @@ def _score_position(
 ) -> dict:
     asset_class = (position.get("asset_class") or "").lower()
     is_etf = asset_class in _ETF_ASSET_CLASSES
-    is_crypto = asset_class in _CRYPTO_ASSET_CLASSES
 
     em = earnings_move or {}
 

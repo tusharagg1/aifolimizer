@@ -11,7 +11,6 @@ Sessions and credentials live in server RAM only. Nothing persisted to disk.
 """
 
 import json
-import re
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -121,14 +120,22 @@ def _detect_account_type(account: dict) -> str:
         or account.get("category")
         or ""
     ).upper()
-    if "TFSA" in raw: return "TFSA"
-    if "RRSP" in raw: return "RRSP"
-    if "RESP" in raw: return "RESP"
-    if "LIRA" in raw: return "LIRA"
-    if "FHSA" in raw: return "FHSA"
-    if "CRYPTO" in raw: return "Crypto"
-    if "NON_REGISTERED" in raw or "NONREG" in raw or "PERSONAL" in raw: return "Non-Reg"
-    if "CASH" in raw: return "Cash"
+    if "TFSA" in raw:
+        return "TFSA"
+    if "RRSP" in raw:
+        return "RRSP"
+    if "RESP" in raw:
+        return "RESP"
+    if "LIRA" in raw:
+        return "LIRA"
+    if "FHSA" in raw:
+        return "FHSA"
+    if "CRYPTO" in raw:
+        return "Crypto"
+    if "NON_REGISTERED" in raw or "NONREG" in raw or "PERSONAL" in raw:
+        return "Non-Reg"
+    if "CASH" in raw:
+        return "Cash"
     return raw or "Unknown"
 
 
