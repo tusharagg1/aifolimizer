@@ -33,6 +33,7 @@ from app.services import (
     paper_trade as paper_trade_svc,
     alpha_attribution as alpha_svc,
     trust_report as trust_svc,
+    community as community_svc,
 )
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
@@ -45,6 +46,18 @@ _SESSION_FILE = Path(__file__).parent / ".ws_session.json"
 
 _MAX_SYMBOLS = 100
 _VALID_ACCOUNT_TYPES = {"TFSA", "RRSP", "RESP", "Non-Reg", "Crypto", "LIRA", "FHSA", "Cash", ""}
+
+# Diverse 20-symbol fallback universe: 5 US sectors + 4 Canadian + 3 ETFs + 2 mid/small
+_DEFAULT_BACKTEST_UNIVERSE = [
+    # US tech
+    "AAPL", "MSFT", "NVDA", "GOOGL", "META",
+    # US non-tech (financials, healthcare, energy, consumer)
+    "JPM", "JNJ", "XOM", "AMZN", "HD",
+    # Canadian equities (banks + energy)
+    "TD.TO", "RY.TO", "ENB.TO", "CNQ.TO",
+    # ETFs — Canadian broad + US tech + US small-cap
+    "XEQT.TO", "VFV.TO", "XIC.TO", "QQQ", "IWM",
+]
 
 
 def _load_cached_session() -> str | None:
@@ -499,6 +512,22 @@ async def get_news_headlines(ticker: str = "", limit: int = 5) -> dict:
     return {sym: articles[:max(1, min(limit, 10))] for sym, articles in raw.items()}
 
 
+@mcp.tool()
+async def get_community_sentiment(ticker: str) -> dict:
+    """
+    Reddit community sentiment for a ticker — scored from public posts.
+
+    Searches r/stocks, r/investing, r/canadianinvestor for the past week.
+    Returns community_score (0=all bearish, 50=neutral, 100=all bullish),
+    bull/bear signal counts, post count, and sample post titles.
+    Cached 30 min. No API key required (Reddit public JSON API).
+
+    Use alongside get_positioning_signals to separate institutional crowding
+    from retail/community sentiment — they frequently diverge.
+    """
+    return await asyncio.to_thread(community_svc.get_reddit_sentiment, ticker.upper())
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Meta
 # ────────────────────────────────────────────────────────────────────────────────
@@ -776,9 +805,9 @@ async def get_skill_track_record(
                 )[:10]
                 universe = [p.symbol for p in top]
             except Exception:
-                universe = ["AAPL", "MSFT", "NVDA", "XEQT.TO", "VFV.TO"]
+                universe = _DEFAULT_BACKTEST_UNIVERSE
         else:
-            universe = ["AAPL", "MSFT", "NVDA", "XEQT.TO", "VFV.TO"]
+            universe = _DEFAULT_BACKTEST_UNIVERSE
 
     return await asyncio.to_thread(
         skill_bt_svc.backtest_all_skills,
