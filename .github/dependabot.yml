@@ -3,25 +3,11 @@ updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    labels: [dependencies, python]
-    groups:
-      dev-tools:
-        patterns: [pytest, ruff, pyright]
-      core:
-        patterns: [fastapi, uvicorn, pydantic*]
+      interval: monthly
+    open-pull-requests-limit: 3
 
   - package-ecosystem: npm
     directory: /frontend
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    labels: [dependencies, javascript]
-    groups:
-      next-ecosystem:
-        patterns: [next, react, react-dom]
-      types:
-        patterns: ["@types/*"]
+      interval: monthly
+    open-pull-requests-limit: 3
