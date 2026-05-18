@@ -7,11 +7,11 @@ description: Run a BlackRock-style portfolio health analysis. Use when the user 
 
 ## How to run
 
-1. Call MCP tool `mcp__aifolimizer__get_profile` to learn the user's account types (TFSA, RRSP, etc.)
-2. Call MCP tool `mcp__aifolimizer__get_portfolio` to fetch enriched holdings
-3. Call MCP tool `mcp__aifolimizer__get_xray` to see true geographic / asset-class exposure (expands ETF holdings)
-4. Call MCP tool `mcp__aifolimizer__get_concentration_warnings` to flag over-allocations
-5. Run the analysis below using the returned data
+1. Call `mcp__aifolimizer__get_profile` — learn user's account types (TFSA, RRSP, etc.)
+2. Call `mcp__aifolimizer__get_portfolio` — fetch enriched holdings
+3. Call `mcp__aifolimizer__get_xray` — true geographic/asset-class exposure (expands ETF holdings)
+4. Call `mcp__aifolimizer__get_concentration_warnings` — flag over-allocations
+5. Run analysis below using returned data
 
 ## Investor profile
 
@@ -24,25 +24,25 @@ description: Run a BlackRock-style portfolio health analysis. Use when the user 
 
 ## Output structure
 
-Deliver a BlackRock Portfolio Builder report with these sections:
+BlackRock Portfolio Builder report with these sections:
 
 1. **Portfolio Health Score** (0-100) with one-paragraph rationale
-2. **Asset allocation** breakdown vs targets recommended for this investor's age and goals
+2. **Asset allocation** breakdown vs targets for this investor's age and goals
 3. **Top 3 concentration or risk concerns** — name specific tickers/sectors
 4. **3-5 actionable rebalancing recommendations** with tickers and reasoning
-5. **Canadian tax-efficiency tip** based on actual account types held (use TFSA/RRSP info from `get_profile`)
+5. **Canadian tax-efficiency tip** based on actual account types from `get_profile`
 6. **Expected return range** (annualized) and **maximum drawdown estimate** for current allocation
 
 ## Rules
 
-- Keep under 500 words
-- Use the actual ticker symbols and weights from the returned data
+- Under 500 words
+- Use actual ticker symbols and weights from returned data
 - Never reference account IDs, names, or PII (MCP returns filtered data only)
-- Be direct and specific — no hedging
+- Direct and specific — no hedging
 
 ## Gotchas
 
-- `get_xray` ETF expansion is mapping-based, not live holdings — exotic / new ETFs may fall back to single-asset weight. Flag when unknown.
-- `get_concentration_warnings` only fires on threshold breaches; do NOT skip narrative concentration analysis just because the tool returned no warnings.
-- Health score is a heuristic, not a backtest — never present it as a return forecast.
-- Allocation targets must reference the user's actual age + risk tier from `get_profile`; do not paste a generic 60/40 template.
+- `get_xray` ETF expansion is mapping-based, not live holdings — exotic/new ETFs may fall back to single-asset weight. Flag when unknown.
+- `get_concentration_warnings` only fires on threshold breaches; do NOT skip narrative concentration analysis because tool returned no warnings.
+- Health score is heuristic, not backtest — never present as return forecast.
+- Allocation targets must reference user's actual age + risk tier from `get_profile`; do not paste generic 60/40 template.

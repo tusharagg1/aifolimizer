@@ -339,6 +339,64 @@ async def verify_sell_signal(rec: dict) -> bool:
     return True  # all providers failed — keep SELL
 
 
+# ── News sentiment scoring ─────────────────────────────────────────────────────
+
+_SENT_LLM_CACHE: dict[tuple, tuple[float, float]] = {}
+_SENT_LLM_TTL = 1800  # 30 min — same as narrative cache
+
+_SENTIMENT_SYSTEM = (
+    "Financial news sentiment analyst. "
+    "Given stock headlines, reply with JSON only: {\"score\": <float>} "
+    "where score is -1.0 (very bearish) to +1.0 (very bullish). No other text."
+)
+
+
+async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | None:
+    """LLM-score news headlines for symbol. Returns -1.0 to +1.0, or None on failure.
+
+    Called from a ThreadPoolExecutor thread via asyncio.run() — safe because
+    those threads have no running event loop.
+    """
+    import hashlib
+    import json
+
+    if not headlines:
+        return None
+    providers = _available_providers()
+    if not providers:
+        return None
+
+    sample = headlines[:10]
+    hkey = (symbol, hashlib.md5("|".join(sample).encode()).hexdigest())
+    entry = _SENT_LLM_CACHE.get(hkey)
+    if entry and time.time() - entry[1] < _SENT_LLM_TTL:
+        return entry[0]
+
+    prompt = "Stock: {}\nHeadlines:\n{}".format(
+        symbol, "\n".join(f"- {h}" for h in sample)
+    )
+
+    for provider in providers:
+        try:
+            text = await _call_provider(
+                provider, prompt,
+                system=_SENTIMENT_SYSTEM,
+                max_tokens=30,
+                temperature=0.1,
+            )
+            data = json.loads(text.strip())
+            score = float(data["score"])
+            score = max(-1.0, min(1.0, score))
+            _record_success(provider["name"])
+            _SENT_LLM_CACHE[hkey] = (score, time.time())
+            return score
+        except Exception as e:
+            print(f"[llm_router] sentiment {symbol} via {provider['name']}: {e}")
+            _record_error(provider["name"])
+
+    return None
+
+
 async def _call_openai_compat_with_system(
     provider: dict, api_key: str, prompt: str, system: str
 ) -> str:

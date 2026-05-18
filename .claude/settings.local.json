@@ -43,10 +43,25 @@
       "Bash(.venv/Scripts/python scripts/run_alerts.py --dry-run)",
       "Bash(rm ../.claude/context/alerts.jsonl ../.claude/context/alerts_state.json && echo \"cleaned\")",
       "Bash(.venv/Scripts/python -c ' *)",
-      "Bash(.venv/Scripts/python.exe -c \"from app.services.positioning import get_positioning; import json; print\\(json.dumps\\(get_positioning\\(['AAPL', 'NVDA', 'XEQT.TO']\\), indent=2\\)\\)\")"
+      "Bash(.venv/Scripts/python.exe -c \"from app.services.positioning import get_positioning; import json; print\\(json.dumps\\(get_positioning\\(['AAPL', 'NVDA', 'XEQT.TO']\\), indent=2\\)\\)\")",
+      "PowerShell(Get-Process python, node -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.LocalPort -in 8000, 3000} | Select-Object LocalPort, OwningProcess)",
+      "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\"; .\\\\.venv\\\\Scripts\\\\Activate.ps1; uvicorn main:app --reload --port 8000)",
+      "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\"; npm run dev)",
+      "Bash(xargs wc -l)",
+      "Bash(mkdir -p \"c:/Users/Tusha/Documents/projects/aifolimizer/.claude/skills/daily-briefing\" && mkdir -p \"c:/Users/Tusha/Documents/projects/aifolimizer/backend/tests\")",
+      "Bash(.venv/Scripts/python -m pytest tests/test_pii_filter.py -v)",
+      "Bash(.venv/Scripts/python -m pip install pytest)",
+      "Bash(.venv/Scripts/python -m pip install diskcache)",
+      "Bash(.venv/Scripts/python.exe -c \"from app.services import data_router; print\\('OK config:', data_router.configured_sources\\(\\)\\)\")",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(python -m scripts \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\.claude\\\\context\\\\lessons.md\")",
+      "Bash(.venv\\\\Scripts\\\\python.exe -c \"from app.services.llm_router import score_news_sentiment; from app.services.recommendations import _fetch_sentiment, _try_llm_sentiment; print\\('OK'\\)\")",
+      "Bash(curl -s \"http://localhost:8000/ws/crowding?session_id=0e478d18-8d64-4f9b-b272-7cb9a3693b7a&top_n=5\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d[:2] if isinstance\\(d,list\\) else d, indent=2\\)\\)\")"
     ],
     "additionalDirectories": [
-      "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
+      "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",
+      "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\skills"
     ]
   }
 }

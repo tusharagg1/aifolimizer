@@ -7,9 +7,9 @@ description: Run a post-earnings report breakdown on a specific ticker — beat/
 
 ## How to run
 
-1. Call `mcp__aifolimizer__get_profile` — account types and capital. Used to frame any post-report trim/add decision and tax impact
-2. Confirm the ticker via `mcp__aifolimizer__get_portfolio` — get current weight + cost basis (or note "not held" if the user is researching a watchlist name)
-3. Call `mcp__aifolimizer__get_earnings_results` with `symbols=[ticker]`, `quarters=4` — last 4 quarters of EPS actual vs estimate, surprise %, beat/meet/miss outcome
+1. Call `mcp__aifolimizer__get_profile` — account types and capital. Frame any post-report trim/add decision and tax impact
+2. Confirm ticker via `mcp__aifolimizer__get_portfolio` — current weight + cost basis (or note "not held" if researching watchlist name)
+3. Call `mcp__aifolimizer__get_earnings_results` with `symbols=[ticker]`, `quarters=4` — last 4 quarters EPS actual vs estimate, surprise %, beat/meet/miss outcome
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` — current P/E, forward P/E, EPS TTM, analyst target, recommendation, profit margin, revenue growth
 5. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` — post-report news + analyst reactions
 6. WebSearch only for: full earnings call transcript quotes, segment revenue breakdown, forward guidance text, options-implied move that already played out, sell-side rating changes post-report
@@ -35,7 +35,7 @@ description: Run a post-earnings report breakdown on a specific ticker — beat/
 
 ### 3. Last 4 quarters trend
 Render markdown table. Columns: Quarter | EPS Estimate | EPS Actual | Surprise % | Outcome.
-Below table: one sentence on the pattern (improving beats, deteriorating, choppy).
+Below table: one sentence on pattern (improving beats, deteriorating, choppy).
 
 ### 4. Management commentary signal
 - Guidance: raised / maintained / lowered (require WebSearch — yfinance doesn't carry guidance)
@@ -44,14 +44,14 @@ Below table: one sentence on the pattern (improving beats, deteriorating, choppy
 - Capital allocation changes (buybacks, dividend, capex)
 
 ### 5. Analyst reaction
-- Upgrades / downgrades since report (from headlines + WebSearch)
+- Upgrades/downgrades since report (from headlines + WebSearch)
 - Price target revisions: pre vs post
 - Consensus shift
 
 ### 6. Valuation re-rate
 - Forward P/E now vs pre-report
-- Did the multiple expand or compress on the print?
-- Is current price implying the guidance is credible?
+- Did multiple expand or compress on print?
+- Is current price implying guidance is credible?
 
 ### 7. Recommendation (Canadian tax aware)
 - If user holds: hold / add / trim / exit with reasoning tied to cost basis
@@ -61,20 +61,20 @@ Below table: one sentence on the pattern (improving beats, deteriorating, choppy
 
 ## Rules
 
-- Decision summary at the very top
-- Always render the 4-quarter trend table — verbal-only is not acceptable
+- Decision summary at very top
+- Always render 4-quarter trend table — verbal-only not acceptable
 - Under 600 words
-- Cite cost basis if user holds the ticker
+- Cite cost basis if user holds ticker
 - Never invent EPS or revenue figures — quote from `get_earnings_results` or state "WebSearch: <source, date>"
 - Forward guidance MUST come from WebSearch (yfinance has no guidance field) — do not fabricate
 
 ## Gotchas
 
 - `get_earnings_results` returns yfinance `earnings_history` — EPS only, no revenue. Revenue beats/misses require WebSearch (earnings press release or transcript)
-- yfinance `surprisePercent` is a decimal (0.05 = 5%) — service already multiplies by 100, but verify the sign on negative surprises
-- For .TO tickers, yfinance `earnings_history` coverage is sparse — many TSX names return empty. Note "TSX coverage gap" and rely on WebSearch with the company's investor-relations release
-- The "outcome" field is a strict EPS-only beat/miss — a company can beat on EPS via buybacks while missing on revenue. Always look at revenue separately
-- "Stock reaction" requires the post-report price move — `get_technicals` is cached 1h and may not yet reflect a fresh print. Note timestamp
-- Pre-earnings consensus revisions matter: a "beat" against a lowered estimate is weaker than a beat against a raised estimate. Flag if WebSearch shows estimates were cut in the 2 weeks before the report
-- Guidance shift is the dominant signal, not the headline beat. A beat with guide-down is a sell catalyst; a small miss with guide-up is a buy
-- Crypto holdings: this skill is inapplicable — redirect to crypto-specific analysis
+- yfinance `surprisePercent` is decimal (0.05 = 5%) — service already multiplies by 100, but verify sign on negative surprises
+- For .TO tickers, yfinance `earnings_history` sparse — many TSX names return empty. Note "TSX coverage gap", rely on WebSearch with company's IR release
+- "outcome" field is strict EPS-only beat/miss — company can beat on EPS via buybacks while missing on revenue. Always look at revenue separately
+- "Stock reaction" requires post-report price move — `get_technicals` cached 1h, may not reflect fresh print. Note timestamp
+- Pre-earnings consensus revisions matter: "beat" against lowered estimate weaker than beat against raised estimate. Flag if WebSearch shows estimates cut in 2 weeks before report
+- Guidance shift is dominant signal, not headline beat. Beat with guide-down is sell catalyst; small miss with guide-up is buy
+- Crypto holdings: skill inapplicable — redirect to crypto-specific analysis

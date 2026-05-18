@@ -14,6 +14,7 @@ Output is cached 30 minutes — eliminates per-page-load recalculation.
 """
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import hashlib
 import time
@@ -53,8 +54,16 @@ _NEGATIVE = frozenset({
 })
 
 
+def _try_llm_sentiment(symbol: str, headlines: list[str]) -> float | None:
+    try:
+        from app.services.llm_router import score_news_sentiment
+        return asyncio.run(score_news_sentiment(symbol, headlines))
+    except Exception:
+        return None
+
+
 def _fetch_sentiment(symbol: str) -> float:
-    """Google News RSS headline polarity. Returns -1.0 to +1.0."""
+    """News headline polarity via LLM (falls back to keyword). Returns -1.0 to +1.0."""
     try:
         url = (
             f"https://news.google.com/rss/search"
@@ -62,10 +71,16 @@ def _fetch_sentiment(symbol: str) -> float:
         )
         resp = httpx.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
         root = ET.fromstring(resp.text)
-        titles = [
-            (item.findtext("title") or "").lower()
+        raw_titles = [
+            item.findtext("title") or ""
             for item in root.iter("item")
         ][:15]
+        if not raw_titles:
+            return 0.0
+        llm_score = _try_llm_sentiment(symbol, raw_titles)
+        if llm_score is not None:
+            return llm_score
+        titles = [t.lower() for t in raw_titles]
         pos = sum(1 for t in titles if any(w in t.split() for w in _POSITIVE))
         neg = sum(1 for t in titles if any(w in t.split() for w in _NEGATIVE))
         total = pos + neg
@@ -340,26 +355,48 @@ def _score_position(
     sma50 = tech.get("sma_50")
     stop_loss: float | None = None
     stop_type: str | None = None
-    if current_price and current_price > 0:
-        hard_stop = round(current_price * 0.92, 2)         # 8% hard stop
-        if sma50 and sma50 > hard_stop:
-            stop_loss = round(sma50, 2)
-            stop_type = "SMA50"
-        else:
-            stop_loss = hard_stop
-            stop_type = "-8%"
-
     take_profit: float | None = None
-    if analyst_target and current_price and analyst_target > current_price:
-        take_profit = round(analyst_target, 2)
-    elif current_price:
-        take_profit = round(current_price * 1.15, 2)       # default +15%
-
     risk_reward: float | None = None
-    if current_price and stop_loss and take_profit and current_price > stop_loss:
-        reward = take_profit - current_price
-        risk = current_price - stop_loss
-        risk_reward = round(reward / risk, 1) if risk > 0 else None
+
+    if current_price and current_price > 0:
+        if action == "SELL":
+            # SELL stop = where bear thesis breaks (price recovers above here)
+            # SMA50 above current = reclaim of SMA50 invalidates downtrend
+            if sma50 and sma50 > current_price:
+                stop_loss = round(sma50, 2)
+                stop_type = "SMA50"
+            else:
+                stop_loss = round(current_price * 1.08, 2)
+                stop_type = "+8%"
+            # SELL target = analyst downside target or -15%
+            if analyst_target and analyst_target < current_price:
+                take_profit = round(analyst_target, 2)
+            else:
+                take_profit = round(current_price * 0.85, 2)
+        else:
+            # BUY/HOLD/WATCH stop = floor below current price
+            hard_stop = round(current_price * 0.92, 2)
+            if sma50 and sma50 < current_price and sma50 > hard_stop:
+                stop_loss = round(sma50, 2)
+                stop_type = "SMA50"
+            else:
+                stop_loss = hard_stop
+                stop_type = "-8%"
+            # BUY target = analyst upside target or +15%
+            if analyst_target and analyst_target > current_price:
+                take_profit = round(analyst_target, 2)
+            else:
+                take_profit = round(current_price * 1.15, 2)
+
+    if current_price and stop_loss and take_profit:
+        if action == "SELL" and stop_loss > current_price > take_profit:
+            risk = stop_loss - current_price
+            reward = current_price - take_profit
+            risk_reward = round(reward / risk, 1) if risk > 0 else None
+        elif action != "SELL" and current_price > stop_loss:
+            reward = take_profit - current_price
+            risk = current_price - stop_loss
+            risk_reward = round(reward / risk, 1) if risk > 0 else None
 
     # Entry timing: flag if RSI extended — better to wait for pullback
     entry_timing: str
@@ -398,9 +435,15 @@ def _score_position(
         ev_dollars = round(win_prob * gain - (1 - win_prob) * loss, 2)
 
     # Max loss: how many dollars lost if stop is hit on Kelly-sized position
-    if stop_loss and current_price and current_price > stop_loss and kelly_pct and position_value > 0:
-        stop_gap_pct = (current_price - stop_loss) / current_price
-        max_loss_dollars = round(position_value * (kelly_pct / 100) * stop_gap_pct, 2)
+    if stop_loss and current_price and kelly_pct and position_value > 0:
+        if action == "SELL" and stop_loss > current_price:
+            stop_gap_pct = (stop_loss - current_price) / current_price
+        elif action != "SELL" and current_price > stop_loss:
+            stop_gap_pct = (current_price - stop_loss) / current_price
+        else:
+            stop_gap_pct = 0.0
+        if stop_gap_pct > 0:
+            max_loss_dollars = round(position_value * (kelly_pct / 100) * stop_gap_pct, 2)
 
     # ── Hedge flag ────────────────────────────────────────────────────────────
     # Fires when position has elevated binary or reversal risk

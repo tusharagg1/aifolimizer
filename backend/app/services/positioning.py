@@ -18,15 +18,26 @@ Signals (all free, no API key):
 
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import yfinance as yf
+
+from app.services import cache_layer
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 6 * 3600
 _MAX_WORKERS = 8
+_L2_NAMESPACE = "positioning"
+
+# Append-only crowding history. One JSONL line per (symbol, day) snapshot.
+# Lives next to alerts log for consistent context-dir layout.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_CTX_DIR = _REPO_ROOT / ".claude" / "context"
+_HISTORY_FILE = _CTX_DIR / "crowding_history.jsonl"
 
 # Crowding score weights — empirical, not derived. Tune as data accumulates.
 _W_INST = 0.35   # high inst ownership = consensus institutional pile-in
@@ -174,16 +185,26 @@ def _fetch_one(symbol: str) -> dict:
 
 
 def get_positioning(symbols: list[str]) -> dict[str, dict]:
-    """Parallel-fetch positioning signals. Cached 6h per symbol."""
+    """Parallel-fetch positioning signals. Two-tier cache:
+    L1 in-process dict (fast hot-path), L2 diskcache (cross-process, survives
+    server restarts and MCP↔FastAPI process boundary). 6h TTL on both.
+    """
     now = time.time()
     out: dict[str, dict] = {}
     to_fetch: list[str] = []
     for sym in symbols:
+        # L1
         entry = _cache.get(sym)
         if entry and (now - entry[1]) < _CACHE_TTL:
             out[sym] = entry[0]
-        else:
-            to_fetch.append(sym)
+            continue
+        # L2 — populate L1 on hit
+        l2 = cache_layer.cache_get(_L2_NAMESPACE, sym)
+        if l2:
+            _cache[sym] = (l2, now)
+            out[sym] = l2
+            continue
+        to_fetch.append(sym)
 
     if not to_fetch:
         return out
@@ -192,6 +213,139 @@ def get_positioning(symbols: list[str]) -> dict[str, dict]:
     with ThreadPoolExecutor(max_workers=workers) as ex:
         results = list(ex.map(_fetch_one, to_fetch))
     for sym, result in zip(to_fetch, results):
-        _cache[sym] = (result, time.time())
+        if result:
+            _cache[sym] = (result, time.time())
+            cache_layer.cache_set(_L2_NAMESPACE, sym, result, _CACHE_TTL)
         out[sym] = result
     return out
+
+
+# ── History persistence ─────────────────────────────────────────────────────
+
+
+def _today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def snapshot_to_history(symbols: list[str]) -> dict[str, int]:
+    """Persist today's crowding score per symbol. Once-per-day idempotent.
+
+    Skips writes if today's row for that symbol already exists. Returns counts.
+    File: .claude/context/crowding_history.jsonl (append-only).
+    Each line: {"date": "YYYY-MM-DD", "symbol": "AAPL",
+                "crowding_score": 85.0, "crowding_label": "consensus"}
+    """
+    data = get_positioning(symbols)
+    today = _today_iso()
+    existing_today = _load_today_symbols(today)
+
+    written = 0
+    skipped = 0
+    _CTX_DIR.mkdir(parents=True, exist_ok=True)
+    with _HISTORY_FILE.open("a", encoding="utf-8") as f:
+        for sym, rec in data.items():
+            if not rec or rec.get("crowding_score") is None:
+                skipped += 1
+                continue
+            if sym in existing_today:
+                skipped += 1
+                continue
+            line = {
+                "date": today,
+                "symbol": sym,
+                "crowding_score": rec.get("crowding_score"),
+                "crowding_label": rec.get("crowding_label"),
+            }
+            f.write(json.dumps(line) + "\n")
+            written += 1
+    return {"written": written, "skipped": skipped}
+
+
+def _load_today_symbols(today: str) -> set[str]:
+    if not _HISTORY_FILE.exists():
+        return set()
+    syms: set[str] = set()
+    try:
+        with _HISTORY_FILE.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                if rec.get("date") == today:
+                    sym = rec.get("symbol")
+                    if sym:
+                        syms.add(sym)
+    except Exception as e:
+        print(f"[positioning] history read failed: {e}")
+    return syms
+
+
+def detect_regime_shifts(
+    symbols: list[str],
+    lookback_days: int = 30,
+    score_delta_threshold: float = 25.0,
+) -> list[dict]:
+    """Find symbols whose crowding score has shifted materially over lookback.
+
+    Compares latest score per symbol vs the oldest recorded score within the
+    lookback window. Returns shifts where |delta| >= score_delta_threshold.
+
+    Each shift: {symbol, from_score, to_score, from_label, to_label, delta,
+                 first_seen, last_seen, direction}.
+    direction = 'crowding_up' (more consensus) or 'crowding_down' (more contrarian).
+    """
+    if not _HISTORY_FILE.exists():
+        return []
+
+    cutoff = (datetime.now(timezone.utc).date()
+              - timedelta(days=lookback_days)).isoformat()
+    wanted = set(s.upper() for s in symbols) if symbols else None
+
+    # symbol -> [(date, score, label), ...] within window
+    series: dict[str, list[tuple[str, float, str]]] = {}
+    try:
+        with _HISTORY_FILE.open("r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                d = rec.get("date")
+                sym = rec.get("symbol")
+                score = rec.get("crowding_score")
+                label = rec.get("crowding_label")
+                if not (d and sym and score is not None):
+                    continue
+                if d < cutoff:
+                    continue
+                if wanted is not None and sym.upper() not in wanted:
+                    continue
+                series.setdefault(sym, []).append((d, float(score), str(label or "")))
+    except Exception as e:
+        print(f"[positioning] regime-shift read failed: {e}")
+        return []
+
+    shifts: list[dict] = []
+    for sym, rows in series.items():
+        if len(rows) < 2:
+            continue
+        rows.sort(key=lambda r: r[0])
+        first_d, first_s, first_l = rows[0]
+        last_d, last_s, last_l = rows[-1]
+        delta = round(last_s - first_s, 1)
+        if abs(delta) < score_delta_threshold:
+            continue
+        shifts.append({
+            "symbol": sym,
+            "from_score": first_s,
+            "to_score": last_s,
+            "from_label": first_l,
+            "to_label": last_l,
+            "delta": delta,
+            "first_seen": first_d,
+            "last_seen": last_d,
+            "direction": "crowding_up" if delta > 0 else "crowding_down",
+        })
+    shifts.sort(key=lambda s: abs(s["delta"]), reverse=True)
+    return shifts

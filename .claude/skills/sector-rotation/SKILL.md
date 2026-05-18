@@ -7,12 +7,12 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 
 ## How to run
 
-1. Call `mcp__aifolimizer__get_profile` — account types and capital. Rotation trades in TFSA are tax-free; non-reg triggers capital gains
-2. Call `mcp__aifolimizer__get_portfolio` to see current sector exposure
-3. Call `mcp__aifolimizer__get_xray` to see true sector + geographic exposure after ETF expansion
-4. Call `mcp__aifolimizer__get_market_breadth` — VIX, SPY regime (bull/bear vs SMA200). Use `market_regime` to calibrate rotation conviction: bull_low_fear = high conviction rotations; bear_high_fear = defensive only
-5. Use WebSearch for: 30-day S&P 500 and TSX sector performance, relative strength rotations, ETF money flows, recent 13F filings (Berkshire, Renaissance, Bridgewater)
-6. Identify rotations and translate to actions for the user's portfolio
+1. Call `mcp__aifolimizer__get_profile` — account types and capital. Rotation trades in TFSA tax-free; non-reg triggers capital gains
+2. Call `mcp__aifolimizer__get_portfolio` — current sector exposure
+3. Call `mcp__aifolimizer__get_xray` — true sector + geographic exposure after ETF expansion
+4. Call `mcp__aifolimizer__get_market_breadth` — VIX, SPY regime (bull/bear vs SMA200). Use `market_regime` to calibrate rotation conviction: bull_low_fear = high conviction; bear_high_fear = defensive only
+5. WebSearch for: 30-day S&P 500 and TSX sector performance, relative strength rotations, ETF money flows, recent 13F filings (Berkshire, Renaissance, Bridgewater)
+6. Identify rotations and translate to actions for user's portfolio
 
 ## Investor profile
 
@@ -27,24 +27,24 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 2. **Last 30 days:** sectors flipping from negative to positive relative strength
 3. **Sectors losing vs gaining momentum** — cite specific data signals
 4. **Highest-conviction rotation trade** right now: overweight X, reduce Y
-5. **3 ETFs** (Canadian or US listed) to express the rotation — with tickers
-6. **Seasonal patterns** — which months favour the rotating-into sectors
+5. **3 ETFs** (Canadian or US listed) to express rotation — with tickers
+6. **Seasonal patterns** — which months favour rotating-into sectors
 7. **Unusual money flows** — signals of institutional accumulation in quiet sectors
 8. **Institutional footprint** — sectors with rising 13F ownership
-9. **Impact on user's portfolio** — which existing holdings benefit / are at risk
+9. **Impact on user's portfolio** — which existing holdings benefit/at risk
 10. **Recommended adjustment** — specific tickers to add/trim
 
 ## Rules
 
 - Quantitative research memo format with sector scorecard table
 - Under 500 words
-- Use live data via WebSearch — sector rotation analysis is time-sensitive
+- Use live data via WebSearch — sector rotation is time-sensitive
 
 ## Gotchas
 
-- `get_xray` ETF expansion is a static sector mapping — not live ETF holdings. Use it for "true sector tilt" approximation, NOT for precise weight claims.
-- `get_market_breadth` cached — verify with WebSearch on volatile days before sizing a rotation trade.
+- `get_xray` ETF expansion is static sector mapping — not live ETF holdings. Use for "true sector tilt" approximation, NOT precise weight claims.
+- `get_market_breadth` cached — verify with WebSearch on volatile days before sizing rotation trade.
 - 13F filings lag 45 days — never present 13F-derived positioning as "current".
-- Rotation trades in non-reg accounts trigger capital gains; in TFSA they're tax-free — always pair recommendation with the right account.
+- Rotation trades in non-reg trigger capital gains; in TFSA tax-free — always pair recommendation with right account.
 - Seasonal patterns are statistical priors, NOT predictions — present as base rate, not directive.
-- Don't confuse sector ETF performance with the underlying sector — track the index, not just the ETF, when comparing.
+- Don't confuse sector ETF performance with underlying sector — track index, not just ETF, when comparing.

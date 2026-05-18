@@ -11,6 +11,7 @@ from app.services import (
     fundamentals as fundamentals_svc,
     technicals as technicals_svc,
     crypto_data as crypto_svc,
+    positioning as positioning_svc,
 )
 from app.services.health_score import compute_health_score
 from app.services.portfolio_analytics import (
@@ -541,6 +542,31 @@ async def optimize_endpoint(session_id: str = Query(...)):
 
     result = await asyncio.to_thread(optimize, positions_dicts, analyst_targets)
     return result
+
+
+@router.get("/crowding")
+async def crowding_endpoint(
+    session_id: str = Query(...),
+    top_n: int = Query(15, ge=1, le=50),
+):
+    """Crowding / positioning signals for top N holdings. Surfaces consensus-vs-contrarian
+    score per ticker so frontend can color-code late-entry risk.
+    """
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    try:
+        portfolio = await _get_portfolio(session_id, session)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    top = sorted(
+        portfolio.positions, key=lambda p: p.weight, reverse=True
+    )[:top_n]
+    symbols = [p.symbol for p in top]
+    if not symbols:
+        return {}
+    return await asyncio.to_thread(positioning_svc.get_positioning, symbols)
 
 
 @router.get("/llm-status")

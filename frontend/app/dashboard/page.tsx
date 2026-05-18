@@ -11,6 +11,7 @@ import {
   wsGetNarratives,
   wsGetBenchmark,
   wsGetOptimizer,
+  wsGetCrowding,
   PortfolioResponse,
   UserProfile,
   HealthScore,
@@ -20,6 +21,7 @@ import {
   MacroSnapshot,
   BenchmarkResult,
   OptimizerResult,
+  CrowdingMap,
 } from "@/lib/api";
 import PortfolioTable from "@/components/PortfolioTable";
 import AllocationChart from "@/components/AllocationChart";
@@ -53,6 +55,10 @@ const SKILLS = [
   { name: "/sector-rotation", desc: "Renaissance rotation signals", icon: "◎" },
   { name: "/adversarial-research", desc: "Parallel bull/bear agents → verdict", icon: "⬡" },
   { name: "/tax-loss-review", desc: "Canadian tax-loss harvesting (TFSA/RRSP-aware)", icon: "◈" },
+  { name: "/daily-briefing", desc: "Morning digest: health + alerts + crowding + macro", icon: "◐" },
+  { name: "/cash-deployment", desc: "Add-to-winners cash allocation with crowding guard", icon: "◇" },
+  { name: "/stock-compare", desc: "Head-to-head A vs B matchup", icon: "◇" },
+  { name: "/earnings-postmortem", desc: "Post-report EPS beat/miss breakdown", icon: "◆" },
 ];
 
 export default function DashboardPage() {
@@ -87,6 +93,9 @@ export default function DashboardPage() {
 
   const [optimizer, setOptimizer] = useState<OptimizerResult | null>(null);
   const [optimizerLoading, setOptimizerLoading] = useState(false);
+
+  const [crowding, setCrowding] = useState<CrowdingMap>({});
+  const [crowdingLoading, setCrowdingLoading] = useState(false);
 
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
@@ -212,6 +221,15 @@ export default function DashboardPage() {
     finally { if (!signal.aborted) setOptimizerLoading(false); }
   }, [sessionId, abortable, optimizer]);
 
+  const loadCrowding = useCallback(async () => {
+    if (!sessionId) return;
+    const signal = abortable("crowding");
+    if (Object.keys(crowding).length === 0) setCrowdingLoading(true);
+    try { setCrowding(await wsGetCrowding(sessionId, 15, signal)); }
+    catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setCrowdingLoading(false); }
+  }, [sessionId, abortable, crowding]);
+
   const refreshAll = useCallback(() => {
     setLastRefresh(Date.now());
     loadPortfolio();
@@ -221,7 +239,8 @@ export default function DashboardPage() {
     loadMacro();
     loadBenchmark();
     loadOptimizer();
-  }, [loadPortfolio, loadHealthScore, loadAlerts, loadRecommendations, loadMacro, loadBenchmark, loadOptimizer]);
+    loadCrowding();
+  }, [loadPortfolio, loadHealthScore, loadAlerts, loadRecommendations, loadMacro, loadBenchmark, loadOptimizer, loadCrowding]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -232,6 +251,7 @@ export default function DashboardPage() {
     loadMacro();
     loadBenchmark();
     loadOptimizer();
+    loadCrowding();
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -471,9 +491,13 @@ export default function DashboardPage() {
           </div>
           <PortfolioTable
             positions={portfolio?.positions || []}
+            crowding={crowding}
             onSelectTicker={setSelectedTicker}
             selectedTicker={selectedTicker}
           />
+          {crowdingLoading && Object.keys(crowding).length === 0 && (
+            <p className="text-[10px] text-slate-600 mt-2">Loading crowding signals…</p>
+          )}
         </div>
 
         {/* ── Row 6: Price chart ── */}

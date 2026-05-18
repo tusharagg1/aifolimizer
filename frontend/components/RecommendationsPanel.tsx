@@ -241,17 +241,27 @@ function RecCard({
       {/* Trade levels — stop / target / R:R / Kelly */}
       {(rec.stop_loss || rec.take_profit || rec.risk_reward) && (
         <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] pt-0.5 border-t border-slate-800">
-          {rec.stop_loss && (
-            <span className="text-rose-400">
-              Stop <span className="font-mono">${rec.stop_loss.toFixed(2)}</span>
-              <span className="text-slate-600 ml-1">({rec.stop_type})</span>
-            </span>
-          )}
-          {rec.take_profit && (
-            <span className="text-emerald-400">
-              Target <span className="font-mono">${rec.take_profit.toFixed(2)}</span>
-            </span>
-          )}
+          {(() => {
+            const cur = rec.symbol.endsWith(".TO") || rec.symbol.endsWith(".V") ? "CAD" : "USD";
+            const isSell = rec.action === "SELL";
+            return (
+              <>
+                {rec.stop_loss && (
+                  <span className="text-rose-400">
+                    {isSell ? "Exit if ↑" : "Stop ↓"}{" "}
+                    <span className="font-mono">{cur} {rec.stop_loss.toFixed(2)}</span>
+                    <span className="text-slate-600 ml-1">({rec.stop_type})</span>
+                  </span>
+                )}
+                {rec.take_profit && (
+                  <span className="text-emerald-400">
+                    {isSell ? "Downside ↓" : "Target ↑"}{" "}
+                    <span className="font-mono">{cur} {rec.take_profit.toFixed(2)}</span>
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {rec.risk_reward && (
             <span className={`${rec.risk_reward >= 2 ? "text-emerald-400" : rec.risk_reward >= 1 ? "text-amber-400" : "text-rose-400"}`}>
               R:R <span className="font-semibold">{rec.risk_reward}:1</span>
@@ -297,12 +307,12 @@ function RecCard({
         <div className="flex items-center justify-between gap-2 text-xs">
           {rec.ev_dollars != null && (
             <span className={`font-semibold ${rec.ev_dollars >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              EV {rec.ev_dollars >= 0 ? "+" : ""}${rec.ev_dollars.toFixed(0)}
+              EV {rec.ev_dollars >= 0 ? "+" : ""}CAD {rec.ev_dollars.toFixed(0)}
             </span>
           )}
           {rec.max_loss_dollars != null && (
             <span className="text-rose-300/80">
-              Max loss <span className="font-mono">-${rec.max_loss_dollars.toFixed(0)}</span>
+              Max loss <span className="font-mono">-CAD {rec.max_loss_dollars.toFixed(0)}</span>
             </span>
           )}
         </div>

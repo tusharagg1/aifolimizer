@@ -1,7 +1,7 @@
 # aifolimizer
 
 > AI-powered investment advisor for Canadian Wealthsimple users.
-> Live portfolio analysis through Claude Code or Claude Desktop using your existing Pro subscription. **No Anthropic API key required.**
+> Live portfolio analysis through Claude Code or Claude Desktop using existing Pro subscription. **No Anthropic API key required.**
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -15,10 +15,10 @@
 - Logs into Wealthsimple (MFA-aware, GraphQL via `ws-api`)
 - Aggregates holdings across TFSA / RRSP / FHSA / Non-Reg / Crypto accounts
 - Enriches with live yfinance prices, sectors, day changes
-- Exposes the portfolio as **MCP tools** so Claude Code / Claude Desktop can analyze it natively
+- Exposes portfolio as **MCP tools** so Claude Code / Claude Desktop can analyze natively
 - Ships **8 institutional analysis skills** that auto-trigger on intent
 
-All inference runs inside your Claude Pro subscription. Nothing goes to a cloud server.
+All inference runs inside Claude Pro subscription. Nothing goes to cloud server.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ Claude Code / Claude Desktop   (your Pro subscription)
    Wealthsimple GraphQL   |   yfinance   |   FRED CSV
 ```
 
-The Next.js dashboard is a separate, optional viewer that hits the same FastAPI backend.
+Next.js dashboard is separate, optional viewer hitting same FastAPI backend.
 
 ## Quick start
 
@@ -153,12 +153,12 @@ aifolimizer/
 - WS credentials live in local `backend/.env` only — gitignored, never deployed
 - WS access token held in server RAM only, 8-hour TTL
 - `pii_filter.py` strips account IDs / names / emails before any data reaches Claude
-- Only ticker symbols, quantities, market values, weights, and sectors are sent through MCP
-- See [SECURITY.md](SECURITY.md) for the full threat model
+- Only ticker symbols, quantities, market values, weights, sectors sent through MCP
+- See [SECURITY.md](SECURITY.md) for full threat model
 
 ## Documentation
 
-- [CLAUDE.md](CLAUDE.md) — project rules for AI agents working on this repo
+- [CLAUDE.md](CLAUDE.md) — project rules for AI agents
 - [.claude/context/architecture.md](.claude/context/architecture.md) — data flow + tool contracts
 - [CHANGELOG.md](CHANGELOG.md) — version history
 - [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup + standards

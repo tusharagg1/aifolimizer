@@ -4,6 +4,104 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-05-18 — Data Layer + Accuracy/Benchmarking Pass (Phase 1-6)
+
+### Why
+Competitive gap: no track record, single yfinance data source, no alpha measurement, no trust signal. This pass adds multi-source fallback, historical backtest of all 13 skills, forward paper-trade pipeline, alpha vs benchmarks, and a public TRACK_RECORD.md.
+
+### Phase 1 — Multi-Source Data Router
+- `backend/app/services/data_sources/` — new package with ABC + 5 adapters:
+  - `base.py` — `DataSource` ABC, `PriceBar`, `Quote`, `Fundamentals`, `SourceUnavailable`
+  - `yfinance_src.py` — primary (no key)
+  - `stooq_src.py` — EOD fallback (needs `STOOQ_KEY`, free captcha)
+  - `alphavantage_src.py` — fundamentals fallback (free 25/day, `ALPHA_VANTAGE_KEY`)
+  - `finnhub_src.py` — quote + metrics fallback (free 60/min, `FINNHUB_KEY`)
+  - `tiingo_src.py` — history fallback (free 50/hr, `TIINGO_KEY`)
+- `backend/app/services/data_cache.py` — SQLite disk cache (`.cache/data.sqlite`, gitignored). Tables: quotes, history, fundamentals, source_stats. TTL-checked. `log_source_call` records every provider call for reliability reporting.
+- `backend/app/services/data_router.py` — fallback chain router. `get_quote` → `get_history` → `get_fundamentals` each try chain in order, hit disk cache first. `get_quotes_batch` uses `yf.download` for N symbols — **13.5x faster** than serial (413ms vs 5585ms for 8 symbols). `prewarm()` batch-warms on startup. `get_source_reliability()` returns per-source stats.
+- `.env` — added `ALPHA_VANTAGE_KEY`, `FINNHUB_KEY`, `TIINGO_KEY`, `STOOQ_KEY` slots (all blank, all free-tier).
+- `.gitignore` — added `backend/.cache/`, `recommendations.jsonl`, `scored_recommendations.jsonl`, `portfolio_history.jsonl`, `track_record_full.jsonl`.
+- MCP: 2 new tools — `get_quote_with_source`, `get_data_source_reliability`.
+
+### Phase 2 — Skill Backtester (Historical KPIs)
+- `backend/app/services/skill_backtest.py` — codifies all 13 skills as deterministic Python rules (sma50, sma200, rsi_swing, macd, golden_cross, bollinger_revert, vol_cluster_avoid, momentum_faber, consensus_fade, buy_hold). `backtest_skill(skill, universe, lookback_days)` → `SkillBacktest` with CAGR, Sharpe, Sortino, max DD, hit-rate, num_trades, alpha vs SPY + XEQT. `backtest_all_skills()` runs all 13, persists JSON to `.cache/backtests/`. `latest_results()` loads last run.
+- `.claude/context/backtest_results.md` — first published KPI table (3yr, AAPL/MSFT/NVDA/XEQT/VFV universe).
+- MCP: `get_skill_track_record(universe, lookback_days, fresh)`.
+
+### Phase 3 — Forward Paper-Trade Pipeline
+- `backend/app/services/paper_trade.py` — `log_recommendation(skill, ticker, action, conviction, rationale, target_pct, stop_pct)` appends to `recommendations.jsonl` with live entry price from router. `score_recommendations(max_age_days)` marks-to-market all open recs, flags stop-out/target-hit, writes `scored_recommendations.jsonl`. `get_track_record(windows)` returns rolling 7/30/90d win-rate + avg return by conviction.
+- MCP: `log_recommendation`, `score_recommendations`, `get_live_track_record`.
+
+### Phase 4 — Alpha Attribution + AUM Bench
+- `backend/app/services/alpha_attribution.py` — `snapshot_equity(total_cad)` appends daily NAV to `portfolio_history.jsonl` (idempotent per day). `get_alpha_attribution(lookback_days)` loads snapshot history, fetches SPY/XEQT/TSX/QQQ bars via router, computes annualized return, alpha, beta, R², info ratio, tracking error. Includes `_WS_MANAGED` dict of Wealthsimple Managed published profile returns (conservative/balanced/growth/aggressive/halal_growth, 1y/3y/5y).
+- `main.py` — pre-warms quote cache for 10 common symbols on FastAPI startup (background task, non-blocking).
+- MCP: `snapshot_portfolio_equity`, `get_alpha_attribution`.
+
+### Phase 5 — Trust Signal
+- `backend/app/services/trust_report.py` — `generate_report()` writes `TRACK_RECORD.md` (repo root, public, commitlable) + `track_record_full.jsonl` (gitignored, private). Report includes methodology, data-source table, backtest KPI table, live rec stats, source reliability, WS Managed comparison, audit trail.
+- `TRACK_RECORD.md` — first version committed (git timestamp = tamper-evident).
+- MCP: `generate_trust_report`.
+
+### Phase 6 — Performance
+- `data_router.get_quotes_batch` — `yf.download` batch for N symbols: 13.5x speedup (413ms for 8 symbols vs 5585ms serial). Disk-cached, falls back to serial per-symbol on parse failure.
+- MCP: `get_quotes_batch`.
+- Startup pre-warm via `@app.on_event("startup")` (non-blocking `create_task`).
+
+### MCP tool count: 22 → 32 (+10 new tools)
+
+---
+
+## 2026-05-17 — Optimization pass (Tier 1+2+3 — full audit ship)
+
+### Why
+Audit surfaced shipped-but-invisible features (crowding not on UI), shipped-but-unscheduled features (alerts had no Task Scheduler), and unvalidated theses (positioning feature without crowd_fade backtest). Also no PII filter tests despite NON-NEGOTIABLE rule. This pass closes those gaps end-to-end.
+
+### Tier 1 — visibility + safety guardrails
+
+- `.claude/skills/daily-briefing/SKILL.md` — new morning-digest skill. Composes 7 MCP tools (`get_profile`, `get_portfolio`, `get_macro_snapshot`, `get_concentration_warnings`, `get_triggered_alerts`, `get_earnings_calendar`, `get_positioning_signals`) into single ≤400-word brief. Sections: headline, what-changed, focus list, risks on radar, skipped. Auto-triggers on "morning briefing", "daily digest", "what changed overnight?". MCP `list_analysis_modes` 12 → 13 skills.
+- **Crowding on dashboard**: backend `GET /ws/crowding` (top_n=15 default) wired to `positioning.get_positioning`. `PortfolioTable` now has "Crowding" column rendering `consensus / neutral / contrarian · NN` badge (color-coded: rose / slate / emerald) with hover tooltip showing inst%/short%/analysts/news 7d-30d counts. `lib/api.ts` gains `CrowdingMap` + `CrowdingSignal` types + `wsGetCrowding`. Dashboard fetches crowding in parallel with health/alerts/recs on session change + refresh. Skills panel SKILLS array also gained `/daily-briefing`, `/cash-deployment`, `/stock-compare`, `/earnings-postmortem` (UI was missing them despite skills existing).
+- **Alerts scheduler**: `backend/scripts/schedule_alerts.ps1` — PowerShell script that registers a per-user Scheduled Task running `run_alerts.py` every 30 min Mon-Fri 9:30 to 16:00 local. Flags: `-DryRun` for ntfy-off mode, `-Unregister` for cleanup. No admin required. `run_alerts.py` also now snapshots crowding for top 15 holdings into history (idempotent per-day) → scheduler effectively builds the regime-shift dataset for free.
+- **pii_filter tests**: `backend/tests/test_pii_filter.py` — 5 tests covering both `filter_portfolio` and `filter_user_context`. Asserts known PII keys (account_id, email, full_name, ws_internal_id, user_id, phone, ...) never appear at any nesting depth via recursive key-walk. 5/5 passing on pytest 9.0.3.
+- `backend/requirements.txt` — adds `pytest>=9.0.0` (dev-only) + `diskcache>=5.6.0`.
+
+### Tier 2 — validate positioning thesis + honest backtests
+
+- `backend/app/services/backtest.py`:
+  - 2 new strategies — `crowd_fade` (sma_cross long-only, skip currently consensus-crowded symbols; flat 0% return on skip) and `crowd_buy` (sma_cross only on currently contrarian-flagged symbols).
+  - `tx_cost_bps` parameter (default 5 bps per leg) — deducted from equity on every entry + exit + close-out leg. Applies to all strategies including buy_hold (one buy + one synthetic sell). Honest by default: pass `tx_cost_bps=0` for old behavior.
+  - `_run_strategy_on_window` helper — single dispatch for all 5 strategies given a pre-trimmed close series. Enables walk-forward reuse.
+  - Smoke: AAPL 180d, `crowd_fade` skipped (AAPL flagged consensus) → 0% return → -12.35% delta vs buy_hold during the rally (opportunity cost cleanly surfaced).
+- `backend/app/services/positioning.py`:
+  - `snapshot_to_history(symbols)` — appends `{date, symbol, crowding_score, crowding_label}` JSONL to `.claude/context/crowding_history.jsonl`. Idempotent per-day (skips if today's row exists for symbol).
+  - `detect_regime_shifts(symbols, lookback_days=30, score_delta_threshold=25.0)` — reads history, compares first vs last score in window, returns `{from_score, to_score, delta, direction: crowding_up|down, first_seen, last_seen}` sorted by |delta|.
+  - 2 new MCP tools: `snapshot_positioning_history` + `get_crowding_shifts`.
+
+### Tier 3 — honest math + cross-process cache
+
+- `backend/app/services/backtest.py` — `walk_forward=True` flag splits each window into in-sample (first `train_frac=0.7`) and out-of-sample (remainder), runs strategy on each, plus the full window. Output adds `in_sample`, `out_of_sample`, `oos_minus_is_pct` fields. Caveat: RSI/SMA params are fixed (no fit), so this exposes regime decay, not parameter overfit. Top-level shape compatibility preserved — non-WF callers see same fields. Cache key includes walk_forward + train_frac.
+- `backend/app/services/cache_layer.py` — thin `diskcache.Cache` wrapper at `.claude/context/.diskcache/` (200 MB cap, gitignored). Tiny API: `cache_get(ns, key)`, `cache_set(ns, key, value, ttl_seconds)`. Pickled values, SQLite-backed, thread+process-safe. Failures swallowed + logged — never blocks caller.
+- `positioning.py` + `fundamentals.py` — now use L1 (in-process dict, fast hot-path) + L2 (diskcache, survives restarts + shared between FastAPI ↔ MCP processes). Old code: cold MCP start re-fetched all 15 symbols (~30+ HTTPs). New: cold MCP start hits L2 if FastAPI already warmed it within 6h TTL.
+
+### MCP tool count
+17 → 20 (`get_positioning_signals` was already shipped; new: `snapshot_positioning_history`, `get_crowding_shifts`).
+
+### Verified
+- pytest 5/5 passing (pii_filter coverage)
+- backtest smoke: `crowd_fade` + `tx_cost_bps=5` + `walk_forward=True` all produce expected shapes
+- positioning snapshot: idempotent, file written, regime detector reads back correctly
+- frontend: PortfolioTable compiles, dashboard fetch wires in parallel
+
+### Skipped intentionally
+- LLM router untouched (user opted to keep 4-provider fallback)
+- Skill consolidation refactor (low value / high refactor risk per audit matrix)
+
+### Next
+- Restart MCP server so Claude Code discovers `snapshot_positioning_history` + `get_crowding_shifts`
+- Run `.\scripts\schedule_alerts.ps1` once to activate the daily crowding snapshot
+- After a week of snapshots, `get_crowding_shifts` will start surfacing real regime changes for the daily-briefing skill to consume
+
+---
+
 ## 2026-05-16 — Positioning / crowding signals (AI-consensus risk guard)
 
 ### Why

@@ -43,7 +43,7 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code —
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (18 total — exposed to Claude)
+## MCP Tools (32 total — exposed to Claude; not all listed below — see `mcp_server.py` for full)
 
 | Tool | Returns | Cache |
 |---|---|---|
@@ -55,21 +55,37 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `get_risk_metrics` | Annualized vol, Sharpe, Sortino, VaR 95%, ES, max drawdown | 1h |
 | `get_correlation_matrix` | Pairwise correlation between top N holdings | 1h |
 | `get_macro_snapshot` | FRED: Fed funds, 10Y yield, CPI, CAD/USD, BoC rate, unemployment | 12h |
-| `get_fundamentals` | P/E, EPS, div yield, payout, market cap, earnings date, analyst target, beta | 6h |
+| `get_fundamentals` | P/E, EPS, div yield, payout, market cap, earnings date, analyst target, beta | 6h (L1+L2) |
 | `get_technicals` | SMA20/50/200, RSI(14), MACD, Bollinger Bands, trend, RSI signal | 1h |
 | `get_earnings_calendar` | Next earnings dates per holding, flags next-14-days | 6h |
 | `get_earnings_results` | Last N quarters EPS estimate/actual/surprise/outcome per ticker | 12h |
 | `get_news_headlines` | Recent headlines per ticker from yfinance news | 30m |
-| `get_positioning_signals` | Crowding score, institutional ownership, short interest, headline velocity — flag consensus-crowded names | 6h |
+| `get_positioning_signals` | Crowding score, institutional ownership, short interest, headline velocity — flag consensus-crowded names | 6h (L1+L2) |
+| `snapshot_positioning_history` | Append today's crowding scores to JSONL log (idempotent per-day). Run daily to build regime-shift dataset. | live |
+| `get_crowding_shifts` | Detect symbols whose crowding score shifted ≥threshold over lookback. Reads from history JSONL. | live |
 | `get_crypto_data` | CoinGecko: price CAD, market cap, 24h/7d/30d change, ATH distance | 5m |
 | `get_triggered_alerts` | Recent alert events from local jsonl log (price drop, RSI, earnings, concentration) | live |
 | `run_alerts_now` | Evaluate alert rules vs live portfolio, append triggers to history | live |
-| `list_analysis_modes` | All 12 available skills with tool lists | static |
+| `backtest_portfolio` | Per-symbol rule-replay (buy_hold / rsi_swing / sma_cross / crowd_fade / crowd_buy). Supports `tx_cost_bps` + `walk_forward`. | 1h |
+| `get_skill_track_record` | Backtest all 13 skills as codified rules over 3-5yr historical bars. Returns CAGR, Sharpe, Sortino, max DD, hit-rate, alpha vs SPY/XEQT. | disk |
+| `log_recommendation` | Log a skill rec (action, conviction, entry price, target, stop) to recommendations.jsonl for forward tracking. | live |
+| `score_recommendations` | Mark-to-market all open recs, flag stops/targets hit. Returns win-rate + avg return. | live |
+| `get_live_track_record` | Rolling 7/30/90d win-rate and P&L from scored recs. By-conviction breakdown. | live |
+| `snapshot_portfolio_equity` | Append today's total NAV to portfolio_history.jsonl (idempotent per day). | live |
+| `get_alpha_attribution` | Annualized alpha, beta, Sharpe, info ratio, tracking error vs SPY/XEQT/TSX/QQQ. Includes WS Managed AUM benchmark. | live |
+| `get_quote_with_source` | Live quote with data-source attribution (yfinance→finnhub→tiingo→stooq fallback). | 5m |
+| `get_quotes_batch` | Batch quote fetch for N symbols in one HTTP call — 13x faster than serial. | 5m |
+| `get_data_source_reliability` | Per-source success rate + avg latency over trailing window. Trust-signal evidence. | live |
+| `generate_trust_report` | Write TRACK_RECORD.md (public) + track_record_full.jsonl (private). Git-commit to timestamp. | live |
+| `list_analysis_modes` | All 13 available skills with tool lists | static |
 
-## Analysis Skills (12 — in `.claude/skills/`)
+L1+L2: in-process dict + cross-process diskcache. MCP and FastAPI share L2 so cold MCP restarts don't re-fetch yfinance if FastAPI warmed within TTL.
+
+## Analysis Skills (13 — in `.claude/skills/`)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|
+| `daily-briefing` | One-shot morning digest composing 7 MCP tools | get_profile, get_portfolio, get_macro_snapshot, get_concentration_warnings, get_triggered_alerts, get_earnings_calendar, get_positioning_signals |
 | `portfolio-health` | BlackRock Portfolio Builder | get_profile, get_portfolio, get_xray, get_concentration_warnings |
 | `risk-assessment` | Bridgewater Risk Assessment | get_profile, get_portfolio, get_risk_metrics, get_correlation_matrix |
 | `stock-analysis` | Goldman Sachs + Citadel TA | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_positioning_signals |

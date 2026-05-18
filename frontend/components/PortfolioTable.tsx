@@ -1,10 +1,11 @@
 "use client";
 
 import { memo } from "react";
-import { Position } from "@/lib/api";
+import { Position, CrowdingMap, CrowdingSignal } from "@/lib/api";
 
 interface Props {
   positions: Position[];
+  crowding?: CrowdingMap;
   onSelectTicker?: (symbol: string) => void;
   selectedTicker?: string | null;
 }
@@ -18,12 +19,42 @@ function formatMoney(val: number, cur: string = "CAD") {
   return val.toLocaleString("en-CA", { style: "currency", currency: cur });
 }
 
+function CrowdingCell({ data }: { data?: CrowdingSignal }) {
+  if (!data || data.crowding_score == null) {
+    return <span className="text-xs text-slate-600">—</span>;
+  }
+  const label = data.crowding_label;
+  const score = data.crowding_score;
+  const style =
+    label === "consensus"
+      ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
+      : label === "contrarian"
+      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+      : "bg-slate-700/40 text-slate-300 border-slate-600/40";
+  const title =
+    `Crowding score ${score.toFixed(0)}/100 (${label}). ` +
+    `Inst ${data.institutional_ownership_pct ?? "?"}% · ` +
+    `Short ${data.short_pct_float ?? "?"}% · ` +
+    `Analysts ${data.analyst_count ?? "?"} · ` +
+    `News 7d ${data.headlines_7d}/30d ${data.headlines_30d}`;
+  return (
+    <span
+      title={title}
+      className={`text-[10px] px-2 py-0.5 rounded-full border ${style} font-medium`}
+    >
+      {label} · {score.toFixed(0)}
+    </span>
+  );
+}
+
 const TableRow = memo(function TableRow({
   position,
+  crowding,
   isSelected,
   onSelect,
 }: {
   position: Position;
+  crowding?: CrowdingSignal;
   isSelected: boolean;
   onSelect: (symbol: string) => void;
 }) {
@@ -57,11 +88,14 @@ const TableRow = memo(function TableRow({
           {position.asset_class}
         </span>
       </td>
+      <td className="px-4 py-3">
+        <CrowdingCell data={crowding} />
+      </td>
     </tr>
   );
 });
 
-function PortfolioTable({ positions, onSelectTicker, selectedTicker }: Props) {
+function PortfolioTable({ positions, crowding, onSelectTicker, selectedTicker }: Props) {
   if (!positions.length) return <p className="text-slate-400 text-sm">No positions found.</p>;
 
   return (
@@ -78,6 +112,7 @@ function PortfolioTable({ positions, onSelectTicker, selectedTicker }: Props) {
             <th className="px-4 py-3 font-medium text-right">Total %</th>
             <th className="px-4 py-3 font-medium text-right">Weight</th>
             <th className="px-4 py-3 font-medium">Class</th>
+            <th className="px-4 py-3 font-medium" title="Crowding score 0-100 (consensus ≥70, contrarian ≤30). Late entries on consensus names have negative expected alpha per 2025 Goldman/BlackRock research.">Crowding</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700/50">
@@ -85,6 +120,7 @@ function PortfolioTable({ positions, onSelectTicker, selectedTicker }: Props) {
             <TableRow
               key={p.symbol}
               position={p}
+              crowding={crowding?.[p.symbol]}
               isSelected={selectedTicker === p.symbol}
               onSelect={onSelectTicker || (() => {})}
             />

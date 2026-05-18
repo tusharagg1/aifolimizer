@@ -7,6 +7,11 @@ Usage:
 
 Schedule via cron / Task Scheduler / GitHub Actions for periodic checks.
 Reads NTFY_TOPIC from env. If unset, alerts only logged (no push).
+
+Windows quick start (PowerShell, from backend/):
+  ./scripts/schedule_alerts.ps1          # register every-30-min Mon-Fri task
+  ./scripts/schedule_alerts.ps1 -DryRun  # same, but pass --dry-run
+  ./scripts/schedule_alerts.ps1 -Unregister
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ load_dotenv(_BACKEND / ".env")
 
 from app.services import wealthsimple, market_data  # noqa: E402
 from app.services import alerts as alerts_svc  # noqa: E402
+from app.services import positioning as positioning_svc  # noqa: E402
 
 
 def _load_session() -> str:
@@ -91,10 +97,18 @@ def main() -> int:
     ntfy_topic = None if args.dry_run else os.getenv("NTFY_TOPIC")
     counts = alerts_svc.dispatch(triggered, ntfy_topic=ntfy_topic)
 
+    # Piggyback: snapshot crowding scores for top 15 holdings (idempotent per day)
+    top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
+    top_symbols = [p.symbol for p in top]
+    crowding_counts = (
+        positioning_svc.snapshot_to_history(top_symbols) if top_symbols else {}
+    )
+
     print(json.dumps({
         "account": args.account or "all",
         "ntfy": "off" if not ntfy_topic else "on",
         **counts,
+        "crowding_snapshot": crowding_counts,
     }, indent=2))
     return 0
 

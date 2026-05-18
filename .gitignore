@@ -31,3 +31,15 @@ Thumbs.db
 frontend/.next/
 frontend/out/
 frontend/node_modules/
+
+# Local runtime caches + logs (per-machine, not portable)
+.claude/context/.diskcache/
+.claude/context/alerts.jsonl
+.claude/context/alerts_state.json
+.claude/context/crowding_history.jsonl
+.claude/context/recommendations.jsonl
+.claude/context/scored_recommendations.jsonl
+.claude/context/portfolio_history.jsonl
+.claude/context/track_record_full.jsonl
+backend/.pytest_cache/
+backend/.cache/

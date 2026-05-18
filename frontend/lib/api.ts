@@ -114,6 +114,33 @@ export async function wsGetLlmStatus(session_id: string) {
   );
 }
 
+export async function wsGetCrowding(
+  session_id: string,
+  top_n: number = 15,
+  signal?: AbortSignal,
+) {
+  return apiFetch<CrowdingMap>(
+    `/ws/crowding?session_id=${session_id}&top_n=${top_n}`, { signal },
+  );
+}
+
+export interface CrowdingSignal {
+  institutional_ownership_pct: number | null;
+  short_pct_float: number | null;
+  insider_ownership_pct: number | null;
+  analyst_count: number | null;
+  analyst_recommendation: string | null;
+  headlines_7d: number;
+  headlines_30d: number;
+  headline_velocity_ratio: number | null;
+  crowding_score: number;
+  crowding_label: "consensus" | "neutral" | "contrarian";
+  contrarian_flag: boolean;
+  consensus_flag: boolean;
+}
+
+export type CrowdingMap = Record<string, CrowdingSignal>;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PriceHistory {

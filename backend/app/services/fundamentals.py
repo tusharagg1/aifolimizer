@@ -3,17 +3,28 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date as date_type
 import yfinance as yf
 
+from app.services import cache_layer
+
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 6 * 3600  # 6 hours
 _MAX_WORKERS = 8  # yfinance.info hits Yahoo HTTP, ~8 parallel safe
+_L2_NAMESPACE = "fundamentals"
 
 
 def _cached(symbol: str, fetch_fn) -> dict:
+    """Two-tier cache: L1 in-process dict, L2 diskcache (cross-process)."""
     entry = _cache.get(symbol)
     if entry and (time.time() - entry[1]) < _CACHE_TTL:
         return entry[0]
+    # L2 lookup
+    l2 = cache_layer.cache_get(_L2_NAMESPACE, symbol)
+    if l2:
+        _cache[symbol] = (l2, time.time())
+        return l2
     result = fetch_fn(symbol)
     _cache[symbol] = (result, time.time())
+    if result:
+        cache_layer.cache_set(_L2_NAMESPACE, symbol, result, _CACHE_TTL)
     return result
 
 

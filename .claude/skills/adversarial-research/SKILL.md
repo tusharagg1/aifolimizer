@@ -5,17 +5,17 @@ description: Run a parallel bull/bear adversarial research pipeline on a specifi
 
 # Adversarial Research Pipeline (Stage 1-5)
 
-Modelled on a multi-agent hedge fund workflow. Two sub-agents argue opposing sides simultaneously. You synthesize into probability-weighted scenarios.
+Modelled on multi-agent hedge fund workflow. Two sub-agents argue opposing sides simultaneously. Synthesize into probability-weighted scenarios.
 
 ## How to run
 
 ### Stage 0 — Profile
 
-Call `mcp__aifolimizer__get_profile` first — account types, capital, and cash available. Used to tailor Canadian tax placement in Stage 4.
+Call `mcp__aifolimizer__get_profile` first — account types, capital, cash available. Used to tailor Canadian tax placement in Stage 4.
 
 ### Stage 1 — Data collection (call all 6 MCP tools in parallel)
 
-1. Call `mcp__aifolimizer__get_portfolio` — confirm the ticker is held + get cost basis, weight, total return
+1. Call `mcp__aifolimizer__get_portfolio` — confirm ticker is held + get cost basis, weight, total return
 2. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` — P/E, EPS, growth, dividend, analyst target, ownership
 3. Call `mcp__aifolimizer__get_technicals` with `symbols=[ticker]` — SMA, RSI, MACD, Bollinger Bands, trend
 4. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` — latest headlines
@@ -37,7 +37,7 @@ Run all three agents in parallel — do NOT wait between spawns.
 
 ### Stage 3 — Scenario modeling
 
-Build three scenarios from the agent outputs:
+Build three scenarios from agent outputs:
 
 | Scenario | Probability | Price Target | Key Driver |
 |----------|------------|--------------|------------|
@@ -49,7 +49,7 @@ Probability-weighted expected value = (bull_target × 0.35) + (base_target × 0.
 
 ### Stage 4 — Decision output
 
-Format the final output as:
+Format final output as:
 
 ---
 **[TICKER] — Adversarial Research Summary**
@@ -78,20 +78,20 @@ Format the final output as:
 ## Rules
 
 - Always run Stage 2 agents in parallel (single message, THREE Agent tool calls — Bull, Bear, Consensus)
-- Never invent data — if MCP returns empty for a field, note "data unavailable"
-- Keep the full output under 700 words
-- Reference the user's actual cost basis and current portfolio weight in the decision framing
-- For Canadian tickers (.TO suffix): use TSX context and note CAD/USD impact if applicable
+- Never invent data — if MCP returns empty for field, note "data unavailable"
+- Full output under 700 words
+- Reference user's actual cost basis and current portfolio weight in decision framing
+- For Canadian tickers (.TO suffix): use TSX context, note CAD/USD impact if applicable
 
 ## Gotchas
 
-- Bull/Bear agents MUST see the same data snapshot — collect Stage 1 first, then pass identical data to both. Asymmetric inputs invalidate the comparison.
-- Spawn both agents in ONE message with two tool calls; sequential spawning is not parallel and wastes context.
-- Sub-agents must NOT hedge — if either agent returns "on the other hand..." reasoning, the prompt failed. Reject and re-prompt.
-- Probability weights (35/40/25) are a default — adjust to evidence, do NOT force the template when data clearly leans one way.
+- Bull/Bear agents MUST see same data snapshot — collect Stage 1 first, pass identical data to both. Asymmetric inputs invalidate comparison.
+- Spawn both agents in ONE message with two tool calls; sequential spawning is not parallel, wastes context.
+- Sub-agents must NOT hedge — if either returns "on the other hand..." reasoning, prompt failed. Reject and re-prompt.
+- Probability weights (35/40/25) are default — adjust to evidence, do NOT force template when data clearly leans one way.
 - `get_macro_snapshot` cached 12h — for rate-decision-week analyses, WebSearch before relying on it.
-- Stop-loss must invalidate the BULL thesis specifically, not just be a generic % drop — tie to a thesis breakpoint (e.g. "below 200-SMA breaks the uptrend assumption").
-- Confidence rating must reflect data completeness — if 2+ MCP fields are null, max rating is Neutral.
-- Consensus agent should NOT default to bearish — a crowded long can keep working. Its job is to surface the marginal-buyer thesis, not to argue short. Reject its output if it just restates the Bear case.
-- When `crowding_score >= 70` AND `Bull case` is the dominant scenario, downgrade confidence one notch (consensus risk on late entries).
-- When `crowding_score <= 30` AND `Bull case` is dominant AND data complete, this is a contrarian setup — flag explicitly.
+- Stop-loss must invalidate BULL thesis specifically, not generic % drop — tie to thesis breakpoint (e.g. "below 200-SMA breaks uptrend assumption").
+- Confidence rating must reflect data completeness — if 2+ MCP fields null, max rating is Neutral.
+- Consensus agent should NOT default to bearish — crowded long can keep working. Job is surface marginal-buyer thesis, not argue short. Reject output if it just restates Bear case.
+- When `crowding_score >= 70` AND `Bull case` dominant, downgrade confidence one notch (consensus risk on late entries).
+- When `crowding_score <= 30` AND `Bull case` dominant AND data complete, this is contrarian setup — flag explicitly.

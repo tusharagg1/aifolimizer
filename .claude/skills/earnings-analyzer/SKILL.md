@@ -7,36 +7,36 @@ description: Run a JPMorgan-style pre-earnings analysis on a specific ticker. Us
 
 ## How to run
 
-1. Call `mcp__aifolimizer__get_profile` — account types and capital. Used to frame position sizing and tax impact of any pre-earnings trade
-2. Confirm the ticker via `mcp__aifolimizer__get_portfolio` (or use the stock with nearest earnings from get_earnings_calendar)
-3. Call `mcp__aifolimizer__get_earnings_calendar` to get the confirmed next earnings date and days until
+1. Call `mcp__aifolimizer__get_profile` — account types and capital. Frame position sizing and tax impact of any pre-earnings trade
+2. Confirm ticker via `mcp__aifolimizer__get_portfolio` (or use stock with nearest earnings from get_earnings_calendar)
+3. Call `mcp__aifolimizer__get_earnings_calendar` — confirmed next earnings date and days until
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` — EPS TTM, analyst target price, analyst recommendation
-5. Use WebSearch for: last 4 quarters EPS beat/miss history, consensus estimates for upcoming quarter, management guidance from last call, and options-implied move (these require historical data not reliably in yfinance)
+5. WebSearch for: last 4 quarters EPS beat/miss history, consensus estimates for upcoming quarter, management guidance from last call, options-implied move (require historical data not reliably in yfinance)
 
 ## Output structure
 
-1. **Last 4 quarters EPS vs consensus** (beat/miss/meet) with prices reactions
+1. **Last 4 quarters EPS vs consensus** (beat/miss/meet) with price reactions
 2. **Upcoming quarter consensus** EPS and revenue
 3. **Key metrics Wall Street is watching** for this specific company
 4. **Segment revenue breakdown** and recent trends
-5. **Management guidance summary** from the last call
+5. **Management guidance summary** from last call
 6. **Historical price reaction** after each of last 4 earnings (% move + direction)
-7. **Bull case scenario** — what a beat looks like + price impact estimate
-8. **Bear case scenario** — what a miss looks like + downside estimate
+7. **Bull case scenario** — what beat looks like + price impact estimate
+8. **Bear case scenario** — what miss looks like + downside estimate
 9. **Options-implied move** for earnings day (search for recent IV)
 10. **Recommended play:** Buy before / Trim before / Hold through / Wait for post-earnings dip
 
 ## Rules
 
-- Decision summary at the very top (one paragraph)
-- Then full breakdown below
+- Decision summary at very top (one paragraph)
+- Full breakdown below
 - Under 500 words
-- Reference the user's actual cost basis from portfolio data to frame the recommendation
+- Reference user's actual cost basis from portfolio data to frame recommendation
 
 ## Gotchas
 
 - `get_earnings_calendar` from yfinance can show next-FY date instead of next quarter for newly-listed or low-coverage tickers — sanity-check via WebSearch if days_until > 100.
-- Options-implied move is NOT in MCP — must come from WebSearch (CBOE / OptionStrat / broker IV). Never fabricate IV.
+- Options-implied move NOT in MCP — must come from WebSearch (CBOE / OptionStrat / broker IV). Never fabricate IV.
 - Historical EPS beat/miss from `get_fundamentals` is current quarter only — last 4 quarters require WebSearch.
-- "Hold through earnings" is account-dependent: in a non-reg account, an early sell to lock gain triggers capital gains tax — call this out before recommending.
+- "Hold through earnings" is account-dependent: in non-reg account, early sell to lock gain triggers capital gains tax — call this out before recommending.
 - Don't confuse forward EPS estimate with reported EPS — clearly label estimate vs actual.

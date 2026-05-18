@@ -28,6 +28,11 @@ from app.services import (
     alerts as alerts_svc,
     backtest as backtest_svc,
     positioning as positioning_svc,
+    data_router,
+    skill_backtest as skill_bt_svc,
+    paper_trade as paper_trade_svc,
+    alpha_attribution as alpha_svc,
+    trust_report as trust_svc,
 )
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
@@ -425,6 +430,59 @@ async def get_positioning_signals(
 
 
 @mcp.tool()
+async def snapshot_positioning_history(
+    account_id: str = "", symbols: list[str] = [], top_n: int = 15
+) -> dict:
+    """
+    Append today's crowding scores to .claude/context/crowding_history.jsonl.
+    Idempotent — same symbol on same day is skipped. Used to detect regime
+    shifts (consensus → contrarian and vice versa) over time.
+    If symbols=[], snapshots top_n holdings by weight.
+    """
+    top_n = max(1, min(int(top_n), 25))
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+    return await asyncio.to_thread(positioning_svc.snapshot_to_history, symbols)
+
+
+@mcp.tool()
+async def get_crowding_shifts(
+    account_id: str = "",
+    symbols: list[str] = [],
+    lookback_days: int = 30,
+    score_delta_threshold: float = 25.0,
+) -> dict:
+    """
+    Detect symbols whose crowding score has shifted materially over lookback.
+    Reads from .claude/context/crowding_history.jsonl (written by
+    snapshot_positioning_history). Returns shifts where |delta| >= threshold.
+    Each shift: {symbol, from_score, to_score, from_label, to_label, delta,
+    first_seen, last_seen, direction}.
+    direction: 'crowding_up' (more consensus) or 'crowding_down' (more contrarian).
+    Call snapshot_positioning_history regularly (daily) for this to have data.
+    """
+    lookback_days = max(2, min(int(lookback_days), 365))
+    score_delta_threshold = max(5.0, min(float(score_delta_threshold), 100.0))
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:25]
+        symbols = [p.symbol for p in top]
+    shifts = await asyncio.to_thread(
+        positioning_svc.detect_regime_shifts,
+        symbols, lookback_days, score_delta_threshold,
+    )
+    return {
+        "lookback_days": lookback_days,
+        "score_delta_threshold": score_delta_threshold,
+        "count": len(shifts),
+        "shifts": shifts,
+    }
+
+
+@mcp.tool()
 async def get_news_headlines(ticker: str = "", limit: int = 5) -> dict:
     """
     Recent news headlines for a specific ticker or top holdings.
@@ -515,19 +573,33 @@ async def backtest_portfolio(
     lookback_days: int = 365,
     strategies: list[str] = [],
     top_n: int = 15,
+    tx_cost_bps: float = 5.0,
+    walk_forward: bool = False,
+    train_frac: float = 0.7,
 ) -> dict:
     """
     Replay simple rule-based strategies on historical OHLCV for portfolio holdings.
-    Strategies: 'buy_hold' (baseline), 'rsi_swing' (RSI<30 buy / >70 sell),
-    'sma_cross' (close vs SMA50). Defaults to all 3 if strategies=[].
-    Returns per-symbol metrics, weight-aggregated portfolio totals, and
-    delta-vs-buy-hold (positive = strategy beat passive). lookback_days clamped 30..730.
-    If symbols=[], uses top_n holdings by weight. Cached 1h per (symbol, strategy, lookback).
+    Strategies:
+      - 'buy_hold' (baseline)
+      - 'rsi_swing' (RSI<30 buy / >70 sell)
+      - 'sma_cross' (close vs SMA50)
+      - 'crowd_fade' (sma_cross but skip symbols currently flagged consensus-crowded)
+      - 'crowd_buy'  (sma_cross only on currently contrarian-flagged symbols)
+    Defaults to ['buy_hold', 'rsi_swing', 'sma_cross', 'crowd_fade'] if strategies=[].
+    tx_cost_bps: deducted per leg (entry + exit). 5 bps default (~0.05% per side).
+    walk_forward=True splits each window into in-sample (train_frac) / out-of-sample.
+    Per-symbol result then includes in_sample, out_of_sample, oos_minus_is_pct fields.
+    Returns per-symbol metrics, weight-aggregated portfolio totals, delta-vs-buy-hold
+    (positive = strategy beat passive). lookback_days clamped 30..730.
+    If symbols=[], uses top_n holdings by weight. Cached 1h per (symbol, strategy,
+    lookback, tx_cost, walk_forward, train_frac).
     """
     lookback_days = max(30, min(int(lookback_days), 730))
     top_n = max(1, min(int(top_n), 25))
+    tx_cost_bps = max(0.0, min(float(tx_cost_bps), 100.0))
+    train_frac = max(0.3, min(float(train_frac), 0.9))
     if not strategies:
-        strategies = ["buy_hold", "rsi_swing", "sma_cross"]
+        strategies = ["buy_hold", "rsi_swing", "sma_cross", "crowd_fade"]
 
     portfolio = await _load_portfolio(account_id)
     if not symbols:
@@ -540,14 +612,17 @@ async def backtest_portfolio(
     weights = {p.symbol: p.weight for p in portfolio.positions if p.symbol in symbols}
     return await asyncio.to_thread(
         backtest_svc.backtest_portfolio,
-        symbols, weights, lookback_days, strategies,
+        symbols, weights, lookback_days, strategies, tx_cost_bps,
+        walk_forward, train_frac,
     )
 
 
 @mcp.tool()
 def list_analysis_modes() -> list[dict]:
-    """Lists the 12 institutional analysis frameworks available as Claude Code skills."""
+    """Lists the 13 institutional analysis frameworks available as Claude Code skills."""
     return [
+        {"name": "daily_briefing", "style": "Morning digest composing 7 MCP tools",
+         "tools_used": ["get_profile", "get_portfolio", "get_macro_snapshot", "get_concentration_warnings", "get_triggered_alerts", "get_earnings_calendar", "get_positioning_signals"]},
         {"name": "portfolio_health", "style": "BlackRock Portfolio Builder",
          "tools_used": ["get_profile", "get_portfolio", "get_xray", "get_concentration_warnings"]},
         {"name": "risk_assessment", "style": "Bridgewater Risk Assessment",
@@ -573,6 +648,186 @@ def list_analysis_modes() -> list[dict]:
         {"name": "cash_deployment", "style": "Add-to-winners cash deployment",
          "tools_used": ["get_profile", "get_portfolio", "get_concentration_warnings", "get_fundamentals", "get_technicals", "get_positioning_signals"]},
     ]
+
+
+@mcp.tool()
+async def log_recommendation(
+    skill: str,
+    ticker: str,
+    action: str,
+    conviction: str,
+    rationale: str,
+    target_pct: float | None = None,
+    stop_pct: float | None = None,
+    account: str | None = None,
+) -> dict:
+    """Log a skill recommendation for forward paper-trade tracking.
+
+    action: BUY | SELL | HOLD | ADD | TRIM
+    conviction: HIGH | MED | LOW
+    rationale: plain-text thesis (hashed for privacy before storage)
+    target_pct / stop_pct: optional exit thresholds in % from entry
+
+    Entry price fetched live from data_router at call time.
+    Records persist in .claude/context/recommendations.jsonl (gitignored).
+    """
+    return await asyncio.to_thread(
+        paper_trade_svc.log_recommendation,
+        skill, ticker, action, conviction, rationale,
+        target_pct, stop_pct, account,
+    )
+
+
+@mcp.tool()
+async def score_recommendations(max_age_days: int = 90) -> dict:
+    """Mark-to-market all open recommendations from the last N days.
+
+    Fetches current price per ticker via data_router, computes unrealized P&L,
+    flags stops/targets hit. Writes scored_recommendations.jsonl.
+    Returns win-rate, avg return, and per-conviction breakdown.
+    """
+    return await asyncio.to_thread(
+        paper_trade_svc.score_recommendations, max_age_days
+    )
+
+
+@mcp.tool()
+async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
+    """Rolling forward-test stats from scored recommendations.
+
+    Returns win-rate, avg return, by-conviction breakdown for 7/30/90d.
+    Covers only live recommendations logged via log_recommendation —
+    NOT the historical backtest (use get_skill_track_record for that).
+    """
+    return await asyncio.to_thread(
+        paper_trade_svc.get_track_record, windows_days
+    )
+
+
+@mcp.tool()
+async def snapshot_portfolio_equity(total_value_cad: float) -> dict:
+    """Log today's total portfolio value for equity-curve tracking.
+
+    Call daily (after market close) to build the historical NAV series
+    needed by get_alpha_attribution. Idempotent per day.
+    total_value_cad: total portfolio value in Canadian dollars.
+    """
+    return await asyncio.to_thread(alpha_svc.snapshot_equity, total_value_cad)
+
+
+@mcp.tool()
+async def get_alpha_attribution(lookback_days: int = 365) -> dict:
+    """Annualized alpha, beta, Sharpe, info ratio vs SPY/XEQT/TSX/QQQ.
+
+    Requires daily equity snapshots via snapshot_portfolio_equity.
+    Also returns Wealthsimple Managed published returns for AUM comparison.
+
+    lookback_days: how many days of portfolio history to include (default 365).
+    """
+    return await asyncio.to_thread(
+        alpha_svc.get_alpha_attribution, None, lookback_days
+    )
+
+
+@mcp.tool()
+async def get_quote_with_source(symbol: str, max_age_s: int = 300) -> dict:
+    """Live quote with explicit data-source attribution.
+
+    Tries yfinance -> finnhub -> tiingo -> stooq. Returns price, prev_close,
+    day_change_pct, source, and as_of timestamp. Use to verify provenance
+    or when freshness matters more than cache speed.
+    """
+    return await asyncio.to_thread(
+        data_router.get_quote, symbol, float(max_age_s)
+    )
+
+
+@mcp.tool()
+async def get_skill_track_record(
+    universe: list[str] | None = None,
+    lookback_days: int = 1825,
+    tx_cost_bps: float = 5.0,
+    fresh: bool = False,
+) -> dict:
+    """Backtest all 13 skills as codified strategies over historical bars.
+
+    Returns per-skill: total_return_pct, cagr_pct, sharpe, sortino,
+    max_drawdown_pct, hit_rate_pct, num_trades, alpha_vs_spy_pct,
+    alpha_vs_xeqt_pct. Honest caveat: skills are codified to deterministic
+    rules — LLM thesis nuance not replayed.
+
+    If universe is None, uses current portfolio top-10 holdings.
+    fresh=True forces re-run; otherwise the latest cached run is returned.
+    """
+    if not fresh:
+        cached = await asyncio.to_thread(skill_bt_svc.latest_results)
+        if cached:
+            return cached
+    if not universe:
+        session_id = _state.get("session_id")
+        if session_id:
+            try:
+                ws = WSAPISession.from_token(session_id)
+                portfolio = await asyncio.to_thread(
+                    wealthsimple.get_portfolio_response, ws
+                )
+                top = sorted(
+                    portfolio.positions, key=lambda p: p.weight, reverse=True
+                )[:10]
+                universe = [p.symbol for p in top]
+            except Exception:
+                universe = ["AAPL", "MSFT", "NVDA", "XEQT.TO", "VFV.TO"]
+        else:
+            universe = ["AAPL", "MSFT", "NVDA", "XEQT.TO", "VFV.TO"]
+
+    return await asyncio.to_thread(
+        skill_bt_svc.backtest_all_skills,
+        universe, int(lookback_days), float(tx_cost_bps), True,
+    )
+
+
+@mcp.tool()
+async def get_data_source_reliability(window_days: int = 7) -> dict:
+    """Per-source success rate and latency over the trailing window.
+
+    Used by the trust-signal report (TRACK_RECORD.md) so users can audit
+    which providers actually served their data and how reliably.
+    """
+    stats = await asyncio.to_thread(
+        data_router.get_source_reliability, float(window_days) * 86400
+    )
+    return {
+        "window_days": window_days,
+        "configured": data_router.configured_sources(),
+        "stats": stats,
+    }
+
+
+@mcp.tool()
+async def get_quotes_batch(
+    symbols: list[str], max_age_s: int = 300
+) -> dict:
+    """Fetch live quotes for multiple symbols in one batched HTTP call.
+
+    ~13x faster than calling get_quote per symbol. Uses yfinance.download
+    batching. Returns {symbol: {price, prev_close, day_change_pct, source}}.
+    Missing symbols silently absent (fetch failed all sources).
+    """
+    return await asyncio.to_thread(
+        data_router.get_quotes_batch, symbols, float(max_age_s)
+    )
+
+
+@mcp.tool()
+async def generate_trust_report() -> dict:
+    """Generate TRACK_RECORD.md (public) + track_record_full.jsonl (private).
+
+    Pulls latest backtest results, live scored recommendations, and
+    data-source reliability stats. Writes TRACK_RECORD.md to repo root
+    (commit it to publish a git-timestamped trust signal).
+    Returns paths + summary counts.
+    """
+    return await asyncio.to_thread(trust_svc.generate_report)
 
 
 if __name__ == "__main__":

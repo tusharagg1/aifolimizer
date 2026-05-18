@@ -8,11 +8,11 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` — actual account types and capital. CAD/USD macro impact matters more for USD-heavy accounts
-2. Call `mcp__aifolimizer__get_portfolio` for current holdings
-3. Call `mcp__aifolimizer__get_macro_snapshot` for live FRED data (Fed funds, 10Y yield, US/Canada CPI, CAD/USD, BoC rate, unemployment)
+2. Call `mcp__aifolimizer__get_portfolio` — current holdings
+3. Call `mcp__aifolimizer__get_macro_snapshot` — live FRED data (Fed funds, 10Y yield, US/Canada CPI, CAD/USD, BoC rate, unemployment)
 4. Call `mcp__aifolimizer__get_market_breadth` — VIX, SPY regime (bull/bear vs SMA200), composite market_regime signal
-5. Use WebSearch only if you need details FRED doesn't cover (geopolitics, breaking news)
-6. Map each macro factor to specific holdings in the portfolio
+5. WebSearch only if you need details FRED doesn't cover (geopolitics, breaking news)
+6. Map each macro factor to specific holdings in portfolio
 7. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
 
 ## Investor profile
@@ -32,7 +32,7 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 6. **BoC policy outlook** (next 6 months) — impact on rate-sensitive positions
 7. **Global risk factors** — geopolitics, trade, supply chains
 8. **Sector rotation** recommendation based on current cycle phase
-9. **3 specific portfolio adjustments** — name actual tickers from the portfolio
+9. **3 specific portfolio adjustments** — name actual tickers from portfolio
 10. **Timeline** — when these factors most likely impact this portfolio
 
 ## Rules
@@ -43,8 +43,8 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 
 ## Gotchas
 
-- `get_macro_snapshot` is cached 12h — Fed / BoC decision days break this. If the user mentions a recent rate move, WebSearch to confirm before using MCP data.
-- FRED has NO geopolitics, NO earnings, NO breaking news — WebSearch is mandatory for those factors, do NOT extrapolate from rates alone.
-- `market_regime` is a composite (VIX + SPY vs SMA200) — bear_high_fear ≠ recession; state the components, not just the label.
-- CAD/USD impact applies only to USD-denominated holdings; .TO tickers are already CAD-quoted — don't double-count FX.
-- BoC and Fed rate differentials matter more than absolute levels for CAD/USD direction; cite the spread, not just one rate.
+- `get_macro_snapshot` cached 12h — Fed/BoC decision days break this. If user mentions recent rate move, WebSearch to confirm before using MCP data.
+- FRED has NO geopolitics, NO earnings, NO breaking news — WebSearch mandatory for those factors, do NOT extrapolate from rates alone.
+- `market_regime` is composite (VIX + SPY vs SMA200) — bear_high_fear ≠ recession; state components, not just label.
+- CAD/USD impact applies only to USD-denominated holdings; .TO tickers already CAD-quoted — don't double-count FX.
+- BoC and Fed rate differentials matter more than absolute levels for CAD/USD direction; cite spread, not just one rate.
