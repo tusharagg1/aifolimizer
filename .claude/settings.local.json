@@ -60,11 +60,17 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d[:2] if isinstance\\(d,list\\) else d, indent=2\\)\\)\")",
       "Bash(git commit *)",
       "PowerShell(gh api -X GET repos/tusharagg1/aifolimizer --jq '.security_and_analysis' 2>&1)",
-      "Bash(gh run *)"
+      "Bash(gh run *)",
+      "Bash(/c/Users/Tusha/Documents/projects/aifolimizer/backend/.venv/Scripts/python)",
+      "Bash(cat > *)",
+      "Bash(/c/Users/Tusha/Documents/projects/aifolimizer/backend/.venv/Scripts/python /tmp/s.py)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_signal_kpi.py -v)",
+      "Bash(.venv/Scripts/python -m pytest tests/test_signal_kpi.py tests/test_kpi_suite.py tests/test_pii_filter.py -v --tb=short)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",
-      "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\skills"
+      "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\skills",
+      "\\tmp"
     ]
   }
 }
