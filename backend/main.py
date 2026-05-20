@@ -5,8 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api import ws
+from app.api import skills as skills_api
 from app.services import wealthsimple
 from app.services import data_router
+from app.jobs import scheduler
 
 app = FastAPI(title="aifolimizer API", version="1.0.0")
 
@@ -41,6 +43,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return response
 
 app.include_router(ws.router, prefix="/ws", tags=["wealthsimple"])
+app.include_router(skills_api.router, prefix="/skills", tags=["skills"])
 
 
 @app.get("/health")
@@ -57,8 +60,10 @@ async def startup_event():
     asyncio.create_task(
         asyncio.to_thread(data_router.get_quotes_batch, _PREWARM, 300)
     )
+    scheduler.start_scheduler()
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    scheduler.stop_scheduler()
     await wealthsimple.shutdown()

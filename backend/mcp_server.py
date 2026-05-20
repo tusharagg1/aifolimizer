@@ -31,9 +31,17 @@ from app.services import (
     data_router,
     skill_backtest as skill_bt_svc,
     paper_trade as paper_trade_svc,
+    signal_history as signal_history_svc,
     alpha_attribution as alpha_svc,
     trust_report as trust_svc,
     community as community_svc,
+    options as options_svc,
+    trade_ticket as trade_ticket_svc,
+    memory as memory_svc,
+    decision_memory as decision_mem_svc,
+    shadow_account as shadow_svc,
+    run_card as run_card_svc,
+    skill_runner as skill_runner_svc,
 )
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
@@ -332,6 +340,25 @@ async def get_fundamentals(account_id: str = "", symbols: list[str] = []) -> dic
 
 
 @mcp.tool()
+async def get_sec_financials(symbols: list[str]) -> dict:
+    """
+    SEC EDGAR XBRL: annual revenue, net income, EPS for last 4 fiscal years.
+    Authoritative multi-year trend data directly from SEC filings.
+    US-listed symbols only (EDGAR has no .TO / Canadian filings).
+    Returns revenue_annual, net_income_annual, eps_annual, revenue_cagr_3yr,
+    income_cagr_3yr, revenue_trend, income_trend. Cached 24h.
+    Use alongside get_fundamentals to validate yfinance income statement data.
+    """
+    symbols = _validate_symbols([s.upper() for s in symbols])
+    results = {}
+    for sym in symbols:
+        results[sym] = await asyncio.to_thread(
+            fundamentals_svc.get_sec_financials, sym
+        )
+    return results
+
+
+@mcp.tool()
 async def get_technicals(account_id: str = "", symbols: list[str] = []) -> dict:
     """
     Technical indicators per ticker: SMA20/50/200, RSI(14), MACD, Bollinger Bands,
@@ -526,6 +553,20 @@ async def get_community_sentiment(ticker: str) -> dict:
     from retail/community sentiment — they frequently diverge.
     """
     return await asyncio.to_thread(community_svc.get_reddit_sentiment, ticker.upper())
+
+
+@mcp.tool()
+async def get_stocktwits_sentiment(ticker: str) -> dict:
+    """StockTwits public stream — real-time retail trader sentiment, no API key required.
+
+    Returns bull/bear message counts with explicit sentiment labels from StockTwits
+    users. Complements Reddit (which is keyword-inferred) with labeled intent data.
+
+    community_score: 0=all bear, 50=neutral, 100=all bull
+    TSX tickers (.TO suffix) are handled automatically.
+    Cached 15 minutes (shorter than Reddit — StockTwits is real-time retail flow).
+    """
+    return await asyncio.to_thread(community_svc.get_stocktwits_sentiment, ticker.upper())
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -734,6 +775,50 @@ async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
 
 
 @mcp.tool()
+async def score_signal_horizons(horizons: list[int] | None = None) -> dict:
+    """Fill realized H-day forward returns on every logged signal.
+
+    For every directional signal (BUY/ADD/SELL/TRIM) whose H-day window has
+    elapsed, fetches historical bars and computes realized return at each
+    horizon. SELL/TRIM returns are sign-flipped so positive == correct call.
+
+    Default horizons: 5 and 21 trading days.
+    Writes back to .claude/context/signal_history.jsonl in place.
+    Returns counts: scored_new, skipped_window, skipped_data, total_rows.
+    """
+    h = tuple(horizons) if horizons else (5, 21)
+    return await asyncio.to_thread(signal_history_svc.score_horizons, h)
+
+
+@mcp.tool()
+async def get_signal_accuracy(horizon: int = 21, min_count: int = 5) -> dict:
+    """Buy/sell accuracy report at one horizon.
+
+    Returns precision/recall/F1, win rate, expectancy %, and breakdowns by
+    action class (BUY/SELL/ADD/TRIM), score bucket, and confidence level.
+    Run score_signal_horizons first to populate realized returns.
+    """
+    return await asyncio.to_thread(
+        signal_history_svc.accuracy_report, horizon, min_count=min_count
+    )
+
+
+@mcp.tool()
+async def calibrate_signal_thresholds(
+    horizon: int = 21, min_count: int = 10
+) -> dict:
+    """Grid-search BUY/SELL score thresholds that maximize expectancy on history.
+
+    Returns current thresholds (buy=7.5, sell_below=3.5) and best-found
+    thresholds with n_traded + expectancy. Apply manually after sanity check.
+    Small-sample caveat: only trust once n_scored >= a few hundred.
+    """
+    return await asyncio.to_thread(
+        signal_history_svc.calibrate_thresholds, horizon, min_count=min_count
+    )
+
+
+@mcp.tool()
 async def snapshot_portfolio_equity(total_value_cad: float) -> dict:
     """Log today's total portfolio value for equity-curve tracking.
 
@@ -857,6 +942,500 @@ async def generate_trust_report() -> dict:
     Returns paths + summary counts.
     """
     return await asyncio.to_thread(trust_svc.generate_report)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Options analytics
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def get_options_chain(
+    ticker: str,
+    expiry: str = "",
+) -> dict:
+    """
+    Full options chain with Black-Scholes Greeks for every strike.
+
+    ticker: symbol (e.g. "AAPL", "SHOP.TO")
+    expiry: "YYYY-MM-DD" or "" for nearest expiry.
+    Returns calls + puts with delta, gamma, vega, theta, rho, IV%,
+    volume, open interest, and theoretical BS price.
+    Cached 15 min. No API key required.
+
+    Use alongside get_fundamentals and get_technicals before
+    entering an options position.
+    """
+    return await asyncio.to_thread(
+        options_svc.get_options_chain,
+        ticker.upper(),
+        expiry or None,
+    )
+
+
+@mcp.tool()
+async def get_covered_call_screen(
+    ticker: str,
+    min_annual_yield_pct: float = 10.0,
+    max_delta: float = 0.40,
+) -> dict:
+    """
+    Screen OTM covered call strikes for income generation on a holding.
+
+    Checks next 4 expiries. Each candidate shows:
+    annual_yield_pct, delta, prob_keep_shares_pct, upside_to_strike_pct,
+    breakeven, max_profit_per_contract (100 shares).
+
+    min_annual_yield_pct: minimum annualised premium yield (default 10%).
+    max_delta: maximum delta — higher delta = higher chance of assignment
+    (default 0.40, i.e. ~40% chance of getting called away).
+
+    Use when you want income on a long position without selling it.
+    Cached 30 min.
+    """
+    return await asyncio.to_thread(
+        options_svc.screen_covered_calls,
+        ticker.upper(),
+        float(min_annual_yield_pct),
+        float(max_delta),
+    )
+
+
+@mcp.tool()
+async def get_protective_put_screen(
+    ticker: str,
+    max_annual_cost_pct: float = 5.0,
+    min_protection_pct: float = 5.0,
+) -> dict:
+    """
+    Screen protective put options for downside hedging on a holding.
+
+    Checks next 4 expiries. Each candidate shows:
+    annual_cost_pct, protection_floor_pct, breakeven, cost_per_contract.
+
+    max_annual_cost_pct: max annualised cost as % of position (default 5%).
+    min_protection_pct: minimum downside protected (default 5%).
+
+    Use when you want to hold a position through uncertainty
+    without full risk exposure. Cached 30 min.
+    """
+    return await asyncio.to_thread(
+        options_svc.screen_protective_puts,
+        ticker.upper(),
+        float(max_annual_cost_pct),
+        float(min_protection_pct),
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Trade ticket
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def get_trade_ticket(
+    ticker: str,
+    action: str,
+    conviction: str = "MED",
+    account_id: str = "",
+) -> dict:
+    """
+    Generate a precise, immediately actionable trade ticket.
+
+    Returns: entry_price, quantity, dollar_amount_cad, stop_loss_price,
+    target_price, risk_reward_ratio, max_loss_cad, position_size_pct,
+    order_type (LIMIT/MARKET), limit_price, time_in_force,
+    account_recommendation, and a plain-English instruction line.
+
+    action: BUY | SELL | ADD | TRIM | EXIT
+    conviction: HIGH | MED | LOW
+      HIGH → 7% portfolio size, 8% stop, 3:1 R/R target
+      MED  → 5% portfolio size, 6% stop, 2.5:1 R/R target
+      LOW  → 3% portfolio size, 4% stop, 2:1 R/R target
+
+    Stop is placed at SMA20 - 1% when price > SMA20 (natural support),
+    otherwise uses conviction-based % distance.
+    Limit buy set 0.2% below current price to avoid chasing.
+
+    Call get_profile first — portfolio_value and available_cash
+    are loaded automatically from the live session.
+    """
+    portfolio = await _load_portfolio(account_id)
+    portfolio_value = portfolio.total_value_cad
+    available_cash = portfolio.cash_balance
+
+    position = next(
+        (p for p in portfolio.positions if p.symbol == ticker.upper()),
+        None,
+    )
+    position_value = float(position.market_value_cad) if position else 0.0
+
+    return await asyncio.to_thread(
+        trade_ticket_svc.generate_trade_ticket,
+        ticker.upper(),
+        action.upper(),
+        float(portfolio_value),
+        float(position_value),
+        float(available_cash),
+        conviction.upper(),
+        account_id,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Insider activity
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def get_insider_activity(ticker: str) -> dict:
+    """
+    Recent insider transactions + top institutional holders.
+
+    Returns:
+    - recent_transactions: last 10 insider buys/sells (name, title,
+      shares, value, date)
+    - top_holders: top 5 institutions with % held
+    - insider_buy_sell_ratio: fraction of transactions that were buys
+    - net_insider_signal: BULLISH (ratio ≥ 0.6) / BEARISH (≤ 0.3) / NEUTRAL
+
+    Insiders buying their own stock = historically strong alpha signal.
+    Cluster buys (multiple insiders buying same quarter) are strongest.
+    Data from yfinance SEC filings (US stocks only; limited for .TO/.TSX).
+    Cached 6h.
+    """
+    return await asyncio.to_thread(
+        fundamentals_svc.get_insider_activity,
+        ticker.upper(),
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Persistent investor memory
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def remember_preference(
+    memory_type: str,
+    content: str,
+    tags: list[str] = [],
+) -> dict:
+    """Store a persistent investor preference or insight across sessions.
+
+    memory_type: preference | insight | rule | note | observation
+    content: plain-English description (e.g. "Prefer CAD-hedged ETFs for TFSA")
+    tags: optional keywords for retrieval (e.g. ["TFSA", "ETF", "currency"])
+
+    Stored in ~/.aifolimizer/memory/ — survives session restarts.
+    Recalled automatically via recall_preferences when relevant.
+    """
+    return await asyncio.to_thread(
+        memory_svc.remember, memory_type, content, tags
+    )
+
+
+@mcp.tool()
+async def recall_preferences(query: str, top_k: int = 5) -> list[dict]:
+    """Retrieve the most relevant stored investor memories for a query.
+
+    Uses keyword scoring (metadata hits 2x body hits) to surface top-k
+    relevant preferences, rules, or insights stored via remember_preference.
+    Call at the start of any skill analysis to load investor context.
+    """
+    return await asyncio.to_thread(memory_svc.recall, query, top_k)
+
+
+@mcp.tool()
+async def list_memories(memory_type: str = "") -> list[dict]:
+    """List all stored investor memories, optionally filtered by type.
+
+    memory_type: "" (all) | preference | insight | rule | note | observation
+    Returns newest-first sorted list.
+    """
+    return await asyncio.to_thread(
+        memory_svc.list_memories, memory_type or None
+    )
+
+
+@mcp.tool()
+async def forget_memory(query: str) -> dict:
+    """Delete stored memories whose content contains query as substring.
+
+    Use to remove outdated preferences (e.g. "forget SHOP" removes all
+    memories mentioning SHOP). Returns count of deleted records.
+    """
+    return await asyncio.to_thread(memory_svc.forget, query)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Trade decision memory — per-ticker log with outcome tracking (TradingAgents pattern)
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def log_trade_decision(
+    ticker: str,
+    action: str,
+    conviction: str,
+    entry_price: float,
+    target_price: float,
+    stop_price: float,
+    thesis_summary: str,
+    skill_used: str = "",
+) -> dict:
+    """Phase A — record a trade decision for forward outcome tracking.
+
+    Call at the end of adversarial-research or cash-deployment after producing
+    a final recommendation. Enables Phase B/C: outcome resolution and lesson
+    injection into future analyses of the same ticker.
+
+    action: BUY | SELL | HOLD
+    conviction: Strong Buy | Buy | Neutral | Sell | Strong Sell
+    thesis_summary: 1-2 sentence rationale (used for reflection generation)
+    skill_used: adversarial-research | cash-deployment | stock-analysis | etc.
+    """
+    return await asyncio.to_thread(
+        decision_mem_svc.log_decision,
+        ticker, action, conviction, entry_price, target_price, stop_price,
+        thesis_summary, skill_used,
+    )
+
+
+@mcp.tool()
+async def resolve_trade_outcomes(days_expiry: int = 90) -> dict:
+    """Phase B — mark-to-market all open trade decisions using live prices.
+
+    Fetches current price for each open-decision ticker via get_quotes_batch,
+    then marks each as target_hit / stop_hit / expired.
+    Generates a reflection note on each resolved decision for future context injection.
+
+    Run periodically (e.g. weekly) or before a new analysis of the same ticker.
+    Returns count of resolved decisions by outcome.
+    """
+    records = await asyncio.to_thread(decision_mem_svc._load_all)
+    open_tickers = list({r["ticker"] for r in records if r.get("outcome") == "open"})
+    if not open_tickers:
+        return {"resolved": {}, "total_open_remaining": 0, "note": "no open decisions"}
+
+    from app.services import data_router
+    price_map: dict[str, float] = {}
+    for ticker in open_tickers:
+        try:
+            q = await asyncio.to_thread(data_router.get_quote, ticker)
+            if q and q.get("price"):
+                price_map[ticker] = float(q["price"])
+        except Exception:
+            continue
+
+    return await asyncio.to_thread(
+        decision_mem_svc.resolve_outcomes, price_map, days_expiry
+    )
+
+
+@mcp.tool()
+async def get_ticker_decision_history(ticker: str, max_decisions: int = 5) -> list[dict]:
+    """Phase C — retrieve past trade decisions for a ticker (newest first).
+
+    Call at the START of adversarial-research or cash-deployment for the same
+    ticker to inject prior decisions, outcomes, and reflections as context.
+    Prevents repeating failed theses; reinforces strategies that worked.
+
+    Returns up to max_decisions records with: date, action, conviction,
+    entry/target/stop prices, outcome, outcome_price, and reflection note.
+    """
+    return await asyncio.to_thread(
+        decision_mem_svc.get_ticker_history, ticker, max_decisions
+    )
+
+
+@mcp.tool()
+async def get_cross_ticker_lessons(max_lessons: int = 3) -> list[dict]:
+    """Phase C — top resolved wins and losses across all tickers for cross-portfolio lessons.
+
+    Returns newest-first wins (target_hit) and losses (stop_hit), capped at
+    max_lessons each. Each record includes ticker, action, outcome, P&L %, and
+    a generated reflection. Inject into skill prompts to surface portfolio-level
+    patterns (e.g. 'last 3 TSX banks stopped out at SMA50 — avoid that entry').
+    """
+    return await asyncio.to_thread(
+        decision_mem_svc.get_cross_ticker_lessons, max_lessons
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Shadow account — behavioral rule extraction
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def analyze_shadow_account(transactions: list[dict]) -> dict:
+    """Extract behavioral trading rules from your transaction history.
+
+    Pairs buy→sell roundtrips via FIFO, clusters them by holding period and
+    entry timing, and surfaces the implicit rules driving your actual trades.
+    Answers: "what trading patterns am I actually executing, and are they
+    consistent with a rule-based strategy?"
+
+    Input format for each transaction dict:
+      {"symbol": "AAPL", "side": "buy"|"sell", "price": 150.0,
+       "quantity": 10, "date": "2024-01-15T10:30:00"}
+
+    Returns:
+    - summary: win-rate, avg return, avg holding days, symbols traded
+    - extracted_rules: per-cluster behavioral rule with holding bounds + win-rate
+    - roundtrips: up to 100 FIFO-paired roundtrips with return_pct
+
+    No external dependencies — pure numpy k-means clustering.
+    """
+    return await asyncio.to_thread(shadow_svc.analyze_shadow_account, transactions)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Run card provenance
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def list_run_cards(limit: int = 20) -> list[dict]:
+    """List recent backtest run cards with SHA256 provenance.
+
+    Each run card records: run_id (strategy_hash + config_hash), timestamp,
+    strategy name, symbols, config hash, and portfolio-level metrics.
+    Backtest claims are auditable: same strategy + config always produces
+    the same run_id, so historical results can be verified.
+
+    limit: max cards to return (default 20, max 100).
+    """
+    limit = max(1, min(int(limit), 100))
+    return await asyncio.to_thread(run_card_svc.list_run_cards, limit)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Accuracy layer — walk-forward, signal decay, attribution, calibration
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def walk_forward_backtest_skill(
+    skill: str,
+    lookback_days: int = 365 * 5,
+    window_days: int = 252,
+    step_days: int = 63,
+    tx_cost_bps: float = 5.0,
+) -> dict:
+    """Run walk-forward OOS backtest of one skill across the default 40+ symbol unbiased universe.
+
+    Returns aggregate stats, per-window stability, regime split (bull/bear/sideways),
+    and deflated Sharpe (Bailey–López de Prado) to flag potential overfit.
+    """
+    return await asyncio.to_thread(
+        skill_bt_svc.walk_forward_backtest,
+        skill,
+        None,
+        lookback_days=lookback_days,
+        window_days=window_days,
+        step_days=step_days,
+        tx_cost_bps=tx_cost_bps,
+    )
+
+
+@mcp.tool()
+async def walk_forward_backtest_all(
+    lookback_days: int = 365 * 5,
+    window_days: int = 252,
+    step_days: int = 63,
+    tx_cost_bps: float = 5.0,
+) -> dict:
+    """Walk-forward all codified skills across the default 40+ symbol universe.
+
+    Persists to .cache/backtests/walk_forward_*.json. Use to gate any skill
+    whose deflated_sharpe < 0.5 — those are statistically indistinguishable
+    from luck and should not emit live recommendations.
+    """
+    return await asyncio.to_thread(
+        skill_bt_svc.walk_forward_all_skills,
+        None,
+        lookback_days=lookback_days,
+        window_days=window_days,
+        step_days=step_days,
+        tx_cost_bps=tx_cost_bps,
+        persist=True,
+    )
+
+
+@mcp.tool()
+async def get_signal_decay_curve(
+    action_filter: str | None = None,
+    min_count: int = 5,
+) -> dict:
+    """Empirical decay curve across 1d/3d/5d/10d/21d/42d/63d horizons.
+
+    Identifies the peak holding period for the signal type. Anything held
+    beyond peak is signal decay — exits should happen at or before peak.
+    """
+    return await asyncio.to_thread(
+        signal_history_svc.signal_decay_curve,
+        signal_history_svc._DEFAULT_HORIZONS,
+        action_filter=action_filter,
+        min_count=min_count,
+    )
+
+
+@mcp.tool()
+async def get_signal_source_attribution(
+    horizon: int = 21,
+    min_count: int = 5,
+) -> dict:
+    """Per-sub-signal alpha attribution (tech / fund / macro / sentiment).
+
+    Buckets signals where one sub-score dominates (others near zero) so the
+    dominant source's stand-alone alpha can be measured. Sources with
+    avg_ret <= 0 or win_rate < 50% are adding noise — candidates for
+    down-weighting in the composite engine.
+    """
+    return await asyncio.to_thread(
+        signal_history_svc.per_signal_source_attribution,
+        horizon, min_count=min_count,
+    )
+
+
+@mcp.tool()
+async def calibrate_confidence_labels(horizon: int = 21) -> dict:
+    """Map confidence (high/medium/low) to empirical hit rate.
+
+    If HIGH does not outperform MEDIUM/LOW by >=10pp win-rate, the
+    confidence label is uncalibrated and should not be relied on.
+    """
+    return await asyncio.to_thread(
+        signal_history_svc.calibrate_confidence,
+        horizon,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Codified skill snapshots — read pre-computed background runner output
+# ────────────────────────────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def get_skill_snapshot(skill: str) -> dict:
+    """Read the latest cached snapshot for a codified skill.
+
+    Codified skills (10 of 13) run on a schedule and cache to disk so Claude
+    can read pre-computed results without invoking a full skill walk. Snapshot
+    includes summary, actionable items, alerts, and a `fresh` flag.
+
+    LLM-only skills (adversarial-research / earnings-postmortem / stock-compare)
+    are not codified — invoke them via Claude on demand.
+    """
+    snap = await asyncio.to_thread(skill_runner_svc.read_snapshot, skill)
+    if snap is None:
+        return {"error": f"no snapshot for skill={skill}",
+                "available": skill_runner_svc.codified_skills()}
+    return snap
+
+
+@mcp.tool()
+async def list_skill_snapshots() -> dict:
+    """List all cached skill snapshots with freshness flags."""
+    snaps = await asyncio.to_thread(skill_runner_svc.list_snapshots)
+    return {
+        "snapshots": snaps,
+        "codified_skills": skill_runner_svc.codified_skills(),
+        "llm_only_skills": skill_runner_svc.llm_only_skills(),
+    }
 
 
 if __name__ == "__main__":
