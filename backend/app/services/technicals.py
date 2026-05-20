@@ -129,6 +129,96 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         else:
             rsi_signal = "neutral"
 
+        # Classic floor pivot from last closed bar ([-2] avoids partial intraday bar)
+        pivot_levels: dict | None = None
+        if high_col is not None and low_col is not None and len(df) >= 2:
+            try:
+                ph = float(high_col.iloc[-2])
+                pl = float(low_col.iloc[-2])
+                pc = float(close.iloc[-2])
+                if all(pd.notna(v) for v in (ph, pl, pc)):
+                    piv = (ph + pl + pc) / 3
+                    pivot_levels = {
+                        "pivot": round(piv, 4),
+                        "r1": round(2 * piv - pl, 4),
+                        "s1": round(2 * piv - ph, 4),
+                        "r2": round(piv + (ph - pl), 4),
+                        "s2": round(piv - (ph - pl), 4),
+                    }
+            except Exception:
+                pass
+
+        # Current volume vs 20-day average
+        cur_vol = df["Volume"].squeeze().iloc[-1] if "Volume" in df.columns else None
+        vol_sma_val = _safe(vol_sma)
+        volume_score: float | None = None
+        if cur_vol is not None and vol_sma_val and vol_sma_val > 0:
+            try:
+                volume_score = round(float(cur_vol) / vol_sma_val, 2)
+            except Exception:
+                pass
+
+        # ATR(14) — average true range for volatility/stop sizing
+        atr_series = ta.volatility.AverageTrueRange(
+            high_col, low_col, close, window=14
+        ).average_true_range() if high_col is not None and low_col is not None else None
+        atr_val = _safe(atr_series)
+        atr_pct = round(atr_val / current_price * 100, 3) if atr_val and current_price else None
+
+        # ADX(14) — trend strength; >25 = strong trend
+        adx_obj = ta.trend.ADXIndicator(high_col, low_col, close, window=14) \
+            if high_col is not None and low_col is not None else None
+        adx_val = _safe(adx_obj.adx()) if adx_obj else None
+        adx_signal = (
+            "strong" if adx_val and adx_val > 25
+            else "weak" if adx_val and adx_val < 20
+            else "moderate"
+        ) if adx_val is not None else None
+
+        # Stochastic(14,3) — K and D lines
+        stoch_obj = ta.momentum.StochasticOscillator(
+            high_col, low_col, close, window=14, smooth_window=3
+        ) if high_col is not None and low_col is not None else None
+        stoch_k = _safe(stoch_obj.stoch()) if stoch_obj else None
+        stoch_d = _safe(stoch_obj.stoch_signal()) if stoch_obj else None
+        stoch_signal = (
+            "overbought" if stoch_k and stoch_k > 80
+            else "oversold" if stoch_k and stoch_k < 20
+            else "neutral"
+        ) if stoch_k is not None else None
+
+        # OBV — on-balance volume trend
+        obv_series = ta.volume.OnBalanceVolumeIndicator(close, volume.astype(float)).on_balance_volume()
+        obv_val = _safe(obv_series)
+        obv_trend: str | None = None
+        if obv_series is not None and len(obv_series) >= 20:
+            obv_sma = obv_series.rolling(20).mean()
+            obv_now = obv_series.iloc[-1]
+            obv_avg = obv_sma.iloc[-1]
+            if pd.notna(obv_now) and pd.notna(obv_avg):
+                obv_trend = "rising" if float(obv_now) > float(obv_avg) else "falling"
+
+        # Composite technical score 0-1: minervini(35%) + trend(20%) + RSI(15%) + MACD(10%) + ADX(10%) + stoch(5%) + volume(5%)
+        mnv = (minervini_score / 7)
+        trn = 1.0 if trend == "uptrend" else (0.5 if trend == "sideways" else 0.0)
+        rsi_pos = (
+            1.0 if (rsi_val is not None and 40 <= rsi_val <= 65)
+            else 0.5 if (rsi_val is not None and (30 <= rsi_val < 40 or 65 < rsi_val <= 70))
+            else 0.0
+        )
+        macd_pos = 1.0 if (macd_hist is not None and macd_hist > 0) else 0.0
+        adx_pos = min((adx_val or 0) / 50, 1.0)
+        stoch_pos = (
+            1.0 if (stoch_k is not None and 20 <= stoch_k <= 80)
+            else 0.5 if stoch_k is not None
+            else 0.0
+        )
+        vol_pos = min(volume_score or 0.0, 2.0) / 2.0
+        technical_score = round(
+            mnv * 0.35 + trn * 0.20 + rsi_pos * 0.15 + macd_pos * 0.10
+            + adx_pos * 0.10 + stoch_pos * 0.05 + vol_pos * 0.05, 3
+        )
+
         return {
             "sma_20": _safe(sma20),
             "sma_50": sma50_val,
@@ -142,6 +232,15 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             "bb_upper": bb_upper,
             "bb_mid": bb_mid,
             "bb_lower": bb_lower,
+            "atr_14": atr_val,
+            "atr_pct": atr_pct,
+            "adx_14": adx_val,
+            "adx_signal": adx_signal,
+            "stoch_k": stoch_k,
+            "stoch_d": stoch_d,
+            "stoch_signal": stoch_signal,
+            "obv": obv_val,
+            "obv_trend": obv_trend,
             "volume_sma_20": _safe(vol_sma),
             "current_price": current_price,
             "week52_high": week52_high,
@@ -152,6 +251,9 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             "minervini_score": minervini_score,
             "trend": trend,
             "rsi_signal": rsi_signal,
+            "pivot_levels": pivot_levels,
+            "volume_score": volume_score,
+            "technical_score": technical_score,
         }
     except Exception as e:
         print(f"[technicals] compute error: {e}")

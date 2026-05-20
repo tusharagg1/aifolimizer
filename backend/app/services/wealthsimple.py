@@ -7,13 +7,20 @@ Flow:
   - verify_otp(session_id, otp) — re-call login with otp_answer to complete auth
   - get_positions(session_id, account_id) — uses authenticated WSAPISession
 
-Sessions and credentials live in server RAM only. Nothing persisted to disk.
+Active sessions live in server RAM. The WSAPISession token is also persisted
+to ~/.aifolimizer/ws_session.json (mode 0600) so a backend restart can resume
+without prompting for credentials + OTP again. Password is never persisted.
+
+Logs that previously echoed account IDs, balances, and P&L values to stdout are
+now gated behind WS_DEBUG=1 — default-off matches the project's PII rule.
 """
 
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional, Any
 
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
@@ -21,11 +28,82 @@ from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, 
 from app.models.portfolio import Account, UserContext
 
 _TOKEN_TTL_HOURS = 8
+_PENDING_TTL_SECONDS = 300  # OTP must be entered within 5 minutes of starting login
 
 # {session_id: {state: "pending"|"authed", session: WSAPISession?, email, password?, profile, accounts_raw, expires_at}}
 _sessions: dict[str, dict[str, Any]] = {}
 _LAST_CLEANUP_TIME = 0
 _CLEANUP_INTERVAL_SECONDS = 3600  # Clean up every hour
+
+# Disk persistence — restores the authenticated session across backend restarts.
+_PERSIST_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
+_DEBUG = os.environ.get("WS_DEBUG", "").lower() in ("1", "true", "yes")
+
+
+def _debug(msg: str) -> None:
+    """PII-bearing log lines route through here so they're gated by WS_DEBUG."""
+    if _DEBUG:
+        print(msg, flush=True)
+
+
+def _persist_session(session: WSAPISession, email: Optional[str] = None) -> None:
+    """Write the live WSAPISession to disk so a backend restart can resume.
+
+    File mode is set to 0600 (owner read/write only). Password is never persisted —
+    only the access token, which already has WS's own server-side expiry.
+    Called by ws-api whenever the access token is refreshed.
+    """
+    if email is None:
+        return  # ws-api may invoke without username during token refresh — skip
+    try:
+        _PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "email": email,
+            "session_json": session.to_json(),
+            "saved_utc": time.time(),
+        }
+        _PERSIST_FILE.write_text(json.dumps(payload), encoding="utf-8")
+        try:
+            os.chmod(_PERSIST_FILE, 0o600)
+        except OSError:
+            pass  # chmod is a no-op on Windows but try-anyway is harmless
+    except Exception as e:
+        print(f"[WS] persist failed: {type(e).__name__}", flush=True)
+
+
+def _clear_persisted_session() -> None:
+    try:
+        _PERSIST_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def restore_session() -> Optional[str]:
+    """Reconstruct a logged-in session from disk. Returns session_id or None.
+
+    Skips restore if the file is missing, malformed, older than _TOKEN_TTL_HOURS,
+    or if the stored token is no longer accepted by Wealthsimple.
+    """
+    if not _PERSIST_FILE.exists():
+        return None
+    try:
+        payload = json.loads(_PERSIST_FILE.read_text(encoding="utf-8"))
+        saved = float(payload.get("saved_utc", 0))
+        if time.time() - saved > _TOKEN_TTL_HOURS * 3600:
+            _clear_persisted_session()
+            return None
+        email = payload["email"]
+        session = WSAPISession.from_json(payload["session_json"])
+    except Exception as e:
+        print(f"[WS] restore parse failed: {type(e).__name__}", flush=True)
+        _clear_persisted_session()
+        return None
+    try:
+        return _finalize_session(session, email)["session_id"]
+    except Exception as e:
+        print(f"[WS] restore validate failed: {type(e).__name__}", flush=True)
+        _clear_persisted_session()
+        return None
 
 
 def _new_session_id() -> str:
@@ -33,10 +111,18 @@ def _new_session_id() -> str:
 
 
 def _cleanup_expired_sessions() -> None:
-    """Remove expired sessions from memory. Called periodically."""
+    """Remove expired authed sessions + stale pending OTP states."""
     global _LAST_CLEANUP_TIME
     now = datetime.utcnow()
-    expired = [sid for sid, sess in _sessions.items() if sess.get("state") == "authed" and now > sess.get("expires_at", now)]
+    pending_cutoff = time.time() - _PENDING_TTL_SECONDS
+    expired = []
+    for sid, sess in _sessions.items():
+        if sess.get("state") == "authed":
+            if now > sess.get("expires_at", now):
+                expired.append(sid)
+        elif sess.get("state") == "pending":
+            if sess.get("pending_started", 0) < pending_cutoff:
+                expired.append(sid)
     for sid in expired:
         _sessions.pop(sid, None)
     _LAST_CLEANUP_TIME = time.time()
@@ -60,6 +146,7 @@ def get_session(session_id: str) -> Optional[dict]:
 
 
 def _noop_persist(_sess: Any, _uname: Optional[str] = None) -> None:
+    """Retained for callers that explicitly want no persistence."""
     pass
 
 
@@ -181,7 +268,7 @@ def login(email: str, password: str) -> dict:
             username=email,
             password=password,
             otp_answer=None,
-            persist_session_fct=_noop_persist,
+            persist_session_fct=_persist_session,
         )
     except OTPRequiredException:
         session_id = _new_session_id()
@@ -189,6 +276,7 @@ def login(email: str, password: str) -> dict:
             "state": "pending",
             "email": email,
             "password": password,
+            "pending_started": time.time(),
         }
         return {"needs_otp": True, "session_id": session_id}
     except LoginFailedException as e:
@@ -201,6 +289,10 @@ def verify_otp(session_id: str, otp: str) -> dict:
     pending = _sessions.get(session_id)
     if not pending or pending.get("state") != "pending":
         raise ValueError("Invalid or expired session")
+    # Pending TTL — abandon any half-finished OTP flow older than 5 minutes
+    if time.time() - pending.get("pending_started", 0) > _PENDING_TTL_SECONDS:
+        _sessions.pop(session_id, None)
+        raise ValueError("OTP timed out — start login again")
 
     email = pending["email"]
     password = pending["password"]
@@ -210,12 +302,16 @@ def verify_otp(session_id: str, otp: str) -> dict:
             username=email,
             password=password,
             otp_answer=otp.strip(),
-            persist_session_fct=_noop_persist,
+            persist_session_fct=_persist_session,
         )
     except OTPRequiredException:
         raise ValueError("OTP code rejected — try again")
     except LoginFailedException as e:
         raise ValueError(f"Login failed: {e}")
+    finally:
+        # Drop plaintext password from RAM regardless of outcome.
+        if session_id in _sessions:
+            _sessions[session_id].pop("password", None)
 
     # Reuse the existing session_id when finalizing
     return _finalize_session(session, email, session_id=session_id)
@@ -223,13 +319,13 @@ def verify_otp(session_id: str, otp: str) -> dict:
 
 def _finalize_session(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
     sid = session_id or _new_session_id()
-    ws = WealthsimpleAPI.from_token(session, persist_session_fct=_noop_persist, username=email)
+    ws = WealthsimpleAPI.from_token(session, persist_session_fct=_persist_session, username=email)
 
     try:
         accounts_raw = ws.get_accounts()
         if not isinstance(accounts_raw, list):
-            print(f"[WS] get_accounts() returned non-list: {type(accounts_raw).__name__}")
-            print(f"[WS] payload: {json.dumps(accounts_raw, default=str)[:500]}")
+            print(f"[WS] get_accounts() returned non-list: {type(accounts_raw).__name__}", flush=True)
+            _debug(f"[WS] payload: {json.dumps(accounts_raw, default=str)[:500]}")
             accounts_raw = []
     except Exception as e:
         raise ValueError(f"Could not fetch Wealthsimple accounts: {e}")
@@ -250,7 +346,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         if not acc.get("cash") and not acc.get("available_to_trade"):
             try:
                 balances = ws.get_account_balances(acc_id)
-                print(f"[WS] balances({acc_id[:8]}): {balances}", flush=True)
+                _debug(f"[WS] balances({acc_type}): {balances}")
                 if isinstance(balances, dict):
                     cad_cash = float(balances.get("sec-c-cad") or 0)
                     usd_cash = float(balances.get("sec-c-usd") or 0)
@@ -262,23 +358,21 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                     else:
                         total_cash_cad = cad_cash
                     acc["cash"] = total_cash_cad
-                    print(
-                        f"[WS] cash={total_cash_cad}"
-                        f" (cad={cad_cash}, usd={usd_cash})"
-                        f" acc={acc_id[:8]}",
-                        flush=True,
+                    _debug(
+                        f"[WS] cash loaded for {acc_type}"
+                        f" (cad+usd_converted={total_cash_cad})"
                     )
             except Exception as e:
-                print(f"[WS] balances failed {acc_id[:8]}: {e}", flush=True)
+                print(f"[WS] balances failed {acc_type}: {type(e).__name__}", flush=True)
         try:
             pnl = ws.get_account_unrealized_pnl(acc_id, "CAD")
-            print(f"[WS] pnl({acc_id[:8]}): {pnl}", flush=True)
+            _debug(f"[WS] pnl({acc_type}): {pnl}")
             if isinstance(pnl, dict):
                 acc_pnl = _money(pnl.get("amount") or 0)
                 total_unrealized_pnl_cad += acc_pnl
-                print(f"[WS] pnl_amt={acc_pnl} acc={acc_id[:8]}", flush=True)
+                _debug(f"[WS] pnl_amt for {acc_type}: {acc_pnl}")
         except Exception as e:
-            print(f"[WS] pnl failed {acc_id[:8]}: {e}", flush=True)
+            print(f"[WS] pnl failed {acc_type}: {type(e).__name__}", flush=True)
 
         nlv = _money(
             _nested(acc, "financials", "currentCombined", "netLiquidationValue")
@@ -290,12 +384,11 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
             "unrealized_pnl_cad": acc_pnl,
         }
 
-    print(f"[WS] total_unrealized_pnl_cad={total_unrealized_pnl_cad}", flush=True)
+    _debug(f"[WS] total_unrealized_pnl_cad={total_unrealized_pnl_cad}")
     profile = _build_profile(accounts_raw)
-    print(
+    _debug(
         f"[WS] profile cash/invested:"
-        f" {[(a.cash_balance, a.invested_value) for a in profile.accounts]}",
-        flush=True,
+        f" {[(a.cash_balance, a.invested_value) for a in profile.accounts]}"
     )
 
     _sessions[sid] = {
@@ -354,7 +447,7 @@ def get_positions(session_id: str, account_id: str) -> list[dict]:
     ws = WealthsimpleAPI.from_token(ws_session, persist_session_fct=_noop_persist, username=email)
     all_positions = _fetch_identity_positions(ws)
     filtered = [p for p in all_positions if _position_account_id(p) == target_id]
-    print(f"[WS] get_positions: {len(all_positions)} total, {len(filtered)} for account {target_id}")
+    _debug(f"[WS] get_positions: {len(all_positions)} total, {len(filtered)} filtered")
     return [_to_position_dict(p) for p in filtered if isinstance(p, dict)]
 
 
@@ -511,7 +604,7 @@ def get_all_positions(session_id: str) -> list[dict]:
             if not _position_account_id(p) or _position_account_id(p) in investment_ids
         ]
 
-    print(f"[WS] get_all_positions: {len(raw_positions)} positions across {len(investment_ids)} accounts")
+    _debug(f"[WS] get_all_positions: {len(raw_positions)} positions across {len(investment_ids)} accounts")
     return [_to_position_dict(p) for p in raw_positions if isinstance(p, dict)]
 
 

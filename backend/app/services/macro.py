@@ -9,6 +9,7 @@ import csv
 import io
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import httpx
@@ -21,14 +22,26 @@ _cache: dict[str, tuple[float, Any]] = {}
 
 
 _SERIES = {
-    "fed_funds": "FEDFUNDS",       # Effective Federal Funds Rate (US)
-    "ten_year_yield": "DGS10",     # 10-Year Treasury Constant Maturity (US)
-    "two_year_yield": "DGS2",      # 2-Year Treasury Constant Maturity (US)
-    "unemployment_us": "UNRATE",   # US Unemployment Rate
-    "cpi_us": "CPIAUCSL",          # US CPI All Urban Consumers
-    "cad_usd": "DEXCAUS",          # CAD to USD exchange rate
-    "boc_overnight": "IRSTCB01CAM156N",  # Canada Overnight Rate
-    "canada_cpi": "CPALCY01CAM659N",     # Canada CPI annual % change
+    # US rates & macro
+    "fed_funds": "FEDFUNDS",
+    "ten_year_yield": "DGS10",
+    "two_year_yield": "DGS2",
+    "unemployment_us": "UNRATE",
+    "cpi_us": "CPIAUCSL",
+    # FX
+    "cad_usd": "DEXCAUS",
+    "usd_index": "DTWEXBGS",           # Trade-weighted USD broad index
+    # Canada
+    "boc_overnight": "IRSTCB01CAM156N",
+    "canada_cpi": "CPALCY01CAM659N",
+    "canada_unemployment": "LRUNTTTTCAM156S",   # Canada unemployment (OECD, monthly)
+    "canada_housing_prices": "QCAR628BIS",       # Canada residential property prices (BIS, quarterly)
+    # Global rates
+    "ecb_rate": "ECBDFR",              # ECB deposit facility rate
+    # Commodities (FRED — slight lag; supplemented by yfinance real-time below)
+    "gold_usd": "GOLDAMGBD228NLBM",    # Gold London AM fix USD/troy oz
+    "wti_crude_usd": "DCOILWTICO",     # WTI crude USD/barrel
+    "copper_usd_lb": "PCOPPUSDM",      # Copper USD/metric ton (World Bank, monthly)
 }
 
 
@@ -57,16 +70,77 @@ def _fred_csv(series_id: str) -> tuple[str, float] | None:
     return None
 
 
-def macro_snapshot() -> dict[str, Any]:
-    """Returns latest reading + date for each tracked macro series."""
+_COMMODITY_TTL = 300  # 5 min — real-time prices
+_commodity_cache: tuple[float, dict] | None = None
+
+_COMMODITY_TICKERS = {
+    "gold_spot_usd": "GC=F",      # Gold futures (front month)
+    "wti_spot_usd": "CL=F",       # WTI crude futures
+    "silver_spot_usd": "SI=F",    # Silver futures
+    "natural_gas_usd": "NG=F",    # Natural gas futures
+    "dxy": "DX-Y.NYB",            # US Dollar Index
+    "tsx_composite": "^GSPTSE",   # Toronto Stock Exchange Composite
+}
+
+
+def _commodity_snapshot() -> dict[str, Any]:
+    """Real-time commodity + DXY + TSX via yfinance. Cached 5 min."""
+    global _commodity_cache
+    now = time.time()
+    if _commodity_cache and now - _commodity_cache[0] < _COMMODITY_TTL:
+        return _commodity_cache[1]
+
     out: dict[str, Any] = {}
-    for name, sid in _SERIES.items():
-        result = _fred_csv(sid)
+    try:
+        tickers = list(_COMMODITY_TICKERS.values())
+        df = yf.download(
+            tickers, period="2d", interval="1d",
+            progress=False, auto_adjust=True,
+        )
+        if df is not None and not df.empty:
+            if isinstance(df.columns, pd.MultiIndex):
+                close = df["Close"]
+            else:
+                close = df
+            for name, ticker in _COMMODITY_TICKERS.items():
+                try:
+                    col = close[ticker] if ticker in close.columns else None
+                    if col is not None and not col.dropna().empty:
+                        val = float(col.dropna().iloc[-1])
+                        out[name] = round(val, 4)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    _commodity_cache = (now, out)
+    return out
+
+
+def macro_snapshot() -> dict[str, Any]:
+    """FRED macro series + real-time commodity/FX spot prices.
+
+    Series fetched in parallel — _fred_csv() is HTTP-bound and each call has a
+    10s timeout, so 15 serial reads can take ~15s on a cold L1 cache.
+    """
+    out: dict[str, Any] = {}
+    items = list(_SERIES.items())
+    with ThreadPoolExecutor(max_workers=min(8, len(items))) as ex:
+        results = list(ex.map(lambda kv: (kv[0], kv[1], _fred_csv(kv[1])), items))
+    for name, sid, result in results:
         if result:
             date, value = result
             out[name] = {"date": date, "value": value, "series_id": sid}
         else:
             out[name] = None
+
+    # Overlay real-time commodity/index prices (yfinance, 5-min cache)
+    try:
+        commodities = _commodity_snapshot()
+        out["commodities"] = commodities
+    except Exception:
+        pass
+
     return out
 
 

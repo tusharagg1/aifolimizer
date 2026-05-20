@@ -1,4 +1,6 @@
+import json
 import time
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date as date_type
 import yfinance as yf
@@ -245,6 +247,117 @@ def _fetch_expected_move(symbol: str, earnings_date_str: str | None, current_pri
         return {}
 
 
+_INSIDER_TTL = 6 * 3600  # 6h — insider filings update infrequently
+_insider_cache: dict[str, tuple[dict, float]] = {}
+
+
+def get_insider_activity(symbol: str) -> dict:
+    """
+    Insider transactions + top institutional holders for a symbol.
+
+    Uses yfinance (free, no key). Returns:
+    - recent_transactions: last 10 insider buys/sells with name, shares, value
+    - top_holders: top 5 institutional holders with % held
+    - insider_buy_sell_ratio: buys / (buys + sells) over last 6 months
+    - net_insider_signal: BULLISH / BEARISH / NEUTRAL
+    Cached 6h.
+    """
+    symbol = symbol.upper()
+    entry = _insider_cache.get(symbol)
+    if entry and time.time() - entry[1] < _INSIDER_TTL:
+        return entry[0]
+
+    result: dict = {
+        "symbol": symbol,
+        "recent_transactions": [],
+        "top_holders": [],
+        "insider_buy_sell_ratio": None,
+        "net_insider_signal": "NEUTRAL",
+    }
+
+    try:
+        ticker = yf.Ticker(symbol)
+
+        # ── Insider transactions ──────────────────────────────────────────
+        try:
+            tx = ticker.insider_transactions
+            if tx is not None and not tx.empty:
+                buys = 0
+                sells = 0
+                rows = []
+                for _, row in tx.head(20).iterrows():
+                    txn_type = str(row.get("Transaction") or "")
+                    shares = int(row.get("Shares") or 0)
+                    value = float(row.get("Value") or 0)
+                    name = str(row.get("Insider") or "")
+                    title = str(row.get("Position") or "")
+                    date_val = row.get("Start Date") or row.get("Date")
+                    date_str = (
+                        date_val.strftime("%Y-%m-%d")
+                        if hasattr(date_val, "strftime")
+                        else str(date_val)
+                    )
+                    is_buy = any(
+                        kw in txn_type.lower()
+                        for kw in ("purchase", "buy", "acquisition")
+                    )
+                    is_sell = any(
+                        kw in txn_type.lower()
+                        for kw in ("sale", "sell", "disposition")
+                    )
+                    if is_buy:
+                        buys += 1
+                    elif is_sell:
+                        sells += 1
+                    rows.append({
+                        "date": date_str,
+                        "name": name,
+                        "title": title,
+                        "type": (
+                            "BUY" if is_buy
+                            else "SELL" if is_sell
+                            else txn_type
+                        ),
+                        "shares": shares,
+                        "value_usd": round(value, 2),
+                    })
+                result["recent_transactions"] = rows[:10]
+                total = buys + sells
+                if total > 0:
+                    ratio = round(buys / total, 2)
+                    result["insider_buy_sell_ratio"] = ratio
+                    if ratio >= 0.6:
+                        result["net_insider_signal"] = "BULLISH"
+                    elif ratio <= 0.3:
+                        result["net_insider_signal"] = "BEARISH"
+        except Exception:
+            pass
+
+        # ── Institutional holders ─────────────────────────────────────────
+        try:
+            holders = ticker.institutional_holders
+            if holders is not None and not holders.empty:
+                top: list[dict] = []
+                for _, row in holders.head(5).iterrows():
+                    name = str(row.get("Holder") or "")
+                    shares = int(row.get("Shares") or 0)
+                    pct = float(row.get("% Out") or 0)
+                    top.append({
+                        "holder": name,
+                        "shares": shares,
+                        "pct_held": round(pct * 100, 2),
+                    })
+                result["top_holders"] = top
+        except Exception:
+            pass
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    _insider_cache[symbol] = (result, time.time())
+    return result
+
+
 def get_earnings_expected_moves(
     symbols: list[str],
     fundamentals: dict[str, dict],
@@ -267,4 +380,154 @@ def get_earnings_expected_moves(
         )
         _EM_CACHE[cache_key] = (em, time.time())
         result[sym] = em
+    return result
+
+
+# ── SEC EDGAR XBRL (free, no key) ────────────────────────────────────────────
+
+_SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+_SEC_FACTS_URL = (
+    "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+)
+_SEC_HEADERS = {
+    "User-Agent": "aifolimizer/1.0 (open-source portfolio analytics)"
+}
+_CIK_MAP: dict[str, str] = {}  # ticker → zero-padded CIK; session-scoped
+_SEC_CACHE: dict[str, tuple[dict, float]] = {}
+_SEC_TTL = 24 * 3600  # EDGAR filings don't change intraday
+
+
+def _load_cik_map() -> dict[str, str]:
+    """Fetch SEC ticker→CIK mapping once per process lifetime (~300 KB JSON)."""
+    global _CIK_MAP
+    if _CIK_MAP:
+        return _CIK_MAP
+    try:
+        req = urllib.request.Request(
+            _SEC_TICKERS_URL, headers=_SEC_HEADERS
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for entry in data.values():
+            sym = str(entry.get("ticker", "")).upper()
+            cik = str(entry.get("cik_str", "")).zfill(10)
+            if sym:
+                _CIK_MAP[sym] = cik
+    except Exception as exc:
+        print(f"[sec] CIK map load failed: {exc}")
+    return _CIK_MAP
+
+
+def _extract_annual_series(
+    facts: dict, concept: str, unit: str = "USD"
+) -> list[dict]:
+    """Pull annual 10-K values for a US-GAAP concept from an XBRL facts blob."""
+    try:
+        entries = (
+            facts.get("facts", {})
+                 .get("us-gaap", {})
+                 .get(concept, {})
+                 .get("units", {})
+                 .get(unit, [])
+        )
+        annual = [
+            e for e in entries
+            if e.get("form") == "10-K" and e.get("fp") == "FY"
+        ]
+        by_year: dict[int, dict] = {}
+        for e in annual:
+            end = e.get("end", "")
+            year = int(end[:4]) if len(end) >= 4 else 0
+            filed = e.get("filed", "")
+            if year and (
+                year not in by_year
+                or filed > by_year[year].get("filed", "")
+            ):
+                by_year[year] = {"year": year, "value": e.get("val")}
+        return sorted(by_year.values(), key=lambda x: x["year"])[-4:]
+    except Exception:
+        return []
+
+
+def _series_cagr(series: list[dict]) -> float | None:
+    """Annualised growth rate from first to last data point in a series."""
+    if len(series) < 2:
+        return None
+    first = series[0].get("value") or 0
+    last = series[-1].get("value") or 0
+    years = series[-1]["year"] - series[0]["year"]
+    if first <= 0 or years <= 0:
+        return None
+    return round((last / first) ** (1 / years) - 1, 4)
+
+
+def _series_trend(series: list[dict]) -> str:
+    if len(series) < 2:
+        return "insufficient_data"
+    v0 = series[-2].get("value") or 0
+    v1 = series[-1].get("value") or 0
+    if v1 > v0 * 1.05:
+        return "improving"
+    if v1 < v0 * 0.95:
+        return "declining"
+    return "stable"
+
+
+def get_sec_financials(symbol: str) -> dict:
+    """SEC EDGAR XBRL: annual revenue, net income, EPS for last 4 fiscal years.
+
+    Supplements yfinance fundamentals with authoritative multi-year trends.
+    Returns empty dict for non-US tickers (e.g. .TO) or on fetch failure.
+    Cached 24 h.
+    """
+    symbol = symbol.upper()
+    if "." in symbol:
+        return {}
+    entry = _SEC_CACHE.get(symbol)
+    if entry and time.time() - entry[1] < _SEC_TTL:
+        return entry[0]
+
+    cik = _load_cik_map().get(symbol)
+    if not cik:
+        return {}
+
+    try:
+        url = _SEC_FACTS_URL.format(cik=cik)
+        req = urllib.request.Request(url, headers=_SEC_HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            facts = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        print(f"[sec] {symbol}: {exc}")
+        return {}
+
+    revenue = (
+        _extract_annual_series(facts, "Revenues")
+        or _extract_annual_series(
+            facts,
+            "RevenueFromContractWithCustomerExcludingAssessedTax",
+        )
+        or _extract_annual_series(facts, "SalesRevenueNet")
+    )
+    net_income = _extract_annual_series(facts, "NetIncomeLoss")
+    eps = (
+        _extract_annual_series(
+            facts, "EarningsPerShareBasic", unit="USD/shares"
+        )
+        or _extract_annual_series(
+            facts, "EarningsPerShareDiluted", unit="USD/shares"
+        )
+    )
+
+    result = {
+        "symbol": symbol,
+        "source": "SEC EDGAR XBRL",
+        "revenue_annual": revenue,
+        "net_income_annual": net_income,
+        "eps_annual": eps,
+        "revenue_cagr_3yr": _series_cagr(revenue),
+        "income_cagr_3yr": _series_cagr(net_income),
+        "revenue_trend": _series_trend(revenue),
+        "income_trend": _series_trend(net_income),
+    }
+    _SEC_CACHE[symbol] = (result, time.time())
     return result

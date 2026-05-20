@@ -92,9 +92,12 @@ def optimize(
         # Covariance matrix (Ledoit-Wolf shrinkage reduces estimation error)
         S = risk_models.CovarianceShrinkage(prices).ledoit_wolf()
 
-        # Efficient Frontier — maximise Sharpe ratio
+        # Efficient Frontier — maximise Sharpe ratio.
+        # Default weight_bounds=(0,1) already enforces non-negative weights.
+        # No forced minimum: optimizer is free to allocate 0% (exit a name);
+        # the previous w>=0.01 floor consumed ~30% of capital on a 30-name book
+        # before optimization could place a single dollar based on signal.
         ef = EfficientFrontier(mu, S)
-        ef.add_constraint(lambda w: w >= 0.01)        # min 1% per position
         ef.add_constraint(lambda w: w <= 0.35)        # max 35% per position
         ef.max_sharpe(risk_free_rate=risk_free_rate)
         optimal_weights = ef.clean_weights()
