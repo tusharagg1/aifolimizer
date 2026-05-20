@@ -12,6 +12,9 @@ import {
   wsGetBenchmark,
   wsGetOptimizer,
   wsGetCrowding,
+  wsGetWatchlist,
+  wsGetWatchlistRecommendations,
+  wsRestoreSession,
   PortfolioResponse,
   UserProfile,
   HealthScore,
@@ -22,13 +25,20 @@ import {
   BenchmarkResult,
   OptimizerResult,
   CrowdingMap,
+  WatchlistItem,
+  WatchlistRecommendation,
 } from "@/lib/api";
+import { usePortfolioStream } from "@/hooks/usePortfolioStream";
 import PortfolioTable from "@/components/PortfolioTable";
 import AllocationChart from "@/components/AllocationChart";
 import PriceChart from "@/components/PriceChart";
 import HealthScoreWidget from "@/components/HealthScoreWidget";
 import AlertsPanel from "@/components/AlertsPanel";
 import RecommendationsPanel from "@/components/RecommendationsPanel";
+import SkillSnapshotsPanel from "@/components/SkillSnapshotsPanel";
+import TrustDashboardPanel from "@/components/TrustDashboardPanel";
+import WatchlistPanel from "@/components/WatchlistPanel";
+import ScreenerPanel from "@/components/ScreenerPanel";
 import MacroWidget from "@/components/MacroWidget";
 import BenchmarkWidget from "@/components/BenchmarkWidget";
 import OptimizerWidget from "@/components/OptimizerWidget";
@@ -120,15 +130,25 @@ export default function DashboardPage() {
   const [crowding, setCrowding] = useState<CrowdingMap>({});
   const [crowdingLoading, setCrowdingLoading] = useState(false);
 
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
+  const [watchlistRecs, setWatchlistRecs] = useState<WatchlistRecommendation[] | null>(null);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [streamConnected, setStreamConnected] = useState(false);
 
   // eslint-disable-next-line react-hooks/purity
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   // Per-loader AbortController so a new fetch cancels the prior in-flight one.
   // Prevents stale responses from stomping fresher state (e.g. account-tab race).
   const abortersRef = useRef<Record<string, AbortController>>({});
+  // Stable refs for values consumed inside loaders but not meant to retrigger
+  // the loader's identity — keeps refreshAll + setInterval from being recreated
+  // on every ticker click / narrative load.
+  const selectedTickerRef = useRef<string | null>(null);
+  const narrativesLoadedRef = useRef<boolean>(false);
 
   const abortable = useCallback((key: string): AbortSignal => {
     abortersRef.current[key]?.abort();
@@ -142,16 +162,42 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const sid = sessionStorage.getItem("ws_session_id");
     const prof = sessionStorage.getItem("ws_profile");
-    if (!sid) { router.push("/login"); return; }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSessionId(sid);
-    if (prof) setProfile(JSON.parse(prof));
+    if (sid) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSessionId(sid);
+      if (prof) setProfile(JSON.parse(prof));
+      return;
+    }
+    // No session in browser — ask backend to restore a persisted one before
+    // bouncing the user to /login. Survives backend restart + tab close.
+    wsRestoreSession()
+      .then((res) => {
+        if (cancelled) return;
+        if (res.restored && res.session_id) {
+          sessionStorage.setItem("ws_session_id", res.session_id);
+          if (res.profile) {
+            sessionStorage.setItem("ws_profile", JSON.stringify(res.profile));
+            setProfile(res.profile);
+          }
+          setSessionId(res.session_id);
+        } else {
+          router.push("/login");
+        }
+      })
+      .catch(() => { if (!cancelled) router.push("/login"); });
+    return () => { cancelled = true; };
   }, [router]);
 
   const isAbort = (err: unknown) =>
     err instanceof DOMException && err.name === "AbortError";
+
+  // selectedTicker mirrored into a ref so loadPortfolio's identity doesn't
+  // churn when the user clicks through positions — keeps refreshAll +
+  // setInterval stable across the session.
+  useEffect(() => { selectedTickerRef.current = selectedTicker; }, [selectedTicker]);
 
   const loadPortfolio = useCallback(async (accountId: string = selectedAccount) => {
     if (!sessionId) return;
@@ -161,7 +207,7 @@ export default function DashboardPage() {
     try {
       const data = await wsGetPortfolio(sessionId, accountId, signal);
       setPortfolio(data);
-      if (!selectedTicker && data.positions.length > 0) {
+      if (!selectedTickerRef.current && data.positions.length > 0) {
         setSelectedTicker(data.positions[0].symbol);
       }
     } catch (err: unknown) {
@@ -172,7 +218,7 @@ export default function DashboardPage() {
     } finally {
       if (!signal.aborted) setPortfolioLoading(false);
     }
-  }, [sessionId, router, selectedTicker, selectedAccount, abortable]);
+  }, [sessionId, router, selectedAccount, abortable]);
 
   const loadHealthScore = useCallback(async () => {
     if (!sessionId) return;
@@ -195,16 +241,17 @@ export default function DashboardPage() {
   const loadNarratives = useCallback(async () => {
     if (!sessionId) return;
     const signal = abortable("narratives");
-    if (Object.keys(narratives).length === 0) setNarrativesLoading(true);
+    if (!narrativesLoadedRef.current) setNarrativesLoading(true);
     try {
       const res = await wsGetNarratives(sessionId, signal);
       if (!res.error) {
         setNarratives(res.narratives);
         setNarrativeProviders(res.providers ?? []);
+        narrativesLoadedRef.current = true;
       }
     } catch (err) { if (isAbort(err)) return; }
     finally { if (!signal.aborted) setNarrativesLoading(false); }
-  }, [sessionId, abortable, narratives]);
+  }, [sessionId, abortable]);
 
   const loadRecommendations = useCallback(async () => {
     if (!sessionId) return;
@@ -255,6 +302,25 @@ export default function DashboardPage() {
     finally { if (!signal.aborted) setCrowdingLoading(false); }
   }, [sessionId, abortable, crowding]);
 
+  const loadWatchlist = useCallback(async () => {
+    if (!sessionId) return;
+    const signal = abortable("watchlist");
+    setWatchlistLoading(true);
+    try {
+      const items = await wsGetWatchlist(sessionId, signal);
+      if (signal.aborted) return;
+      setWatchlistItems(items);
+      if (items.length === 0) { setWatchlistRecs([]); return; }
+      try {
+        const recsRes = await wsGetWatchlistRecommendations(sessionId, signal);
+        if (!signal.aborted) setWatchlistRecs(recsRes.recommendations);
+      } catch (recErr) {
+        if (isAbort(recErr)) return;
+      }
+    } catch (err) { if (isAbort(err)) return; }
+    finally { if (!signal.aborted) setWatchlistLoading(false); }
+  }, [sessionId, abortable]);
+
   const refreshAll = useCallback(() => {
     setLastRefresh(Date.now());
     loadPortfolio();
@@ -265,7 +331,8 @@ export default function DashboardPage() {
     loadBenchmark();
     loadOptimizer();
     loadCrowding();
-  }, [loadPortfolio, loadHealthScore, loadAlerts, loadRecommendations, loadMacro, loadBenchmark, loadOptimizer, loadCrowding]);
+    loadWatchlist();
+  }, [loadPortfolio, loadHealthScore, loadAlerts, loadRecommendations, loadMacro, loadBenchmark, loadOptimizer, loadCrowding, loadWatchlist]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -276,6 +343,7 @@ export default function DashboardPage() {
     loadRecommendations();
     loadMacro();
     loadCrowding();
+    loadWatchlist();
     const t = setTimeout(() => { loadBenchmark(); loadOptimizer(); }, 1500);
     return () => clearTimeout(t);
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -285,6 +353,21 @@ export default function DashboardPage() {
     const interval = setInterval(refreshAll, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [sessionId, refreshAll]);
+
+  // WebSocket stream: push updates to summary + health score in real-time.
+  // 5-min polling interval remains as fallback for slower data (recs, macro, etc.)
+  usePortfolioStream({
+    sessionId,
+    enabled: !!sessionId,
+    onUpdate: (summary, health) => {
+      setStreamConnected(true);
+      setPortfolio((prev) =>
+        prev ? { ...prev, summary } : prev
+      );
+      setHealthScore(health);
+    },
+    onSessionExpired: () => router.push("/login"),
+  });
 
   const copySkill = (name: string) => {
     navigator.clipboard.writeText(name).catch(() => {});
@@ -332,6 +415,12 @@ export default function DashboardPage() {
             )}
           </div>
           <div className="flex items-center gap-4">
+            {streamConnected && (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                live
+              </span>
+            )}
             <CountdownLabel intervalMs={REFRESH_INTERVAL_MS} resetKey={lastRefresh} />
             <button
               onClick={refreshAll}
@@ -493,7 +582,27 @@ export default function DashboardPage() {
           narrativeProviders={narrativeProviders}
         />
 
-        {/* ── Row 4: Benchmark comparison ── */}
+        {/* ── Codified skill snapshots (background-computed) ── */}
+        <SkillSnapshotsPanel />
+
+        {/* ── Trust dashboard: empirical signal accuracy evidence ── */}
+        <TrustDashboardPanel />
+
+        {/* ── Row 4: Watchlist ── */}
+        {sessionId && (
+          <WatchlistPanel
+            sessionId={sessionId}
+            items={watchlistItems}
+            recommendations={watchlistRecs}
+            loading={watchlistLoading}
+            onItemsChange={(updated) => {
+              setWatchlistItems(updated);
+              loadWatchlist();
+            }}
+          />
+        )}
+
+        {/* ── Row 5: Benchmark comparison ── */}
         <BenchmarkWidget data={benchmark} loading={benchmarkLoading} />
 
         {/* ── Row 5: Efficient Frontier optimizer ── */}
@@ -533,7 +642,19 @@ export default function DashboardPage() {
 
         {/* ── Row 6: Price chart ── */}
         {sessionId && selectedTicker && (
-          <PriceChart symbol={selectedTicker} sessionId={sessionId} />
+          <PriceChart
+            symbol={selectedTicker}
+            sessionId={sessionId}
+            currency={portfolio?.positions.find(p => p.symbol === selectedTicker)?.currency}
+          />
+        )}
+
+        {/* ── Screener ── */}
+        {sessionId && (
+          <ScreenerPanel
+            sessionId={sessionId}
+            onSelectTicker={setSelectedTicker}
+          />
         )}
 
         {/* ── Row 7: Skills (collapsible) ── */}

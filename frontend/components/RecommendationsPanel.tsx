@@ -3,7 +3,7 @@
 import { memo, useState } from "react";
 import { Recommendation } from "@/lib/api";
 
-type Action = "BUY" | "HOLD" | "WATCH" | "SELL";
+type Action = "BUY" | "HOLD" | "WATCH" | "SELL" | "ADD" | "TRIM" | "NO_EDGE";
 
 const ACTION_CONFIG: Record<Action, {
   bg: string; border: string; badge: string; text: string; dot: string;
@@ -14,6 +14,13 @@ const ACTION_CONFIG: Record<Action, {
     badge: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
     text: "text-emerald-400",
     dot: "bg-emerald-500",
+  },
+  ADD: {
+    bg: "bg-emerald-500/5",
+    border: "border-emerald-500/20",
+    badge: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/25",
+    text: "text-emerald-300",
+    dot: "bg-emerald-400",
   },
   HOLD: {
     bg: "bg-slate-800/30",
@@ -29,12 +36,26 @@ const ACTION_CONFIG: Record<Action, {
     text: "text-amber-400",
     dot: "bg-amber-500",
   },
+  TRIM: {
+    bg: "bg-orange-500/8",
+    border: "border-orange-500/25",
+    badge: "bg-orange-500/20 text-orange-400 border border-orange-500/30",
+    text: "text-orange-400",
+    dot: "bg-orange-500",
+  },
   SELL: {
     bg: "bg-rose-500/8",
     border: "border-rose-500/25",
     badge: "bg-rose-500/20 text-rose-400 border border-rose-500/30",
     text: "text-rose-400",
     dot: "bg-rose-500",
+  },
+  NO_EDGE: {
+    bg: "bg-slate-900/40",
+    border: "border-slate-800/60",
+    badge: "bg-slate-800 text-slate-400 border border-slate-700",
+    text: "text-slate-400",
+    dot: "bg-slate-600",
   },
 };
 
@@ -79,15 +100,18 @@ function RecommendationsPanel({
 
   const groups: Record<Action, Recommendation[]> = {
     SELL: data.filter(r => r.action === "SELL"),
+    TRIM: data.filter(r => r.action === "TRIM"),
     BUY:  data.filter(r => r.action === "BUY"),
+    ADD:  data.filter(r => r.action === "ADD"),
     WATCH: data.filter(r => r.action === "WATCH"),
     HOLD: data.filter(r => r.action === "HOLD"),
+    NO_EDGE: data.filter(r => r.action === "NO_EDGE"),
   };
 
   const regime = data[0]?.market_regime ?? "";
   const regimeInfo = REGIME_LABELS[regime];
 
-  const counts = (["SELL", "BUY", "WATCH", "HOLD"] as Action[])
+  const counts = (["SELL", "TRIM", "BUY", "ADD", "WATCH", "HOLD", "NO_EDGE"] as Action[])
     .filter(a => groups[a].length > 0)
     .map(a => ({ action: a, count: groups[a].length }));
 
@@ -262,46 +286,62 @@ function RecCard({
       ) : null}
 
       {/* Trade levels — stop / target / R:R / Kelly */}
-      {(rec.stop_loss || rec.take_profit || rec.risk_reward) && (
-        <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] pt-0.5 border-t border-slate-800">
-          {(() => {
-            const cur = rec.symbol.endsWith(".TO") || rec.symbol.endsWith(".V") ? "CAD" : "USD";
-            const isSell = rec.action === "SELL";
-            return (
-              <>
-                {rec.stop_loss && (
-                  <span className="text-rose-400">
-                    {isSell ? "Exit if ↑" : "Stop ↓"}{" "}
-                    <span className="font-mono">{cur} {rec.stop_loss.toFixed(2)}</span>
-                    <span className="text-slate-600 ml-1">({rec.stop_type})</span>
-                  </span>
-                )}
-                {rec.take_profit && (
-                  <span className="text-emerald-400">
-                    {isSell ? "Downside ↓" : "Target ↑"}{" "}
-                    <span className="font-mono">{cur} {rec.take_profit.toFixed(2)}</span>
-                  </span>
-                )}
-              </>
-            );
-          })()}
-          {rec.risk_reward && (
-            <span className={`${rec.risk_reward >= 2 ? "text-emerald-400" : rec.risk_reward >= 1 ? "text-amber-400" : "text-rose-400"}`}>
-              R:R <span className="font-semibold">{rec.risk_reward}:1</span>
-            </span>
-          )}
-          {rec.kelly_pct != null && rec.action === "BUY" && (
-            <span className="text-indigo-400">
-              Kelly <span className="font-semibold">{rec.kelly_pct}%</span>
-            </span>
-          )}
-        </div>
-      )}
-      {rec.entry_timing === "wait_pullback" && rec.action === "BUY" && (
-        <p className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-          ⚡ RSI extended — wait for pullback
-        </p>
-      )}
+      {(rec.stop_loss || rec.take_profit || rec.risk_reward) && (() => {
+        const cur = rec.currency || (rec.symbol.endsWith(".TO") || rec.symbol.endsWith(".V") ? "CAD" : "USD");
+        const isSell = rec.action === "SELL";
+        const cp = rec.current_price;
+        const stopPct = cp && rec.stop_loss
+          ? isSell
+            ? +((rec.stop_loss - cp) / cp * 100).toFixed(1)
+            : +((cp - rec.stop_loss) / cp * 100).toFixed(1)
+          : null;
+        const tgtPct = cp && rec.take_profit
+          ? isSell
+            ? +((cp - rec.take_profit) / cp * 100).toFixed(1)
+            : +((rec.take_profit - cp) / cp * 100).toFixed(1)
+          : null;
+        return (
+          <div className="space-y-0.5 pt-0.5 border-t border-slate-800">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+              {rec.stop_loss && (
+                <span className="text-rose-400">
+                  {isSell ? "Exit if ↑" : "Stop ↓"}{" "}
+                  <span className="font-mono">{cur} {rec.stop_loss.toFixed(2)}</span>
+                  {stopPct !== null && <span className="text-rose-300/60 ml-1">({stopPct}% away)</span>}
+                  {rec.stop_type && <span className="text-slate-500 ml-1">· {rec.stop_type}</span>}
+                </span>
+              )}
+              {rec.take_profit && (
+                <span className="text-emerald-400">
+                  {isSell ? "Downside ↓" : "Target ↑"}{" "}
+                  <span className="font-mono">{cur} {rec.take_profit.toFixed(2)}</span>
+                  {tgtPct !== null && <span className="text-emerald-300/60 ml-1">(+{tgtPct}%)</span>}
+                </span>
+              )}
+              {rec.risk_reward && (
+                <span className={`${rec.risk_reward >= 2 ? "text-emerald-400" : rec.risk_reward >= 1 ? "text-amber-400" : "text-rose-400"}`}>
+                  R:R <span className="font-semibold">{rec.risk_reward}:1</span>
+                </span>
+              )}
+              {rec.kelly_pct != null && rec.action === "BUY" && (
+                <span className="text-indigo-400">
+                  Kelly <span className="font-semibold">{rec.kelly_pct}%</span> of position
+                </span>
+              )}
+            </div>
+            {cp && rec.action !== "HOLD" && (
+              <p className="text-[10px] text-slate-400">
+                {isSell
+                  ? `Current ${cur} ${cp.toFixed(2)} — sell here, cover at target, stop if reclaims ${rec.stop_type ?? "stop"}`
+                  : rec.entry_timing === "wait_pullback"
+                    ? `Current ${cur} ${cp.toFixed(2)} — RSI extended, wait for dip toward stop zone before entry`
+                    : `Current ${cur} ${cp.toFixed(2)} — entry zone acceptable, size via Kelly, stop at ${rec.stop_type ?? "stop"}`
+                }
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Hedge flag */}
       {rec.hedge_flag && rec.hedge_reason && (
@@ -326,20 +366,23 @@ function RecCard({
       )}
 
       {/* EV + max loss preflight */}
-      {(rec.ev_dollars != null || rec.max_loss_dollars != null) && rec.action !== "HOLD" && (
-        <div className="flex items-center justify-between gap-2 text-xs">
-          {rec.ev_dollars != null && (
-            <span className={`font-semibold ${rec.ev_dollars >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              EV {rec.ev_dollars >= 0 ? "+" : ""}CAD {rec.ev_dollars.toFixed(0)}
-            </span>
-          )}
-          {rec.max_loss_dollars != null && (
-            <span className="text-rose-300/80">
-              Max loss <span className="font-mono">-CAD {rec.max_loss_dollars.toFixed(0)}</span>
-            </span>
-          )}
-        </div>
-      )}
+      {(rec.ev_dollars != null || rec.max_loss_dollars != null) && rec.action !== "HOLD" && (() => {
+        const cur = rec.currency || (rec.symbol.endsWith(".TO") || rec.symbol.endsWith(".V") ? "CAD" : "USD");
+        return (
+          <div className="flex items-center justify-between gap-2 text-xs">
+            {rec.ev_dollars != null && (
+              <span className={`font-semibold ${rec.ev_dollars >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                EV {rec.ev_dollars >= 0 ? "+" : ""}{cur} {rec.ev_dollars.toFixed(0)}
+              </span>
+            )}
+            {rec.max_loss_dollars != null && (
+              <span className="text-rose-300/80">
+                Max loss <span className="font-mono">-{cur} {rec.max_loss_dollars.toFixed(0)}</span>
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Analyst upside */}
       {upside !== null && upside !== undefined && (

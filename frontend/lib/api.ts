@@ -1,9 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  // Default 30s timeout when caller didn't pass its own AbortSignal.
+  // Prevents indefinite hangs when backend stalls on yfinance/Wealthsimple.
+  const signal = init?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -24,6 +29,14 @@ export async function wsVerifyOtp(session_id: string, otp: string) {
     method: "POST",
     body: JSON.stringify({ session_id, otp }),
   });
+}
+
+export async function wsRestoreSession() {
+  return apiFetch<{
+    restored: boolean;
+    session_id?: string;
+    profile?: UserProfile | null;
+  }>("/ws/restore", { method: "POST" });
 }
 
 export async function wsGetPortfolio(
@@ -148,7 +161,51 @@ export interface PriceHistory {
   period: string;
   dates: string[];
   close: number[];
+  sma_20: (number | null)[];
   sma_50: (number | null)[];
+  sma_200: (number | null)[];
+  weekly_sma_20: (number | null)[];
+}
+
+export interface ChartPattern {
+  pattern: string;
+  neckline: number;
+  confirmed: boolean;
+  bearish: boolean;
+  description: string;
+  peak1_date?: string;
+  peak2_date?: string;
+  trough1_date?: string;
+  trough2_date?: string;
+  left_shoulder_date?: string;
+  head_date?: string;
+  right_shoulder_date?: string;
+  peak1_price?: number;
+  peak2_price?: number;
+  trough1_price?: number;
+  trough2_price?: number;
+  head_price?: number;
+  left_shoulder_price?: number;
+  right_shoulder_price?: number;
+}
+
+export interface PatternResult {
+  symbol: string;
+  patterns: ChartPattern[];
+  dates: string[];
+  close: number[];
+}
+
+export async function wsGetPatterns(
+  session_id: string,
+  symbol: string,
+  period: string = "1y",
+  signal?: AbortSignal,
+) {
+  return apiFetch<PatternResult>(
+    `/ws/patterns?session_id=${session_id}&symbol=${encodeURIComponent(symbol)}&period=${period}`,
+    { signal },
+  );
 }
 
 export interface UserProfile {
@@ -217,7 +274,8 @@ export interface Alert {
 export interface Recommendation {
   symbol: string;
   name: string;
-  action: "BUY" | "HOLD" | "WATCH" | "SELL";
+  currency: string;
+  action: "BUY" | "HOLD" | "WATCH" | "SELL" | "ADD" | "TRIM" | "NO_EDGE";
   score: number;
   confidence: "high" | "medium" | "low";
   reasons: string[];
@@ -294,6 +352,97 @@ export interface NarrativesResponse {
   error?: string;
 }
 
+export interface WatchlistItem {
+  symbol: string;
+  notes: string;
+  added_at: string;
+}
+
+export type WatchlistRecommendation = Omit<Recommendation, "action"> & {
+  action: "BUY" | "WATCH" | "PASS";
+  source: "watchlist";
+  notes: string;
+};
+
+export interface WatchlistRecommendationsResponse {
+  recommendations: WatchlistRecommendation[];
+}
+
+export async function wsGetWatchlist(session_id: string, signal?: AbortSignal) {
+  return apiFetch<WatchlistItem[]>(
+    `/ws/watchlist?session_id=${session_id}`, { signal },
+  );
+}
+
+export async function wsAddToWatchlist(
+  session_id: string,
+  symbol: string,
+  notes = "",
+) {
+  return apiFetch<WatchlistItem[]>("/ws/watchlist", {
+    method: "POST",
+    body: JSON.stringify({ session_id, symbol, notes }),
+  });
+}
+
+export async function wsRemoveFromWatchlist(
+  session_id: string,
+  symbol: string,
+) {
+  return apiFetch<WatchlistItem[]>(
+    `/ws/watchlist/${encodeURIComponent(symbol)}?session_id=${session_id}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function wsGetWatchlistRecommendations(
+  session_id: string,
+  signal?: AbortSignal,
+) {
+  return apiFetch<WatchlistRecommendationsResponse>(
+    `/ws/watchlist/recommendations?session_id=${session_id}`, { signal },
+  );
+}
+
+export interface ScreenerResult {
+  symbol: string;
+  technical_score: number | null;
+  current_price: number | null;
+  stage: number | null;
+  minervini_score: number | null;
+  rsi_14: number | null;
+  rsi_signal: string | null;
+  adx_14: number | null;
+  adx_signal: string | null;
+  macd_hist: number | null;
+  stoch_k: number | null;
+  stoch_signal: string | null;
+  obv_trend: string | null;
+  volume_score: number | null;
+  atr_pct: number | null;
+  pct_from_52w_high: number | null;
+  trend: string | null;
+  sma_200_slope_pct: number | null;
+}
+
+export interface ScreenerResponse {
+  results: ScreenerResult[];
+  universe: string;
+  count: number;
+}
+
+export async function wsGetScreener(
+  session_id: string,
+  universe: "tsx" | "spx" | "full" = "full",
+  max_results = 30,
+  signal?: AbortSignal,
+) {
+  return apiFetch<ScreenerResponse>(
+    `/ws/screener?session_id=${session_id}&universe=${universe}&max_results=${max_results}`,
+    { signal },
+  );
+}
+
 export interface MacroSnapshot {
   vix: number | null;
   vix_signal: string | null;
@@ -323,4 +472,153 @@ export interface MacroSnapshot {
     canada_cpi: { value: number; date: string } | null;
     [key: string]: { value: number; date: string } | null;
   };
+}
+
+
+// ── Skill snapshots ──────────────────────────────────────────────────────────
+
+export interface SkillSnapshot {
+  skill: string;
+  status: "ok" | "error" | string;
+  computed_at: string;
+  ttl_minutes: number;
+  expires_at: number;
+  confidence_source: "backtested" | "live_validated" | "experimental";
+  summary: Record<string, unknown>;
+  actionable: unknown[];
+  alerts: Array<{ level?: string; message?: string; [k: string]: unknown }>;
+  error: string | null;
+  fresh?: boolean;
+}
+
+export interface SkillListResponse {
+  codified: string[];
+  llm_only: string[];
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  last_run_ts: number | null;
+  last_run_result: Record<string, unknown> | null;
+  next_interval_seconds: number;
+  is_market_hours: boolean;
+}
+
+export async function fetchSkillList(signal?: AbortSignal) {
+  return apiFetch<SkillListResponse>("/skills/list", { signal });
+}
+
+export async function fetchAllSnapshots(signal?: AbortSignal) {
+  return apiFetch<{ snapshots: SkillSnapshot[] }>("/skills/snapshots", { signal });
+}
+
+export async function fetchSnapshot(skill: string, signal?: AbortSignal) {
+  return apiFetch<SkillSnapshot>(
+    `/skills/snapshot/${encodeURIComponent(skill)}`,
+    { signal },
+  );
+}
+
+export async function refreshSnapshots(skill?: string) {
+  const qs = skill ? `?skill=${encodeURIComponent(skill)}` : "";
+  return apiFetch<SkillSnapshot | Record<string, unknown>>(
+    `/skills/refresh${qs}`,
+    { method: "POST" },
+  );
+}
+
+export async function fetchSchedulerStatus(signal?: AbortSignal) {
+  return apiFetch<SchedulerStatus>("/skills/scheduler/status", { signal });
+}
+
+
+// ── Trust / accuracy ─────────────────────────────────────────────────────────
+
+export interface DecayHorizon {
+  n: number;
+  avg_ret_pct?: number;
+  median_ret_pct?: number;
+  win_rate_pct?: number;
+  insufficient_data?: boolean;
+}
+
+export interface DecayCurve {
+  action_filter: string;
+  curve: Record<string, DecayHorizon>;
+  peak_horizon: string | null;
+  peak_avg_ret_pct: number | null;
+  interpretation: string;
+  as_of: string;
+  error?: string;
+}
+
+export interface AttributionBucket {
+  n: number;
+  avg_ret_pct?: number;
+  win_rate_pct?: number;
+  verdict?: string;
+  insufficient_data?: boolean;
+}
+
+export interface AttributionReport {
+  horizon: number;
+  n_total_scored: number;
+  by_source: Record<string, AttributionBucket>;
+  note: string;
+  as_of: string;
+  error?: string;
+}
+
+export interface CalibrationReport {
+  horizon: number;
+  n_total_scored: number;
+  buckets: Record<string, { n: number; win_rate_pct?: number; avg_ret_pct?: number; insufficient_data?: boolean }>;
+  verdict: "calibrated" | "weakly_calibrated" | "uncalibrated" | "insufficient_data";
+  suggested_action: string;
+  as_of: string;
+  error?: string;
+}
+
+export interface TrackRecordWindow {
+  count?: number;
+  skipped?: number;
+  win_rate_pct?: number;
+  avg_return_pct?: number;
+  avg_alpha_vs_spy_pct?: number;
+  avg_alpha_vs_xeqt_pct?: number;
+  target_hit_rate_pct?: number;
+  stop_hit_rate_pct?: number;
+  by_conviction?: Record<string, unknown>;
+  by_action?: Record<string, unknown>;
+}
+
+export interface TrackRecord {
+  windows: Record<string, TrackRecordWindow>;
+  total_logged: number;
+  as_of: number;
+  model_version: string;
+  error?: string;
+}
+
+export async function fetchTrustDecay(actionFilter?: string, signal?: AbortSignal) {
+  const qs = actionFilter ? `?action_filter=${encodeURIComponent(actionFilter)}` : "";
+  return apiFetch<DecayCurve>(`/skills/trust/decay${qs}`, { signal });
+}
+
+export async function fetchTrustAttribution(horizon = 21, signal?: AbortSignal) {
+  return apiFetch<AttributionReport>(
+    `/skills/trust/attribution?horizon=${horizon}`,
+    { signal },
+  );
+}
+
+export async function fetchTrustCalibration(horizon = 21, signal?: AbortSignal) {
+  return apiFetch<CalibrationReport>(
+    `/skills/trust/calibration?horizon=${horizon}`,
+    { signal },
+  );
+}
+
+export async function fetchTrustTrackRecord(signal?: AbortSignal) {
+  return apiFetch<TrackRecord>("/skills/trust/track-record", { signal });
 }
