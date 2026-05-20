@@ -36,15 +36,34 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 
 ### TECHNICAL (Citadel)
 9. Trend on daily and weekly timeframes
-10. Key support/resistance levels (exact prices)
+10. Key support/resistance levels — use `pivot_levels.s1/s2` (support) and `pivot_levels.r1/r2` (resistance) from technicals data directly. These are classic floor pivots from the last closed bar. Do NOT invent levels.
 11. RSI, MACD, Bollinger Bands — plain English
-12. Volume trend — buyer vs seller dominance
+12. Volume trend — use `volume_score` (current vol / 20d avg). `>1.5` = above-avg conviction, `>2.0` = surge, `<0.5` = low-conviction move. Buyer vs seller dominance
 13. Chart pattern (if any)
 14. **Minervini stage + score** — `stage` (1=basing, 2=uptrend, 3=distribution, 4=decline), `minervini_score` /7. Score ≥5 = institutional-quality setup
 15. **52-week context** — `pct_from_52w_high` and `pct_from_52w_low` from technicals data
-16. Ideal entry, stop-loss, profit target
-17. Risk-to-reward ratio
-18. Confidence rating: Strong Buy / Buy / Neutral / Sell / Strong Sell
+16. **Technical composite score** — `technical_score` /1.0 (0.40×Minervini + 0.25×trend + 0.20×RSI position + 0.10×MACD + 0.05×volume). ≥0.65 = strong setup, 0.45–0.65 = mixed, <0.45 = weak
+17. Ideal entry: use `pivot_levels.s1` as initial support; stop-loss below `pivot_levels.s2`; profit target at `pivot_levels.r1` (conservative) or `r2` (extended)
+18. Risk-to-reward ratio (entry→target / entry→stop). Minimum 2:1 to recommend
+19. Confidence rating: Strong Buy / Buy / Neutral / Sell / Strong Sell
+
+### INVESTOR LENSES
+
+Apply the 2 most relevant lenses for this stock type. Skip inapplicable ones — state why in one line.
+
+**Graham (Deep Value):** P/E < 15? Debt/equity < 1? Positive net current assets? 3/3 pass = "Graham would buy at this price." 1–2/3 = note which criteria miss. 0/3 = "Too expensive for value mandate."
+
+**Buffett (Quality Moat):** Moat rating wide/narrow (from fundamental section)? Profit margins stable or expanding over 3yr? ROIC proxy = `profit_margin × revenue / market_cap`-style qualitative read. If wide moat + stable margins: "Buffett-quality compounder — hold forever at right price." Weak moat: "Pass — no durable advantage."
+
+**Lynch (GARP):** Compute PEG = `pe_ratio / (eps_growth_yoy × 100)`. PEG < 1.0 = undervalued grower, 1.0–2.0 = fairly priced growth, > 2.0 = growth already priced in. State PEG explicitly. If `eps_growth_yoy` null, state "PEG unavailable."
+
+**Druckenmiller (Macro Momentum):** Does `get_macro_snapshot` (rates/CPI/CAD-USD) support this sector's tailwind? Does the chart (stage 2 uptrend + volume confirmation) validate the macro thesis? Risk/reward ≥ 3:1 AND macro + chart aligned → "Druck would size up." Misalignment → "Wait for macro confirmation before entering."
+
+Lens selection guide (use as default, override with judgment):
+- Dividend / value stock → Graham + Buffett
+- Large-cap compounder → Buffett + Lynch
+- Growth / tech → Lynch + Druckenmiller
+- Macro-sensitive (energy, banks, rates, commodities) → Druckenmiller + Graham
 
 ### CROWDING (Goldman / BlackRock 2025 — AI consensus risk)
 19. **Crowding score** /100 + label (consensus / neutral / contrarian) from `get_positioning_signals`
@@ -69,3 +88,6 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 - `crowding_score` uses 4 weighted signals; if 3+ inputs null (common for small caps/TSX), label unreliable — state "positioning data sparse".
 - Crowding ≠ overvalued. Consensus name can still grind higher on earnings beats. Flag adjusts conviction, doesn't invert call.
 - Headline velocity counts yfinance news only — misses Reddit/X chatter. Underestimates retail surge.
+- `pivot_levels` null for symbols with <2 trading days of data (new listings, halted). State "pivot data unavailable" rather than guessing.
+- `volume_score` null when volume data missing (common for some TSX ETFs). Do not comment on volume conviction in that case.
+- `technical_score` weights are fixed (40/25/20/10/5). Treat as screening signal, not a precise model output.

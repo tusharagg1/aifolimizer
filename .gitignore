@@ -47,3 +47,9 @@ backend/.claude/
 
 # Backup files created by skill scaffolding / plugin tools
 *.original.md
+
+# Agent worktrees (per-session ephemeral checkouts)
+.claude/worktrees/
+
+# Runtime watchlist (user-specific, mutated by API)
+backend/watchlist.json

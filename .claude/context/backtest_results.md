@@ -6,10 +6,7 @@
 **Benchmarks:** SPY (S&P 500), XEQT.TO (Global Equity)  
 **Method:** Codified deterministic rules — LLM thesis not replayed  
 
-> Honest caveat: these rules approximate each skill's buy/sell logic.
-> True LLM skill output includes qualitative thesis, news sentiment, and macro
-> context that cannot be replayed deterministically over historical bars.
-> Treat as lower-bound signal quality — real skill output should beat rule proxy.
+> Honest caveat: rules approximate each skill's buy/sell logic. True LLM output includes qualitative thesis, news sentiment, macro context — unreplayable over historical bars. Treat as lower-bound signal quality.
 
 ---
 
@@ -36,28 +33,28 @@
 
 ## Key Takeaways
 
-- **Top 3 alpha generators:** earnings_analyzer (+130%), portfolio_health (+126%), adversarial_research (+113%) — all beat SPY on test universe.
-- **Why earnings_analyzer leads:** vol_cluster_avoid stays flat during high-vol event windows. Avoids whipsaw; simple but effective.
-- **Why adversarial_research holds:** consensus_fade exits only on extreme momentum (top 5th percentile 5d return). Low churn (103 trades), 75% win rate.
-- **Trend-following skills underperform vs buy-hold on tech-heavy universe.** sma50/sma200 rules add friction (whipsaw) in persistent uptrends. Rules are *protective* in bear markets — retest on 2008 or 2022-only window shows different result.
-- **tax_loss_review best risk-adjusted of underperformers:** Sharpe 1.08, max DD only -7.45% — lowest drawdown of any skill.
-- **daily_briefing/cash_deployment lowest alpha:** MACD and golden cross add too many trades, lag underlying move.
+- **Top 3 alpha:** earnings_analyzer (+130%), portfolio_health (+126%), adversarial_research (+113%) — all beat SPY.
+- **earnings_analyzer leads:** vol_cluster_avoid stays flat during high-vol windows. Avoids whipsaw; simple but effective.
+- **adversarial_research holds:** consensus_fade exits only on extreme momentum (top 5th pct 5d return). Low churn (103 trades), 75% win rate.
+- **Trend-following underperforms buy-hold on tech-heavy universe.** sma50/sma200 add friction (whipsaw) in persistent uptrends. Protective in bear markets — retest on 2008 or 2022-only shows different result.
+- **tax_loss_review best risk-adjusted:** Sharpe 1.08, max DD -7.45% — lowest drawdown of any skill.
+- **daily_briefing/cash_deployment lowest alpha:** MACD + golden cross add too many trades, lag underlying move.
 
 ---
 
 ## Limitations
 
-1. **Survivorship bias:** Test universe is 5 large-caps + 2 ETFs (all survived). Real portfolio includes smaller names with higher failure risk.
-2. **Look-ahead bias:** Crowding scores used in crowd_fade/crowd_buy are today's snapshot applied retrospectively — addressed by conservative crowd_fade caveat in backtest.py.
+1. **Survivorship bias:** Universe is 5 large-caps + 2 ETFs (all survived). Real portfolio includes smaller names with higher failure risk.
+2. **Look-ahead bias:** Crowding scores in crowd_fade/crowd_buy are today's snapshot applied retrospectively — addressed by conservative caveat in backtest.py.
 3. **Rules ≠ LLM judgment:** Skill output uses earnings dates, news sentiment, macro overlay. Rules are proxies only.
-4. **3yr window is bull-dominated:** 2022-2025 included rate-shock drawdown but ended in recovery. Survivorship in timing.
+4. **3yr window is bull-dominated:** 2022-2025 included rate-shock drawdown but ended in recovery.
 
 ---
 
 ## Next Steps
 
-- Phase 3: Forward paper-trade 90 days — log every live skill recommendation to `recommendations.jsonl`, score daily
-- Phase 4: Compute annualized alpha vs XEQT/SPY on live portfolio equity curve
-- Phase 5: Publish `TRACK_RECORD.md` with methodology + results (immutable, git-signed)
+- Phase 3: Forward paper-trade 90 days — log every live skill rec to `recommendations.jsonl`, score daily
+- Phase 4: Annualized alpha vs XEQT/SPY on live portfolio equity curve
+- Phase 5: Publish `TRACK_RECORD.md` (immutable, git-signed)
 
 *Generated: 2026-05-17 | Re-run: `mcp__aifolimizer__get_skill_track_record(fresh=True)`*

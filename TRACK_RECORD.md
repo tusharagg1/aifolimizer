@@ -5,14 +5,6 @@
 
 ---
 
-## Disclaimer
-
-> This is a personal DIY investment tool, not financial advice. Past results are
-> not predictive of future performance. The author is not a registered advisor.
-> All figures are self-reported and unaudited by a third party.
-
----
-
 ## Methodology
 
 ### Data Sources
