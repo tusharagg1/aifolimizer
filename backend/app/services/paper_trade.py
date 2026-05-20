@@ -1,15 +1,13 @@
 """Forward paper-trade logger and scorer.
 
 Two concerns:
-1. Log — append every skill recommendation to recommendations.jsonl.
-   Each record: date, skill, ticker, action (BUY/SELL/HOLD), entry_price,
-   conviction (HIGH/MED/LOW), target_pct, stop_pct, rationale_hash.
-   Called by the skill runner or manually via MCP tool `log_recommendation`.
-
-2. Score — mark-to-market every open recommendation daily.
-   Reads recommendations.jsonl, fetches current price via data_router,
-   computes unrealized P&L, win/loss. Writes to scored_recommendations.jsonl.
-   Called daily (schedule or manual MCP `score_recommendations`).
+1. Log — append every skill recommendation to recommendations.jsonl with a
+   full signal contract: horizon, thesis, invalidation, expected upside/
+   downside, confidence source, benchmark prices at entry, model version,
+   and the raw feature snapshot used to produce the call.
+2. Score — mark-to-market every open recommendation daily, compute alpha
+   vs SPY / QQQ / XEQT.TO (and optional sector ETF), and bucket results by
+   action and conviction so a real signal scorecard becomes possible.
 
 Output paths (gitignored):
   .claude/context/recommendations.jsonl
@@ -30,8 +28,28 @@ _CTX = Path(__file__).resolve().parents[2] / ".claude" / "context"
 _REC_FILE = _CTX / "recommendations.jsonl"
 _SCORED_FILE = _CTX / "scored_recommendations.jsonl"
 
-_VALID_ACTIONS = {"BUY", "SELL", "HOLD", "ADD", "TRIM"}
+_VALID_ACTIONS = {"BUY", "SELL", "HOLD", "ADD", "TRIM", "WATCH", "NO_EDGE"}
 _VALID_CONV = {"HIGH", "MED", "LOW"}
+_VALID_CONF_SRC = {"backtested", "live_validated", "experimental"}
+
+DEFAULT_BENCHMARKS = ("SPY", "QQQ", "XEQT.TO")
+MODEL_VERSION = "2026.05-v1"
+
+
+def _safe_quote(ticker: str) -> tuple[float, str]:
+    try:
+        q = data_router.get_quote(ticker.upper())
+        return float(q.get("price") or 0.0), q.get("source", "unknown")
+    except Exception:
+        return 0.0, "unavailable"
+
+
+def _capture_benchmark_prices(symbols: tuple[str, ...]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for sym in symbols:
+        price, source = _safe_quote(sym)
+        out[sym] = {"price": round(price, 4), "source": source}
+    return out
 
 
 def log_recommendation(
@@ -43,12 +61,21 @@ def log_recommendation(
     target_pct: float | None = None,
     stop_pct: float | None = None,
     account: str | None = None,
+    horizon_days: int | None = None,
+    thesis: str | None = None,
+    invalidation: str | None = None,
+    expected_upside_pct: float | None = None,
+    expected_downside_pct: float | None = None,
+    confidence_source: str = "experimental",
+    sector_etf: str | None = None,
+    features: dict | None = None,
+    model_version: str | None = None,
 ) -> dict:
-    """Append one recommendation to recommendations.jsonl.
+    """Append one recommendation to recommendations.jsonl with full signal contract.
 
-    Returns the written record so MCP can echo it back to Claude.
-    entry_price is fetched live from data_router so it's the actual price
-    at recommendation time.
+    Benchmark prices (SPY/QQQ/XEQT.TO + optional sector_etf) are captured at
+    entry so forward alpha is computable later. entry_price comes from
+    data_router so it reflects the actual price at recommendation time.
     """
     action = action.upper()
     conviction = conviction.upper()
@@ -56,29 +83,38 @@ def log_recommendation(
         raise ValueError(f"action must be one of {_VALID_ACTIONS}")
     if conviction not in _VALID_CONV:
         raise ValueError(f"conviction must be one of {_VALID_CONV}")
+    if confidence_source not in _VALID_CONF_SRC:
+        raise ValueError(f"confidence_source must be one of {_VALID_CONF_SRC}")
 
-    try:
-        q = data_router.get_quote(ticker.upper())
-        entry_price = q.get("price") or 0.0
-        source = q.get("source", "unknown")
-    except Exception:
-        entry_price = 0.0
-        source = "unavailable"
+    entry_price, source = _safe_quote(ticker)
+
+    bench_symbols = DEFAULT_BENCHMARKS + ((sector_etf.upper(),) if sector_etf else ())
+    benchmarks_entry = _capture_benchmark_prices(bench_symbols)
 
     rec = {
         "id": _make_id(skill, ticker, action),
         "date": date.today().isoformat(),
         "ts": time.time(),
         "skill": skill,
+        "model_version": model_version or MODEL_VERSION,
         "ticker": ticker.upper(),
         "action": action,
         "conviction": conviction,
+        "confidence_source": confidence_source,
+        "horizon_days": horizon_days,
+        "thesis": thesis,
+        "invalidation": invalidation,
         "entry_price": round(entry_price, 4),
         "price_source": source,
         "target_pct": target_pct,
         "stop_pct": stop_pct,
+        "expected_upside_pct": expected_upside_pct,
+        "expected_downside_pct": expected_downside_pct,
         "account": account,
-        "rationale_hash": hashlib.sha256(rationale.encode()).hexdigest()[:16],
+        "sector_etf": sector_etf.upper() if sector_etf else None,
+        "benchmarks_entry": benchmarks_entry,
+        "features": features or {},
+        "rationale_hash": hashlib.sha256((rationale or "").encode()).hexdigest()[:16],
         "status": "open",
         "exit_price": None,
         "exit_date": None,
@@ -91,11 +127,27 @@ def log_recommendation(
     return rec
 
 
-def score_recommendations(max_age_days: int = 90) -> dict:
-    """Mark-to-market all open recommendations, close stops/targets.
+def _benchmark_returns(rec: dict) -> dict[str, float]:
+    """Compute current return for each benchmark captured at entry."""
+    out: dict[str, float] = {}
+    benches = rec.get("benchmarks_entry") or {}
+    for sym, entry in benches.items():
+        entry_px = float(entry.get("price") or 0.0)
+        if entry_px <= 0:
+            continue
+        now_px, _ = _safe_quote(sym)
+        if now_px <= 0:
+            continue
+        out[sym] = (now_px - entry_px) / entry_px * 100
+    return out
 
-    Writes updated records to scored_recommendations.jsonl.
-    Returns summary stats.
+
+def score_recommendations(max_age_days: int = 180) -> dict:
+    """Mark-to-market all open recommendations, close stops/targets, compute alpha.
+
+    Writes updated records to scored_recommendations.jsonl. Returns summary
+    stats including alpha vs each benchmark and per-action/per-conviction
+    breakdowns.
     """
     if not _REC_FILE.exists():
         return {"error": "no recommendations.jsonl found"}
@@ -111,19 +163,17 @@ def score_recommendations(max_age_days: int = 90) -> dict:
     for rec in open_recs:
         ticker = rec["ticker"]
         action = rec["action"]
-        entry = rec.get("entry_price") or 0.0
+        entry = float(rec.get("entry_price") or 0.0)
+
+        if action in ("HOLD", "WATCH", "NO_EDGE"):
+            # not actionable — keep in log but no P&L track
+            continue
 
         if entry <= 0:
             skipped += 1
             continue
 
-        try:
-            q = data_router.get_quote(ticker)
-            current = q.get("price") or 0.0
-        except Exception:
-            skipped += 1
-            continue
-
+        current, _ = _safe_quote(ticker)
         if current <= 0:
             skipped += 1
             continue
@@ -135,24 +185,44 @@ def score_recommendations(max_age_days: int = 90) -> dict:
         else:
             ret_pct = 0.0
 
+        bench_rets = _benchmark_returns(rec)
+        # alpha = signal pnl - benchmark pnl under the same directional bet.
+        # For BUY/ADD signal pnl = +asset_ret, bench pnl = +bench_ret  -> alpha = ret_pct - br.
+        # For SELL/TRIM signal pnl = -asset_ret (= ret_pct as stored), bench pnl = -bench_ret -> alpha = ret_pct + br.
+        alpha: dict[str, float] = {}
+        for sym, br in bench_rets.items():
+            if action in ("SELL", "TRIM"):
+                alpha[sym] = round(ret_pct + br, 2)
+            else:
+                alpha[sym] = round(ret_pct - br, 2)
+
         stop = rec.get("stop_pct")
         target = rec.get("target_pct")
+        horizon = rec.get("horizon_days")
         status = "open"
 
+        age_days = (time.time() - rec.get("ts", time.time())) / 86400
         if stop is not None and ret_pct <= -abs(stop):
             status = "stopped_out"
         elif target is not None and ret_pct >= abs(target):
             status = "target_hit"
+        elif horizon is not None and age_days >= horizon:
+            status = "horizon_closed"
 
         scored_rec = dict(rec)
         scored_rec.update({
             "current_price": round(current, 4),
             "unrealized_pct": round(ret_pct, 2),
+            "benchmark_returns_pct": {k: round(v, 2) for k, v in bench_rets.items()},
+            "alpha_pct": alpha,
             "win": ret_pct > 0,
+            "beat_spy": alpha.get("SPY", 0) > 0 if "SPY" in alpha else None,
+            "beat_xeqt": alpha.get("XEQT.TO", 0) > 0 if "XEQT.TO" in alpha else None,
+            "age_days": round(age_days, 1),
             "status": status,
             "scored_at": time.time(),
         })
-        if status in ("stopped_out", "target_hit"):
+        if status in ("stopped_out", "target_hit", "horizon_closed"):
             scored_rec["exit_price"] = round(current, 4)
             scored_rec["exit_date"] = date.today().isoformat()
             scored_rec["return_pct"] = round(ret_pct, 2)
@@ -168,9 +238,9 @@ def score_recommendations(max_age_days: int = 90) -> dict:
 
 
 def get_track_record(windows: list[int] | None = None) -> dict:
-    """Rolling win-rate and P&L for 7/30/90 day windows from scored file."""
+    """Rolling per-window stats from scored file: 7/30/90/180d default."""
     if windows is None:
-        windows = [7, 30, 90]
+        windows = [7, 30, 90, 180]
     if not _SCORED_FILE.exists():
         return {"error": "no scored_recommendations.jsonl — run score_recommendations first"}
 
@@ -185,42 +255,180 @@ def get_track_record(windows: list[int] | None = None) -> dict:
 
     out["total_logged"] = len(recs)
     out["as_of"] = now
+    out["model_version"] = MODEL_VERSION
     return out
+
+
+def _bucket_init() -> dict:
+    return {"count": 0, "wins": 0, "returns": [], "alpha_spy": [], "alpha_xeqt": [],
+            "target_hits": 0, "stop_hits": 0}
+
+
+def _bucket_finalize(d: dict) -> dict:
+    n = d["count"]
+    if n == 0:
+        return {"count": 0}
+    return {
+        "count": n,
+        "win_rate_pct": round(d["wins"] / n * 100, 1),
+        "avg_return_pct": round(sum(d["returns"]) / len(d["returns"]), 2) if d["returns"] else None,
+        "avg_alpha_vs_spy_pct": round(sum(d["alpha_spy"]) / len(d["alpha_spy"]), 2) if d["alpha_spy"] else None,
+        "avg_alpha_vs_xeqt_pct": round(sum(d["alpha_xeqt"]) / len(d["alpha_xeqt"]), 2) if d["alpha_xeqt"] else None,
+        "target_hit_rate_pct": round(d["target_hits"] / n * 100, 1),
+        "stop_hit_rate_pct": round(d["stop_hits"] / n * 100, 1),
+    }
+
+
+def _accumulate(d: dict, r: dict) -> None:
+    d["count"] += 1
+    if r.get("win"):
+        d["wins"] += 1
+    if r.get("unrealized_pct") is not None:
+        d["returns"].append(r["unrealized_pct"])
+    alpha = r.get("alpha_pct") or {}
+    if "SPY" in alpha:
+        d["alpha_spy"].append(alpha["SPY"])
+    if "XEQT.TO" in alpha:
+        d["alpha_xeqt"].append(alpha["XEQT.TO"])
+    if r.get("status") == "target_hit":
+        d["target_hits"] += 1
+    elif r.get("status") == "stopped_out":
+        d["stop_hits"] += 1
 
 
 def _summary(scored: list[dict], skipped: int) -> dict:
     if not scored:
-        return {"count": 0, "skipped": skipped, "win_rate_pct": None, "avg_return_pct": None}
-    wins = sum(1 for r in scored if r.get("win"))
-    returns = [r["unrealized_pct"] for r in scored if r.get("unrealized_pct") is not None]
-    by_conviction: dict[str, dict] = {}
-    for r in scored:
-        c = r.get("conviction", "?")
-        if c not in by_conviction:
-            by_conviction[c] = {"count": 0, "wins": 0, "returns": []}
-        by_conviction[c]["count"] += 1
-        if r.get("win"):
-            by_conviction[c]["wins"] += 1
-        if r.get("unrealized_pct") is not None:
-            by_conviction[c]["returns"].append(r["unrealized_pct"])
+        return {"count": 0, "skipped": skipped}
 
-    conv_stats = {}
-    for c, d in by_conviction.items():
-        conv_stats[c] = {
-            "count": d["count"],
-            "win_rate_pct": round(d["wins"] / d["count"] * 100, 1),
-            "avg_return_pct": round(sum(d["returns"]) / len(d["returns"]), 2) if d["returns"] else None,
-        }
+    overall = _bucket_init()
+    by_conv: dict[str, dict] = {}
+    by_action: dict[str, dict] = {}
+    by_skill: dict[str, dict] = {}
+    by_conf_src: dict[str, dict] = {}
+
+    for r in scored:
+        _accumulate(overall, r)
+        for key_field, bucket in (
+            (r.get("conviction", "?"), by_conv),
+            (r.get("action", "?"), by_action),
+            (r.get("skill", "?"), by_skill),
+            (r.get("confidence_source", "?"), by_conf_src),
+        ):
+            if key_field not in bucket:
+                bucket[key_field] = _bucket_init()
+            _accumulate(bucket[key_field], r)
 
     return {
-        "count": len(scored),
+        **_bucket_finalize(overall),
         "skipped": skipped,
-        "win_rate_pct": round(wins / len(scored) * 100, 1),
-        "avg_return_pct": round(sum(returns) / len(returns), 2) if returns else None,
-        "by_conviction": conv_stats,
+        "by_conviction": {k: _bucket_finalize(v) for k, v in by_conv.items()},
+        "by_action": {k: _bucket_finalize(v) for k, v in by_action.items()},
+        "by_skill": {k: _bucket_finalize(v) for k, v in by_skill.items()},
+        "by_confidence_source": {k: _bucket_finalize(v) for k, v in by_conf_src.items()},
     }
 
 
 def _make_id(skill: str, ticker: str, action: str) -> str:
     raw = f"{skill}:{ticker}:{action}:{date.today().isoformat()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+
+def batch_log_recommendations(
+    skill: str,
+    recs: list[dict],
+    *,
+    confidence_source: str = "experimental",
+    sector_etf_by_symbol: dict[str, str] | None = None,
+    model_version: str | None = None,
+) -> dict:
+    """Bulk-log recommendations with one shared benchmark price fetch.
+
+    Each rec dict must contain at minimum: symbol, action, conviction (or
+    confidence), entry_price (or current_price), and optional thesis,
+    horizon_days, target_pct, stop_pct, expected_upside_pct,
+    expected_downside_pct, features, account.
+
+    Skips actions in {HOLD, WATCH, NO_EDGE} unless explicitly opted in
+    (these don't represent trade decisions worth tracking forward).
+    Returns count summary so the caller can audit the cycle.
+    """
+    if not recs:
+        return {"logged": 0, "skipped": 0}
+
+    sector_etf_by_symbol = sector_etf_by_symbol or {}
+    benchmarks_entry = _capture_benchmark_prices(DEFAULT_BENCHMARKS)
+    sector_cache: dict[str, dict] = {}
+
+    logged = 0
+    skipped = 0
+    failed: list[dict] = []
+
+    _CTX.mkdir(parents=True, exist_ok=True)
+
+    with _REC_FILE.open("a", encoding="utf-8") as f:
+        for r in recs:
+            action = (r.get("action") or "").upper()
+            if action in ("HOLD", "WATCH", "NO_EDGE"):
+                skipped += 1
+                continue
+            if action not in _VALID_ACTIONS:
+                failed.append({"reason": f"invalid action {action}", "rec": r})
+                continue
+
+            ticker = (r.get("symbol") or r.get("ticker") or "").upper()
+            if not ticker:
+                failed.append({"reason": "missing symbol", "rec": r})
+                continue
+
+            conviction = (r.get("conviction") or r.get("confidence") or "MED").upper()
+            if conviction in ("HIGH", "MEDIUM", "MED", "LOW"):
+                conviction = "MED" if conviction == "MEDIUM" else conviction
+            if conviction not in _VALID_CONV:
+                conviction = "MED"
+
+            entry_price = float(r.get("entry_price") or r.get("current_price") or 0.0)
+            price_source = r.get("price_source") or "rec_cycle"
+
+            sector_etf = sector_etf_by_symbol.get(ticker)
+            if sector_etf and sector_etf not in sector_cache:
+                sector_cache[sector_etf] = _capture_benchmark_prices((sector_etf,))[sector_etf]
+            bench_entry = dict(benchmarks_entry)
+            if sector_etf:
+                bench_entry[sector_etf] = sector_cache[sector_etf]
+
+            rationale = r.get("thesis") or " ".join(r.get("reasons") or []) or ""
+
+            rec = {
+                "id": _make_id(skill, ticker, action),
+                "date": date.today().isoformat(),
+                "ts": time.time(),
+                "skill": skill,
+                "model_version": model_version or MODEL_VERSION,
+                "ticker": ticker,
+                "action": action,
+                "conviction": conviction,
+                "confidence_source": confidence_source,
+                "horizon_days": r.get("horizon_days"),
+                "thesis": (r.get("thesis") or rationale)[:500],
+                "invalidation": r.get("invalidation"),
+                "entry_price": round(entry_price, 4),
+                "price_source": price_source,
+                "target_pct": r.get("target_pct"),
+                "stop_pct": r.get("stop_pct"),
+                "expected_upside_pct": r.get("expected_upside_pct"),
+                "expected_downside_pct": r.get("expected_downside_pct"),
+                "account": r.get("account"),
+                "sector_etf": sector_etf,
+                "benchmarks_entry": bench_entry,
+                "features": r.get("features") or {},
+                "rationale_hash": hashlib.sha256(rationale.encode()).hexdigest()[:16],
+                "status": "open",
+                "exit_price": None,
+                "exit_date": None,
+                "return_pct": None,
+                "win": None,
+            }
+            f.write(json.dumps(rec) + "\n")
+            logged += 1
+
+    return {"logged": logged, "skipped": skipped, "failed": failed}

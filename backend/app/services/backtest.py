@@ -38,12 +38,32 @@ import ta
 import yfinance as yf
 
 from app.services import positioning as positioning_svc
+from app.services.quant import deterministic_split_idx
+from app.services.backtest_validation import run_validation
+from app.services.run_card import generate_run_card, save_run_card
 
 _CACHE: dict[tuple, tuple[dict, float]] = {}
 _CACHE_TTL = 3600
 
+# Close-price cache shared across strategies for the same symbol+period.
+# Lets backtest_portfolio batch-fetch all uncached symbols in one yf.download
+# round-trip instead of N serial fetches inside backtest_symbol.
+_CLOSE_CACHE: dict[tuple[str, str], tuple[pd.Series, float]] = {}
+_CLOSE_TTL = 3600
+
 _STRATEGIES = ("buy_hold", "rsi_swing", "sma_cross", "crowd_fade", "crowd_buy")
 _DEFAULT_TX_BPS = 5.0  # per-leg basis points (5 bps = 0.05%)
+
+# Drawdown-penalized scoring (adapted from AI-Trader challenge_scoring.py, MIT)
+# First _DD_FREE_PCT of drawdown is "free"; excess penalised 1:1 vs return.
+_DD_FREE_PCT = 10.0
+_DD_PENALTY = 1.0
+
+
+def _risk_adjusted(total_return_pct: float, max_drawdown_pct: float) -> float:
+    """Return minus drawdown penalty on excess beyond the free threshold."""
+    excess = max(0.0, abs(max_drawdown_pct) - _DD_FREE_PCT)
+    return round(total_return_pct - excess * _DD_PENALTY, 2)
 
 
 def _annualize_factor(periods_per_year: int = 252) -> float:
@@ -75,23 +95,33 @@ def _cagr(start: float, end: float, days: int) -> float:
 
 
 def _run_buy_hold(close: pd.Series, tx_cost_bps: float = 0.0) -> dict:
+    """Buy at first bar, hold to last bar. Equity reflects entry + exit fee
+    so Sharpe / CAGR / drawdown share the same fee-adjusted basis used by
+    signal strategies — keeps cross-strategy comparison apples-to-apples.
+    """
     if close.empty:
         return _empty_result()
-    start, end = float(close.iloc[0]), float(close.iloc[-1])
     daily_ret = close.pct_change().dropna()
-    equity = (1 + daily_ret).cumprod()
+    fee_leg = tx_cost_bps / 10000.0
+    # Entry fee scales the entire equity series; exit fee applied at final bar.
+    equity = (1 + daily_ret).cumprod() * (1 - fee_leg)
+    if not equity.empty:
+        equity.iloc[-1] = float(equity.iloc[-1]) * (1 - fee_leg)
+    eq_daily_ret = equity.pct_change().dropna()
     days = (close.index[-1] - close.index[0]).days
-    # One buy + one sell = 2 legs of tx_cost_bps each (bps → fraction)
-    fee_drag = 2 * tx_cost_bps / 10000.0
-    final = float(equity.iloc[-1]) * (1 - fee_drag) if not equity.empty else 1.0
+    final = float(equity.iloc[-1]) if not equity.empty else 1.0
+    total_ret = round((final - 1) * 100, 2)
+    max_dd = round(_max_drawdown(equity), 2)
     return {
-        "total_return_pct": round((final - 1) * 100, 2),
-        "cagr_pct": round(_cagr(start, end * (1 - fee_drag), days), 2),
-        "sharpe": round(_sharpe(daily_ret), 2),
-        "max_drawdown_pct": round(_max_drawdown(equity), 2),
+        "total_return_pct": total_ret,
+        "cagr_pct": round(_cagr(1.0, final, days), 2),
+        "sharpe": round(_sharpe(eq_daily_ret), 2),
+        "max_drawdown_pct": max_dd,
+        "risk_adjusted_score": _risk_adjusted(total_ret, max_dd),
         "num_trades": 1,
         "days": days,
         "tx_cost_bps_per_leg": tx_cost_bps,
+        "_daily_ret": eq_daily_ret.values,
     }
 
 
@@ -146,14 +176,18 @@ def _run_signal(
     daily_ret = eq_series.pct_change().dropna()
     days = (aligned.index[-1] - aligned.index[0]).days
     final = equity[-1]
+    total_ret = round((final - 1) * 100, 2)
+    max_dd = round(_max_drawdown(eq_series), 2)
     return {
-        "total_return_pct": round((final - 1) * 100, 2),
+        "total_return_pct": total_ret,
         "cagr_pct": round(_cagr(1.0, final, days), 2),
         "sharpe": round(_sharpe(daily_ret), 2),
-        "max_drawdown_pct": round(_max_drawdown(eq_series), 2),
+        "max_drawdown_pct": max_dd,
+        "risk_adjusted_score": _risk_adjusted(total_ret, max_dd),
         "num_trades": len(trades),
         "days": days,
         "tx_cost_bps_per_leg": tx_cost_bps,
+        "_daily_ret": daily_ret.values,
     }
 
 
@@ -163,9 +197,11 @@ def _empty_result() -> dict:
         "cagr_pct": 0.0,
         "sharpe": 0.0,
         "max_drawdown_pct": 0.0,
+        "risk_adjusted_score": 0.0,
         "num_trades": 0,
         "days": 0,
         "tx_cost_bps_per_leg": 0.0,
+        "_daily_ret": np.array([], dtype=float),
     }
 
 
@@ -183,7 +219,13 @@ def _sma_cross_signal(close: pd.Series) -> pd.Series:
 
 
 def _fetch_close(symbol: str, period: str) -> pd.Series:
-    """Download Close series for one symbol."""
+    """Close series for one symbol. Hits _CLOSE_CACHE first to share data
+    across strategies and across backtest_portfolio batch prefetch.
+    """
+    key = (symbol.upper(), period)
+    entry = _CLOSE_CACHE.get(key)
+    if entry and (time.time() - entry[1]) < _CLOSE_TTL:
+        return entry[0]
     try:
         df = yf.download(
             symbol,
@@ -201,7 +243,54 @@ def _fetch_close(symbol: str, period: str) -> pd.Series:
         df.columns = df.columns.get_level_values(0)
     if "Close" not in df.columns:
         return pd.Series(dtype=float)
-    return df["Close"].dropna()
+    series = df["Close"].dropna()
+    _CLOSE_CACHE[key] = (series, time.time())
+    return series
+
+
+def _prefetch_closes(symbols: list[str], period: str) -> None:
+    """Batch-fetch close series for all uncached symbols in one yf.download.
+    Populates _CLOSE_CACHE so subsequent _fetch_close calls hit the cache.
+    """
+    now = time.time()
+    to_fetch = [
+        s for s in symbols
+        if (entry := _CLOSE_CACHE.get((s.upper(), period))) is None
+        or (now - entry[1]) >= _CLOSE_TTL
+    ]
+    if len(to_fetch) <= 1:
+        return  # single-symbol falls through to _fetch_close anyway
+    try:
+        data = yf.download(
+            to_fetch,
+            period=period,
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+            group_by="ticker",
+            threads=True,
+        )
+    except Exception as e:
+        print(f"[backtest] batch prefetch failed: {e}", flush=True)
+        return
+    if data is None or data.empty:
+        return
+    for sym in to_fetch:
+        try:
+            if isinstance(data.columns, pd.MultiIndex):
+                if sym in data.columns.get_level_values(0):
+                    sub = data[sym]
+                else:
+                    continue
+            else:
+                sub = data
+            if "Close" not in sub.columns:
+                continue
+            series = sub["Close"].dropna()
+            if not series.empty:
+                _CLOSE_CACHE[(sym.upper(), period)] = (series, time.time())
+        except Exception:
+            continue
 
 
 def _crowding_filter(symbol: str) -> str:
@@ -297,7 +386,7 @@ def backtest_symbol(
         crowding_label = _crowding_filter(symbol)
 
     if walk_forward and len(close) >= 60:
-        split_idx = int(len(close) * train_frac)
+        split_idx = deterministic_split_idx(symbol, len(close), train_frac)
         in_sample = close.iloc[:split_idx]
         out_sample = close.iloc[split_idx:]
         is_metrics = _run_strategy_on_window(
@@ -309,6 +398,11 @@ def backtest_symbol(
         full_metrics = _run_strategy_on_window(
             strategy, close, lookback_days, tx_cost_bps, crowding_label,
         )
+        is_ret = is_metrics.pop("_daily_ret", np.array([]))
+        oos_ret = oos_metrics.pop("_daily_ret", np.array([]))
+        full_ret = full_metrics.pop("_daily_ret", np.array([]))
+        is_metrics["validation"] = run_validation(is_ret)
+        oos_metrics["validation"] = run_validation(oos_ret)
         result = {
             "symbol": symbol,
             "strategy": strategy,
@@ -318,6 +412,7 @@ def backtest_symbol(
             "out_of_sample": oos_metrics,
             # Top-level fields mirror full-window — keeps shape compatible
             **full_metrics,
+            "validation": run_validation(full_ret),
             # Decay = how much OOS underperformed IS (negative = worse OOS)
             "oos_minus_is_pct": round(
                 oos_metrics.get("total_return_pct", 0.0)
@@ -328,7 +423,13 @@ def backtest_symbol(
         metrics = _run_strategy_on_window(
             strategy, close, lookback_days, tx_cost_bps, crowding_label,
         )
-        result = {"symbol": symbol, "strategy": strategy, **metrics}
+        daily_ret = metrics.pop("_daily_ret", np.array([]))
+        result = {
+            "symbol": symbol,
+            "strategy": strategy,
+            **metrics,
+            "validation": run_validation(daily_ret),
+        }
 
     if crowding_label is not None:
         result["crowding_label_at_run"] = crowding_label
@@ -359,6 +460,11 @@ def backtest_portfolio(
     if bad:
         return {"error": f"unknown strategies: {bad}"}
 
+    # Prefetch all uncached close series in one batch HTTP call before strategy
+    # loop — avoids N serial yfinance fetches across the symbol×strategy matrix.
+    period = "2y" if lookback_days > 365 else "1y"
+    _prefetch_closes(symbols, period)
+
     per_symbol: dict[str, dict[str, dict]] = {}
     for sym in symbols:
         per_symbol[sym] = {}
@@ -377,6 +483,7 @@ def backtest_portfolio(
     for strat in strategies:
         agg_return = 0.0
         agg_cagr = 0.0
+        agg_ras = 0.0
         worst_dd = 0.0
         n_valid = 0
         for sym in symbols:
@@ -385,11 +492,13 @@ def backtest_portfolio(
                 continue
             agg_return += r.get("total_return_pct", 0.0) * norm_w[sym]
             agg_cagr += r.get("cagr_pct", 0.0) * norm_w[sym]
+            agg_ras += r.get("risk_adjusted_score", 0.0) * norm_w[sym]
             worst_dd = min(worst_dd, r.get("max_drawdown_pct", 0.0))
             n_valid += 1
         portfolio_totals[strat] = {
             "weighted_total_return_pct": round(agg_return, 2),
             "weighted_cagr_pct": round(agg_cagr, 2),
+            "weighted_risk_adjusted_score": round(agg_ras, 2),
             "worst_position_drawdown_pct": round(worst_dd, 2),
             "symbols_evaluated": n_valid,
         }
@@ -405,6 +514,24 @@ def backtest_portfolio(
                 totals["weighted_total_return_pct"] - base, 2
             )
 
+    config = {
+        "lookback_days": lookback_days,
+        "strategies": strategies,
+        "tx_cost_bps": tx_cost_bps,
+        "walk_forward": walk_forward,
+        "train_frac": train_frac if walk_forward else None,
+    }
+    card = generate_run_card(
+        strategy=",".join(strategies),
+        config=config,
+        metrics=portfolio_totals,
+        symbols=symbols,
+    )
+    try:
+        save_run_card(card)
+    except Exception:
+        pass
+
     return {
         "lookback_days": lookback_days,
         "strategies": strategies,
@@ -414,4 +541,9 @@ def backtest_portfolio(
         "per_symbol": per_symbol,
         "portfolio_totals": portfolio_totals,
         "delta_vs_buy_hold_pct": deltas,
+        "run_card": {
+            "run_id": card["run_id"],
+            "timestamp_utc": card["timestamp_utc"],
+            "config_hash": card["config_hash"],
+        },
     }

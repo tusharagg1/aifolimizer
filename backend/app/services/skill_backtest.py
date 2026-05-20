@@ -37,6 +37,120 @@ _BENCH_XEQT = "XEQT.TO"
 _OUT_DIR = Path(__file__).resolve().parents[2] / ".cache" / "backtests"
 
 
+# ---- Unbiased universe ---------------------------------------------------
+# Spans 11 GICS sectors + factor ETFs + index ETFs + Canadian exposure.
+# Mix of winners/losers/sideways from the past 5 years — explicitly avoids
+# the AAPL/MSFT/NVDA/XEQT/VFV cherry-picked set the prior backtest used.
+DEFAULT_UNIVERSE = [
+    # Sector SPDRs (all 11)
+    "XLK", "XLF", "XLV", "XLY", "XLP", "XLE",
+    "XLI", "XLU", "XLRE", "XLB", "XLC",
+    # Index ETFs (broad + style + size)
+    "SPY", "QQQ", "IWM", "VTI", "VTV", "VUG", "EFA", "EEM",
+    # Canadian core
+    "XEQT.TO", "VFV.TO", "VCN.TO", "XIU.TO",
+    # Large-cap tech (some winners, some sideways)
+    "AAPL", "MSFT", "GOOGL", "META", "AMZN",
+    # Megacap non-tech
+    "BRK-B", "JPM", "JNJ", "PG", "WMT", "XOM", "CVX",
+    # Mid/small picks across sectors (mix of winners + laggards)
+    "F", "GE", "DIS", "BA", "INTC", "VZ", "T", "PFE", "MRK",
+    # Cyclicals + commodities
+    "CAT", "DE", "FCX", "NEM",
+    # Drawdown / failure exposure (mean-revert + bear stress)
+    "PYPL", "PARA", "WBA",
+]
+
+
+# ---- Walk-forward + deflated Sharpe --------------------------------------
+
+def _deflated_sharpe(daily_ret: pd.Series, n_trials: int = 1) -> float:
+    """Bailey & López de Prado deflated Sharpe ratio.
+
+    Penalizes a raw Sharpe by sample size, skew, kurtosis, and the number of
+    backtest configurations tried (multiple-testing correction). When you run
+    a strategy across N rule variants the effective SR0 grows with N — DSR
+    asks: is the observed SR statistically distinguishable from the *best*
+    SR you'd expect by chance after N trials?
+
+    Returns a probability-style score in [0, 1] — values >= 0.95 typically
+    considered evidence of real edge. Below 0.5 is essentially "could be
+    luck under multiple testing".
+    """
+    r = daily_ret.dropna()
+    n = len(r)
+    if n < 30 or r.std() == 0:
+        return 0.0
+    sr = r.mean() / r.std() * _annualize()
+    # Higher moments of the return distribution
+    skew = float(r.skew())
+    excess_kurt = float(r.kurtosis())  # pandas returns excess kurtosis already
+    n_trials = max(1, n_trials)
+    # Expected max SR under N independent trials (BLP 2014 Eq 7)
+    euler_mascheroni = 0.5772156649
+    e_max_sr = (1 - euler_mascheroni) * _zinv(1 - 1 / n_trials) + \
+        euler_mascheroni * _zinv(1 - 1 / (n_trials * math.e))
+    # Variance of SR estimate accounting for higher moments (BLP Eq 9)
+    var_sr = (1 - skew * sr + (excess_kurt / 4) * sr * sr) / (n - 1)
+    if var_sr <= 0:
+        return 0.0
+    z = (sr - e_max_sr) / math.sqrt(var_sr)
+    return round(_zcdf(z), 3)
+
+
+def _zinv(p: float) -> float:
+    """Inverse standard normal CDF — rational approximation."""
+    if p <= 0 or p >= 1:
+        return 0.0
+    # Beasley-Springer-Moro approximation
+    a = [-39.69683028665376, 220.9460984245205, -275.9285104469687,
+         138.357751867269, -30.66479806614716, 2.506628277459239]
+    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866,
+         66.80131188771972, -13.28068155288572]
+    c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
+         -2.549732539343734, 4.374664141464968, 2.938163982698783]
+    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996,
+         3.754408661907416]
+    p_low = 0.02425
+    p_high = 1 - p_low
+    if p < p_low:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    if p <= p_high:
+        q = p - 0.5
+        r2 = q * q
+        return (((((a[0] * r2 + a[1]) * r2 + a[2]) * r2 + a[3]) * r2 + a[4]) * r2 + a[5]) * q / \
+               (((((b[0] * r2 + b[1]) * r2 + b[2]) * r2 + b[3]) * r2 + b[4]) * r2 + 1)
+    q = math.sqrt(-2 * math.log(1 - p))
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
+           ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+
+
+def _zcdf(z: float) -> float:
+    """Standard normal CDF using erf."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _regime_label(spy_close: pd.Series) -> pd.Series:
+    """Bull / bear / sideways per day from SPY SMA200 slope + price-relative.
+
+    bull:     price > SMA200 AND SMA200 rising over 20 sessions
+    bear:     price < SMA200 AND SMA200 falling over 20 sessions
+    sideways: anything else
+    """
+    if spy_close.empty:
+        return pd.Series(dtype=object)
+    sma200 = spy_close.rolling(200).mean()
+    sma_slope = sma200.diff(20)
+    label = pd.Series("sideways", index=spy_close.index, dtype=object)
+    bull = (spy_close > sma200) & (sma_slope > 0)
+    bear = (spy_close < sma200) & (sma_slope < 0)
+    label[bull] = "bull"
+    label[bear] = "bear"
+    return label
+
+
 @dataclass
 class Trade:
     symbol: str
@@ -151,9 +265,15 @@ def _cagr(start: float, end: float, days: int) -> float:
 def _simulate(
     close: pd.Series, signal: pd.Series, tx_cost_bps: float
 ) -> tuple[pd.Series, list[Trade], list[float]]:
-    """Long-only walk. Returns (equity_curve, trades, daily_returns_list)."""
+    """Long-only walk. Returns (equity_curve, trades, daily_returns_list).
+
+    Signal at bar i is computed from data up to bar i's close, so trading on
+    that same bar would be lookahead. Shift signal by one bar so the decision
+    made on day i-1's close is executed at day i's close.
+    """
     aligned = pd.concat([close, signal], axis=1).dropna()
     aligned.columns = ["close", "sig"]
+    aligned["sig"] = aligned["sig"].shift(1).fillna(0).astype(int)
     if len(aligned) < 2:
         return pd.Series(dtype=float), [], []
 
@@ -459,3 +579,214 @@ def latest_results() -> dict | None:
     if not files:
         return None
     return json.loads(files[-1].read_text(encoding="utf-8"))
+
+
+# ---- Walk-forward backtest runner ----------------------------------------
+
+def walk_forward_backtest(
+    skill: str,
+    universe: list[str] | None = None,
+    *,
+    lookback_days: int = 365 * 5,
+    window_days: int = 252,
+    step_days: int = 63,
+    tx_cost_bps: float = 5.0,
+    n_trials_for_dsr: int = 13,
+) -> dict:
+    """Walk-forward backtest with regime split + deflated Sharpe.
+
+    Default universe is `DEFAULT_UNIVERSE` (40+ symbols across all 11 GICS
+    sectors + factor/style ETFs + Canadian core + winners/losers). Override
+    only when testing a deliberately scoped subset.
+
+    Splits the lookback into rolling out-of-sample windows of `window_days`
+    advancing by `step_days`. For each window: replay the signal on data
+    from that window only, compute returns, then aggregate. Since the
+    skill rules are non-parametric (no in-sample fitting), each window
+    yields a true OOS result — stability across windows is what we measure.
+
+    Returns:
+      {
+        "skill": str, "strategy_spec": str,
+        "n_windows": int, "aggregate": {...},
+        "by_window": [{"start": iso, "end": iso, "return_pct": ...}, ...],
+        "by_regime": {"bull": {...}, "bear": {...}, "sideways": {...}},
+        "deflated_sharpe": float in [0,1],
+        "universe_size": int, "as_of": ts,
+      }
+    """
+    if skill not in SKILL_RULES:
+        raise ValueError(f"unknown skill: {skill}")
+    spec, rule = SKILL_RULES[skill]
+    universe = universe or DEFAULT_UNIVERSE
+
+    spy_close = _bars_to_close(_BENCH_SPY, lookback_days)
+    regimes = _regime_label(spy_close) if not spy_close.empty else pd.Series(dtype=object)
+
+    per_symbol_eq: list[pd.Series] = []
+    per_symbol_trades: list[Trade] = []
+    notes: list[str] = []
+
+    for sym in universe:
+        close = _bars_to_close(sym, lookback_days)
+        if close.empty or len(close) < window_days:
+            notes.append(f"{sym}: insufficient history (<{window_days}d)")
+            continue
+        signal = rule(close)
+        eq, trades, _ = _simulate(close, signal, tx_cost_bps)
+        if eq.empty:
+            continue
+        per_symbol_eq.append(eq)
+        per_symbol_trades.extend(trades)
+
+    if not per_symbol_eq:
+        return {
+            "skill": skill, "strategy_spec": spec, "error": "no usable symbols",
+            "universe_size": len(universe), "notes": notes,
+        }
+
+    portfolio_eq = pd.concat(per_symbol_eq, axis=1).ffill().mean(axis=1).dropna()
+    daily_ret = portfolio_eq.pct_change().dropna()
+
+    # Walk-forward window iteration
+    window_results: list[dict] = []
+    idx = portfolio_eq.index
+    start_pos = 0
+    while start_pos + window_days <= len(idx):
+        end_pos = start_pos + window_days
+        win_eq = portfolio_eq.iloc[start_pos:end_pos]
+        win_ret = daily_ret.iloc[start_pos:end_pos]
+        if win_eq.empty or win_ret.empty:
+            start_pos += step_days
+            continue
+        ret_pct = (float(win_eq.iloc[-1]) / float(win_eq.iloc[0]) - 1) * 100
+        sharpe = _sharpe(win_ret)
+        mdd = _max_dd(win_eq)
+        window_results.append({
+            "start": win_eq.index[0].strftime("%Y-%m-%d"),
+            "end": win_eq.index[-1].strftime("%Y-%m-%d"),
+            "return_pct": round(ret_pct, 2),
+            "sharpe": round(sharpe, 2),
+            "max_dd_pct": round(mdd, 2),
+        })
+        start_pos += step_days
+
+    # Regime split — align portfolio daily returns to SPY regime label
+    by_regime: dict[str, dict] = {}
+    if not regimes.empty:
+        joined = pd.concat([daily_ret.rename("ret"), regimes.rename("regime")],
+                            axis=1, join="inner").dropna()
+        for label in ("bull", "bear", "sideways"):
+            subset = joined[joined["regime"] == label]["ret"]
+            if subset.empty:
+                continue
+            by_regime[label] = {
+                "n_days": int(len(subset)),
+                "ann_return_pct": round(float(subset.mean()) * 252 * 100, 2),
+                "ann_vol_pct": round(float(subset.std()) * _annualize() * 100, 2),
+                "sharpe": round(_sharpe(subset), 2),
+            }
+
+    # Aggregate stats over the full sample
+    total_ret = (float(portfolio_eq.iloc[-1]) - 1) * 100
+    sharpe_full = _sharpe(daily_ret)
+    sortino_full = _sortino(daily_ret)
+    mdd_full = _max_dd(portfolio_eq)
+    wins = sum(1 for t in per_symbol_trades if t.win)
+    hit = (wins / len(per_symbol_trades) * 100) if per_symbol_trades else 0.0
+
+    spy_ret = _bench_return(_BENCH_SPY, lookback_days)
+    xeqt_ret = _bench_return(_BENCH_XEQT, lookback_days)
+
+    dsr = _deflated_sharpe(daily_ret, n_trials=n_trials_for_dsr)
+
+    # Stability: % windows with positive return + sharpe std
+    pos_windows = sum(1 for w in window_results if w["return_pct"] > 0)
+    win_consistency = (pos_windows / len(window_results) * 100) if window_results else 0.0
+    sharpes = [w["sharpe"] for w in window_results if w["sharpe"] is not None]
+    sharpe_stability = (
+        round(float(np.std(sharpes)), 2) if sharpes else None
+    )
+
+    return {
+        "skill": skill,
+        "strategy_spec": spec,
+        "universe_size": len(universe),
+        "n_symbols_used": len(per_symbol_eq),
+        "n_windows": len(window_results),
+        "window_days": window_days,
+        "step_days": step_days,
+        "aggregate": {
+            "total_return_pct": round(total_ret, 2),
+            "sharpe": round(sharpe_full, 2),
+            "sortino": round(sortino_full, 2),
+            "max_drawdown_pct": round(mdd_full, 2),
+            "hit_rate_pct": round(hit, 2),
+            "num_trades": len(per_symbol_trades),
+            "alpha_vs_spy_pct": (
+                round(total_ret - spy_ret, 2) if spy_ret is not None else None
+            ),
+            "alpha_vs_xeqt_pct": (
+                round(total_ret - xeqt_ret, 2) if xeqt_ret is not None else None
+            ),
+            "win_consistency_pct": round(win_consistency, 1),
+            "sharpe_stability_std": sharpe_stability,
+        },
+        "deflated_sharpe": dsr,
+        "deflated_sharpe_interpretation": _dsr_interpret(dsr),
+        "by_window": window_results,
+        "by_regime": by_regime,
+        "notes": notes,
+        "as_of": time.time(),
+    }
+
+
+def _dsr_interpret(dsr: float) -> str:
+    if dsr >= 0.95:
+        return "strong evidence of real edge (>=95% confidence after multiple-testing correction)"
+    if dsr >= 0.80:
+        return "moderate evidence — likely real edge"
+    if dsr >= 0.50:
+        return "weak evidence — borderline, could be noise"
+    return "no statistical evidence — likely overfit or luck"
+
+
+def walk_forward_all_skills(
+    universe: list[str] | None = None,
+    *,
+    lookback_days: int = 365 * 5,
+    window_days: int = 252,
+    step_days: int = 63,
+    tx_cost_bps: float = 5.0,
+    persist: bool = True,
+) -> dict:
+    n = len(SKILL_RULES)
+    out = {
+        "as_of": time.time(),
+        "lookback_days": lookback_days,
+        "window_days": window_days,
+        "step_days": step_days,
+        "tx_cost_bps": tx_cost_bps,
+        "universe": universe or DEFAULT_UNIVERSE,
+        "n_trials_for_dsr": n,
+        "results": [],
+    }
+    for skill in list_skills():
+        try:
+            out["results"].append(walk_forward_backtest(
+                skill, universe,
+                lookback_days=lookback_days,
+                window_days=window_days,
+                step_days=step_days,
+                tx_cost_bps=tx_cost_bps,
+                n_trials_for_dsr=n,
+            ))
+        except Exception as e:
+            out["results"].append({"skill": skill, "error": str(e)})
+
+    if persist:
+        _OUT_DIR.mkdir(parents=True, exist_ok=True)
+        path = _OUT_DIR / f"walk_forward_{int(time.time())}.json"
+        path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+        out["persisted_to"] = str(path)
+    return out

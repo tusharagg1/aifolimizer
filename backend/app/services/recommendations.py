@@ -24,11 +24,46 @@ import httpx
 
 from app.services import technicals as tech_svc
 from app.services import fundamentals as fund_svc
+from app.services.community import score_text_polarity
 from app.services.fundamentals import get_earnings_expected_moves
 from app.services.macro import market_breadth
+from app.services.signal_quality import score_quality
+from app.services import signal_history
+from app.services import paper_trade
 
 
-_ACTION_ORDER = {"SELL": 0, "BUY": 1, "WATCH": 2, "HOLD": 3}
+_SECTOR_ETF_MAP = {
+    "technology": "XLK",
+    "information technology": "XLK",
+    "financials": "XLF",
+    "financial services": "XLF",
+    "healthcare": "XLV",
+    "health care": "XLV",
+    "consumer discretionary": "XLY",
+    "consumer cyclical": "XLY",
+    "consumer staples": "XLP",
+    "consumer defensive": "XLP",
+    "energy": "XLE",
+    "industrials": "XLI",
+    "utilities": "XLU",
+    "real estate": "XLRE",
+    "basic materials": "XLB",
+    "materials": "XLB",
+    "communication services": "XLC",
+    "communications": "XLC",
+}
+
+
+def _sector_etf_for(sector: str | None) -> str | None:
+    if not sector:
+        return None
+    return _SECTOR_ETF_MAP.get(sector.strip().lower())
+
+
+_ACTION_ORDER = {"SELL": 0, "TRIM": 1, "BUY": 2, "WATCH": 3, "HOLD": 4, "NO_EDGE": 5}
+
+_REGIME_BUY_HOSTILE = frozenset({"bear_high_fear", "bear_low_fear"})
+_REGIME_SELL_HOSTILE = frozenset({"bull_low_fear"})
 
 _ETF_ASSET_CLASSES = {"etf", "index", "mutual_fund"}
 _CRYPTO_ASSET_CLASSES = {"crypto", "cryptocurrency"}
@@ -79,9 +114,13 @@ def _fetch_sentiment(symbol: str) -> float:
         llm_score = _try_llm_sentiment(symbol, raw_titles)
         if llm_score is not None:
             return llm_score
-        titles = [t.lower() for t in raw_titles]
-        pos = sum(1 for t in titles if any(w in t.split() for w in _POSITIVE))
-        neg = sum(1 for t in titles if any(w in t.split() for w in _NEGATIVE))
+        # Negation-aware token scan: counts whole tokens only and flips polarity
+        # when preceded by "not"/"no"/etc — "not bullish" → bear, not bull.
+        pos = neg = 0
+        for title in raw_titles:
+            p, n = score_text_polarity(title, _POSITIVE, _NEGATIVE)
+            pos += p
+            neg += n
         total = pos + neg
         return round((pos - neg) / total, 2) if total > 0 else 0.0
     except Exception:
@@ -327,20 +366,29 @@ def _score_position(
     )
     score = max(0.0, min(10.0, round(raw_score, 1)))
 
-    # ── Action with convergence gate ──────────────────────────────────────────
-    if score >= 7.5:
-        action = "BUY"
-    elif score >= 5.5:
-        action = "HOLD"
-    elif score >= 3.5:
-        action = "WATCH"
-    else:
-        action = "SELL"
+    # ── Action with NO_EDGE / convergence / adversarial / regime gates ────────
+    # Strict accuracy-first decision rules. BUY requires 3-of-4 sub-signal
+    # convergence with no conflicts; SELL requires explicit deterioration
+    # (stage 3/4 + weak fundamentals). Otherwise downgrade to TRIM/WATCH/
+    # NO_EDGE. This trades signal frequency for precision.
+    primary_count = confirming + conflicting
+    sq_overall = score_quality(" ".join(reasons), symbol=symbol)["overall"]
 
-    # Conflicting signals → cap at WATCH. Don't take strong action without conviction.
-    if confidence == "low" and action in ("BUY", "SELL"):
-        action = "WATCH"
-        reasons.append("Mixed signals across technical/fundamental/macro — holding at WATCH")
+    action, gate_reason = _decide_action(
+        score=score,
+        primary_count=primary_count,
+        confirming=confirming,
+        conflicting=conflicting,
+        dominant_dir=dominant,
+        stage=stage,
+        fund_score=fund_score,
+        macro_score=macro_score,
+        signal_quality=sq_overall,
+        market_regime=market_regime,
+        is_etf=is_etf,
+    )
+    if gate_reason:
+        reasons.append(gate_reason)
 
     current_price = tech.get("current_price")
     analyst_target = fund.get("analyst_target_price") if fund else None
@@ -443,6 +491,14 @@ def _score_position(
         if stop_gap_pct > 0:
             max_loss_dollars = round(position_value * (kelly_pct / 100) * stop_gap_pct, 2)
 
+    # ── Signal quality score ──────────────────────────────────────────────────
+    # Scored on the full reasons text so quality reflects thesis depth/specificity
+    reasons_text = " ".join(reasons) + (
+        f" stop {stop_loss} target {take_profit} risk/reward {risk_reward}"
+        if stop_loss and take_profit else ""
+    )
+    sq = score_quality(reasons_text, symbol=symbol)
+
     # ── Hedge flag ────────────────────────────────────────────────────────────
     # Fires when position has elevated binary or reversal risk
     hedge_flag = False
@@ -484,6 +540,7 @@ def _score_position(
     return {
         "symbol": symbol,
         "name": position.get("name") or symbol,
+        "currency": str(position.get("currency") or "USD").upper(),
         "action": action,
         "score": score,
         "confidence": confidence,
@@ -521,11 +578,104 @@ def _score_position(
         # Hedge flag
         "hedge_flag": hedge_flag,
         "hedge_reason": hedge_reason,
+        # Signal quality (AI-Trader heuristic-v1): 0-5 overall, sub-scores available
+        "signal_quality": sq["overall"],
+        "signal_quality_detail": {
+            "verifiability": sq["verifiability"],
+            "evidence": sq["evidence"],
+            "specificity": sq["specificity"],
+            "novelty": sq["novelty"],
+            "completeness": sq["completeness"],
+            "direction": sq["prediction"]["direction"],
+        },
     }
 
 
 def _fmt_price(price: float) -> str:
     return f"${price:.2f}"
+
+
+def _decide_action(
+    *,
+    score: float,
+    primary_count: int,
+    confirming: int,
+    conflicting: int,
+    dominant_dir: int,
+    stage: int | None,
+    fund_score: float,
+    macro_score: float,
+    signal_quality: float,
+    market_regime: str,
+    is_etf: bool,
+) -> tuple[str, str | None]:
+    """Accuracy-first action selector.
+
+    Returns (action, gate_reason). Rules — strictest first:
+
+    1. NO_EDGE: zero or one directional sub-signal, OR thesis too thin
+       (signal_quality < 2 of 5). The engine refuses to call when evidence
+       is insufficient — better to skip a trade than emit a wrong one.
+
+    2. Adversarial / conflict cap: if conflicting >= confirming, downgrade
+       to WATCH regardless of score.
+
+    3. SELL gate: only emit SELL when stage in {3,4} + fund_score <= -0.5
+       + score < 3.5 + 3-signal convergence. Otherwise TRIM/WATCH/NO_EDGE.
+       ETFs skip the fundamentals requirement.
+
+    4. BUY gate: score >= 7.5 + 3-signal convergence + zero conflicts +
+       regime not hostile. Otherwise downgrade.
+
+    5. Default HOLD for everything in between.
+    """
+    if signal_quality < 2:
+        return "NO_EDGE", f"Signal quality {signal_quality:.1f}/5 — thesis too thin to act"
+
+    if primary_count == 0:
+        return "NO_EDGE", "No directional sub-signals — no measurable edge"
+
+    if confirming <= 1 and conflicting >= 1:
+        return "NO_EDGE", f"Signals contradict ({confirming} for, {conflicting} against) — no advantage"
+
+    if conflicting >= confirming:
+        return "WATCH", "Adversarial check — bear case as strong as bull, refusing directional call"
+
+    # Bearish path
+    if dominant_dir == -1:
+        fund_ok = is_etf or fund_score <= -0.5
+        if (
+            score < 3.5
+            and stage in (3, 4)
+            and fund_ok
+            and confirming >= 3
+            and market_regime not in _REGIME_SELL_HOSTILE
+        ):
+            return "SELL", "Stage 3/4 trend + weak fundamentals + 3-signal convergence"
+        if score < 5.0 and stage in (3, 4):
+            return "TRIM", "Bearish lean — trim risk, not yet full SELL conviction"
+        if score < 5.5:
+            return "WATCH", "Bearish but insufficient deterioration for SELL"
+        return "HOLD", None
+
+    # Bullish path
+    if dominant_dir == 1:
+        if (
+            score >= 7.5
+            and confirming >= 3
+            and conflicting == 0
+            and market_regime not in _REGIME_BUY_HOSTILE
+        ):
+            return "BUY", "3+ sub-signals converge bullish, regime compatible"
+        if score >= 7.5 and market_regime in _REGIME_BUY_HOSTILE:
+            return "WATCH", f"Bullish setup but {market_regime} regime — defer until trend confirms"
+        if score >= 6.5 and confirming >= 2:
+            return "WATCH", "Promising — needs 3-signal confirmation before BUY"
+        if score >= 5.5:
+            return "HOLD", None
+        return "NO_EDGE", "Bullish score too weak to act"
+
+    return "HOLD", None
 
 
 def get_recommendations(portfolio_positions: list[dict]) -> list[dict]:
@@ -537,9 +687,18 @@ def get_recommendations(portfolio_positions: list[dict]) -> list[dict]:
     if not portfolio_positions:
         return []
 
-    cache_key = hashlib.md5(
-        ",".join(sorted(p["symbol"] for p in portfolio_positions)).encode()
-    ).hexdigest()
+    # Include rounded position weights in the cache key — overweight_penalty,
+    # kelly_pct, ev_dollars and hedge_flag all depend on weight, so a key built
+    # on symbols alone would serve stale outputs after a rebalance for 30 min.
+    composition = sorted(
+        (
+            str(p.get("symbol")),
+            round(float(p.get("weight") or 0), 1),
+            round(float(p.get("market_value_cad") or 0), -2),
+        )
+        for p in portfolio_positions
+    )
+    cache_key = hashlib.md5(repr(composition).encode()).hexdigest()
     entry = _REC_CACHE.get(cache_key)
     if entry and time.time() - entry[1] < _REC_CACHE_TTL:
         return entry[0]
@@ -581,6 +740,83 @@ def get_recommendations(portfolio_positions: list[dict]) -> list[dict]:
             -r["score"] if r["action"] == "BUY" else r["score"],
         )
     )
+
+    # Append each rec to signal_history.jsonl for forward-horizon accuracy
+    # auditing. Idempotent per (date, source, symbol, action) — duplicate
+    # same-day signals are skipped inside log_signal.
+    for rec in results:
+        try:
+            signal_history.log_signal(rec, source="recommendations")
+        except Exception:
+            pass
+
+    # Full-contract trade log into paper_trade for benchmark-relative
+    # alpha scoring. Single benchmark fetch shared across the whole batch.
+    try:
+        sector_map: dict[str, str] = {}
+        for rec in results:
+            sym = rec.get("symbol")
+            sector = (fund_data.get(sym) or {}).get("sector")
+            etf = _sector_etf_for(sector)
+            if sym and etf:
+                sector_map[sym] = etf
+
+        contract_recs: list[dict] = []
+        for rec in results:
+            action = rec.get("action")
+            if action not in ("BUY", "SELL", "TRIM", "ADD"):
+                continue
+            target = rec.get("take_profit")
+            entry = rec.get("current_price")
+            stop = rec.get("stop_loss")
+            target_pct = None
+            stop_pct = None
+            expected_upside_pct = None
+            expected_downside_pct = None
+            if entry and entry > 0:
+                if target:
+                    target_pct = round(abs(target - entry) / entry * 100, 2)
+                    expected_upside_pct = round((target - entry) / entry * 100, 2)
+                if stop:
+                    stop_pct = round(abs(entry - stop) / entry * 100, 2)
+                    expected_downside_pct = round((stop - entry) / entry * 100, 2)
+            contract_recs.append({
+                "symbol": rec.get("symbol"),
+                "action": action,
+                "conviction": (rec.get("confidence") or "MED").upper().replace("MEDIUM", "MED"),
+                "current_price": entry,
+                "thesis": " | ".join(rec.get("reasons") or [])[:500],
+                "invalidation": f"stop {stop} ({rec.get('stop_type')})" if stop else None,
+                "target_pct": target_pct,
+                "stop_pct": stop_pct,
+                "expected_upside_pct": expected_upside_pct,
+                "expected_downside_pct": expected_downside_pct,
+                "horizon_days": 21,
+                "reasons": rec.get("reasons"),
+                "features": {
+                    "tech_score": rec.get("tech_score"),
+                    "fund_score": rec.get("fund_score"),
+                    "macro_score": rec.get("macro_score"),
+                    "sentiment": rec.get("sentiment"),
+                    "rsi": rec.get("rsi"),
+                    "stage": rec.get("stage"),
+                    "market_regime": rec.get("market_regime"),
+                    "signal_quality": rec.get("signal_quality"),
+                    "risk_reward": rec.get("risk_reward"),
+                    "win_prob": rec.get("win_prob"),
+                    "kelly_pct": rec.get("kelly_pct"),
+                    "days_to_earnings": rec.get("days_to_earnings"),
+                },
+            })
+
+        paper_trade.batch_log_recommendations(
+            skill="recommendations_engine",
+            recs=contract_recs,
+            confidence_source="experimental",
+            sector_etf_by_symbol=sector_map,
+        )
+    except Exception:
+        pass
 
     _REC_CACHE[cache_key] = (results, time.time())
     return results

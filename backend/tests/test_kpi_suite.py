@@ -328,13 +328,16 @@ class TestRecommendationScoreDirection:
         assert rec["action"] == "SELL"
         assert rec["score"] < 5.5
 
-    def test_neutral_signals_give_hold_or_watch(self):
+    def test_neutral_signals_give_hold_watch_or_no_edge(self):
+        # No directional sub-signals → engine must refuse BUY/SELL.
+        # Acceptable: HOLD (neutral), WATCH (forming), NO_EDGE (no advantage).
         neutral_tech = {"stage": None, "rsi_14": 50.0, "macd_hist": 0.0, "trend": None,
                         "sma_50": 100.0, "current_price": 100.0}
         neutral_fund = {"analyst_recommendation": "hold"}
         neutral_macro = {"market_regime": "bull_low_fear", "vix": 18.0}
         rec = _score_position("TEST", _BASE_POS, neutral_tech, neutral_fund, neutral_macro, 0.0)
-        assert rec["action"] in ("HOLD", "WATCH")
+        assert rec["action"] in ("HOLD", "WATCH", "NO_EDGE")
+        assert rec["action"] not in ("BUY", "SELL")
 
     def test_conflicting_signals_capped_at_watch(self):
         # Bullish tech + bearish fundamentals + bearish macro → low confidence → WATCH cap
