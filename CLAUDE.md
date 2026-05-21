@@ -1,13 +1,13 @@
 # aifolimizer — Project Context
 
 ## Session Startup (read this every new session)
-1. Read `.claude/context/changes.md` — what's built and when
+1. Read `.claude/context/changes.md` — what built, when
 2. Read `.claude/context/architecture.md` — data flow, API contracts, file index
 3. Read `.claude/context/lessons.md` — past corrections, do-not-repeat rules
-4. Call `mcp__aifolimizer__get_profile` before any analysis — never hardcode account types or capital
+4. Call `mcp__aifolimizer__get_profile` before analysis — never hardcode account types or capital
 
 ## What This Is
-AI investment advisor for Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro — no Anthropic API key.
+AI investment advisor, Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro — no Anthropic API key.
 
 ## Architecture
 
@@ -60,23 +60,23 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `get_earnings_results` | Last N quarters EPS estimate/actual/surprise/outcome per ticker | 12h |
 | `get_news_headlines` | Recent headlines per ticker from yfinance news | 30m |
 | `get_positioning_signals` | Crowding score, institutional ownership, short interest, headline velocity — flag consensus-crowded names | 6h (L1+L2) |
-| `snapshot_positioning_history` | Append today's crowding scores to JSONL log (idempotent per-day). Run daily to build regime-shift dataset. | live |
+| `snapshot_positioning_history` | Append today's crowding scores to JSONL log (idempotent per-day). Run daily, build regime-shift dataset. | live |
 | `get_crowding_shifts` | Detect symbols whose crowding score shifted ≥threshold over lookback. Reads from history JSONL. | live |
 | `get_crypto_data` | CoinGecko: price CAD, market cap, 24h/7d/30d change, ATH distance | 5m |
 | `get_triggered_alerts` | Recent alert events from local jsonl log (price drop, RSI, earnings, concentration) | live |
 | `run_alerts_now` | Evaluate alert rules vs live portfolio, append triggers to history | live |
 | `backtest_portfolio` | Per-symbol rule-replay (buy_hold / rsi_swing / sma_cross / crowd_fade / crowd_buy). Supports `tx_cost_bps` + `walk_forward`. | 1h |
-| `get_skill_track_record` | Backtest all 13 skills as codified rules over 3-5yr historical bars. Returns CAGR, Sharpe, Sortino, max DD, hit-rate, alpha vs SPY/XEQT. | disk |
-| `log_recommendation` | Log a skill rec (action, conviction, entry price, target, stop) to recommendations.jsonl for forward tracking. | live |
-| `score_recommendations` | Mark-to-market all open recs, flag stops/targets hit. Returns win-rate + avg return. | live |
-| `get_live_track_record` | Rolling 7/30/90d win-rate and P&L from scored recs. By-conviction breakdown. | live |
+| `get_skill_track_record` | Backtest 13 skills as codified rules over 3-5yr historical bars. Returns CAGR, Sharpe, Sortino, max DD, hit-rate, alpha vs SPY/XEQT. | disk |
+| `log_recommendation` | Log skill rec (action, conviction, entry price, target, stop) to recommendations.jsonl for forward tracking. | live |
+| `score_recommendations` | Mark-to-market open recs, flag stops/targets hit. Returns win-rate + avg return. | live |
+| `get_live_track_record` | Rolling 7/30/90d win-rate + P&L from scored recs. By-conviction breakdown. | live |
 | `snapshot_portfolio_equity` | Append today's total NAV to portfolio_history.jsonl (idempotent per day). | live |
 | `get_alpha_attribution` | Annualized alpha, beta, Sharpe, info ratio, tracking error vs SPY/XEQT/TSX/QQQ. Includes WS Managed AUM benchmark. | live |
-| `get_quote_with_source` | Live quote with data-source attribution (yfinance→finnhub→tiingo→stooq fallback). | 5m |
+| `get_quote_with_source` | Live quote w/ data-source attribution (yfinance→finnhub→tiingo→stooq fallback). | 5m |
 | `get_quotes_batch` | Batch quote fetch for N symbols in one HTTP call — 13x faster than serial. | 5m |
 | `get_data_source_reliability` | Per-source success rate + avg latency over trailing window. Trust-signal evidence. | live |
 | `generate_trust_report` | Write TRACK_RECORD.md (public) + track_record_full.jsonl (private). Git-commit to timestamp. | live |
-| `list_analysis_modes` | All 13 available skills with tool lists | static |
+| `list_analysis_modes` | All 13 skills with tool lists | static |
 
 L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold MCP restart hits L2 if FastAPI warmed within TTL.
 
@@ -96,7 +96,7 @@ L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold 
 | `sector-rotation` | Renaissance / Sector Rotation | get_profile, get_portfolio, get_xray |
 | `tax-loss-review` | Canadian tax-loss harvesting | get_profile, get_tax_loss_candidates |
 | `adversarial-research` | Multi-agent bull/bear/consensus pipeline | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot, get_positioning_signals |
-| `cash-deployment` | Add-to-winners cash deployment with concentration + crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
+| `cash-deployment` | Add-to-winners cash deployment w/ concentration + crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
 
 Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP tools.
 
@@ -108,7 +108,7 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP to
 - Horizons: day trading + short-term (<3yr) + long-term (10yr+)
 - Tax: TFSA (gains tax-free), RRSP (tax-deferred), Non-Reg (50% capital gains inclusion)
 - **Capital + account balances: ALWAYS pull from `get_profile` — never hardcode**
-- **Crowding awareness**: before adding to any name, call `get_positioning_signals`. Consensus-crowded (score ≥70) → negative expected alpha per Goldman/BlackRock 2025. Defer adds on consensus names; favor contrarian (score ≤30) when fundamentals support.
+- **Crowding awareness**: before add to name, call `get_positioning_signals`. Consensus-crowded (score ≥70) → negative expected alpha per Goldman/BlackRock 2025. Defer adds on consensus names; favor contrarian (score ≤30) when fundamentals support.
 
 ## Tech Stack
 
@@ -117,7 +117,7 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP to
 | Frontend | Next.js 16 (App Router) + Tailwind 4 + Recharts 3 |
 | Backend API | FastAPI + uvicorn (Python 3.12) |
 | MCP server | FastMCP (shares services with FastAPI) |
-| Technical indicators | `ta>=0.11.0` (NOT pandas-ta — incompatible with Python 3.14) |
+| Technical indicators | `ta>=0.11.0` (NOT pandas-ta — incompatible w/ Python 3.14) |
 | Prices + fundamentals | yfinance (free, no key) |
 | Macro data | FRED public CSV API (free, no key) |
 | Crypto data | CoinGecko v3 free API (no key, 30 req/min) |
@@ -150,21 +150,21 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 - No hardcoded capital amounts or account types — always read from `get_profile`
 - No PII in logs, DB, or MCP output
-- Functions short and single-purpose
+- Functions short, single-purpose
 - No comments explaining WHAT — only WHY when non-obvious
 - Append to `.claude/context/changes.md` after significant changes
-- Auto skills builder: `python backend/scripts/build_skills.py` lists all tools + skills
+- Auto skills builder: `python backend/scripts/build_skills.py` lists tools + skills
 - Scaffold new skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`
 
 ## Workflow Rules
 
-- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise changed code with realistic input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
-- **Lessons loop.** After any correction or surprise bug, append short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
-- **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "is there a cleaner path?" before commit. Skip for one-line fixes.
-- **Surgical changes only.** Touch only what request requires. Don't clean adjacent code. Match existing style. Mention unrelated dead code rather than deleting it. Remove only imports/variables your changes made unused.
+- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise changed code w/ real input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
+- **Lessons loop.** After correction or surprise bug, append short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
+- **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "cleaner path?" before commit. Skip one-line fixes.
+- **Surgical changes only.** Touch only what request requires. Don't clean adjacent code. Match existing style. Mention unrelated dead code, don't delete. Remove only imports/variables your changes made unused.
 
 ## Commit Rules
 
-- NEVER add `Co-Authored-By: Claude ...` trailer to commit messages
-- NEVER add "Generated with Claude Code" footer or any AI-attribution to commits, PRs, or PR bodies
-- Commit messages authored solely by human user — no AI co-author lines, no tool advertisements
+- NEVER add `Co-Authored-By: Claude ...` trailer to commits
+- NEVER add "Generated with Claude Code" footer or AI-attribution to commits, PRs, or PR bodies
+- Commit messages authored solely by human user — no AI co-author lines, no tool ads

@@ -7,7 +7,8 @@
 4. Call `mcp__aifolimizer__get_profile` before any analysis — never hardcode account types or capital
 
 ## What This Is
-AI investment advisor for Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro — no Anthropic API key.
+AI-powered investment advisor for Canadian Wealthsimple user (age 32, growth + income + crypto).
+Live portfolio data via local backend. AI analysis runs in Claude Code / Claude Desktop (Pro plan) — no Anthropic API key.
 
 ## Architecture
 
@@ -78,7 +79,7 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `generate_trust_report` | Write TRACK_RECORD.md (public) + track_record_full.jsonl (private). Git-commit to timestamp. | live |
 | `list_analysis_modes` | All 13 available skills with tool lists | static |
 
-L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold MCP restart hits L2 if FastAPI warmed within TTL.
+L1+L2: in-process dict + cross-process diskcache. MCP and FastAPI share L2 so cold MCP restarts don't re-fetch yfinance if FastAPI warmed within TTL.
 
 ## Analysis Skills (13 — in `.claude/skills/`)
 
@@ -98,17 +99,17 @@ L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold 
 | `adversarial-research` | Multi-agent bull/bear/consensus pipeline | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot, get_positioning_signals |
 | `cash-deployment` | Add-to-winners cash deployment with concentration + crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
 
-Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP tools.
+Each skill: auto-triggers from description frontmatter, calls get_profile FIRST, then MCP tools, runs analysis in Claude's context.
 
 ## Investor Profile (use as context, always verify with get_profile)
 
-- Age 32, Canadian
+- Age: 32, Canadian resident
 - Philosophy: growth stocks, index ETFs (XEQT/VFV), dividends, crypto
 - Risk: mixed — conservative (bonds/GIC), moderate (index ETFs), aggressive (stocks, crypto)
-- Horizons: day trading + short-term (<3yr) + long-term (10yr+)
+- Time horizons: day trading + short-term (<3yr) + long-term (10yr+)
 - Tax: TFSA (gains tax-free), RRSP (tax-deferred), Non-Reg (50% capital gains inclusion)
-- **Capital + account balances: ALWAYS pull from `get_profile` — never hardcode**
-- **Crowding awareness**: before adding to any name, call `get_positioning_signals`. Consensus-crowded (score ≥70) → negative expected alpha per Goldman/BlackRock 2025. Defer adds on consensus names; favor contrarian (score ≤30) when fundamentals support.
+- **Capital and account balances: ALWAYS pull from `get_profile` — never hardcode**
+- **Crowding awareness**: when AI recommends adding to a name, call `get_positioning_signals` first. Consensus-crowded names (score ≥ 70) have negative expected alpha for late entries per Goldman / BlackRock 2025 research on AI-driven retail + quant crowding. Defer adds on consensus names; favor contrarian setups (score ≤ 30) when fundamentals support
 
 ## Tech Stack
 
@@ -158,13 +159,13 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## Workflow Rules
 
-- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise changed code with realistic input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
-- **Lessons loop.** After any correction or surprise bug, append short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
-- **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "is there a cleaner path?" before commit. Skip for one-line fixes.
-- **Surgical changes only.** Touch only what request requires. Don't clean adjacent code. Match existing style. Mention unrelated dead code rather than deleting it. Remove only imports/variables your changes made unused.
+- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise the changed code with realistic input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
+- **Lessons loop.** After any user correction or surprise bug, append a short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
+- **Pause for elegance on non-trivial changes** (3+ files or a new abstraction). Ask "is there a cleaner path?" before commit. Skip for one-line fixes — don't over-engineer trivial work.
+- **Surgical changes only.** Touch only what the request requires. Don't clean up adjacent code. Match existing style. Mention unrelated dead code rather than deleting it. Remove only imports/variables your changes made unused.
 
 ## Commit Rules
 
 - NEVER add `Co-Authored-By: Claude ...` trailer to commit messages
 - NEVER add "Generated with Claude Code" footer or any AI-attribution to commits, PRs, or PR bodies
-- Commit messages authored solely by human user — no AI co-author lines, no tool advertisements
+- Commit messages are authored solely by the human user — no AI co-author lines, no tool advertisements
