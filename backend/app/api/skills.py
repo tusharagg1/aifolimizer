@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.security import session_from_request
 from app.services import skill_runner
 from app.services import signal_history
 from app.services import paper_trade
@@ -12,6 +13,11 @@ from app.jobs import scheduler
 
 
 router = APIRouter()
+
+
+def _tenant_from(request: Request) -> str | None:
+    """Resolve tenant id from httpOnly session cookie (or legacy query param)."""
+    return session_from_request(request, request.query_params.get("session_id"))
 
 
 @router.get("/list")
@@ -23,32 +29,40 @@ async def list_skills():
 
 
 @router.get("/snapshots")
-async def get_all_snapshots():
-    return {"snapshots": skill_runner.list_snapshots()}
+async def get_all_snapshots(request: Request):
+    tenant = _tenant_from(request)
+    return {"snapshots": skill_runner.list_snapshots(tenant_id=tenant)}
 
 
 @router.get("/snapshot/{skill}")
-async def get_snapshot(skill: str):
-    snap = skill_runner.read_snapshot(skill)
+async def get_snapshot(skill: str, request: Request):
+    tenant = _tenant_from(request)
+    snap = skill_runner.read_snapshot(skill, tenant_id=tenant)
     if snap is None:
         raise HTTPException(404, f"no snapshot for skill={skill}")
     return snap
 
 
 @router.post("/refresh")
-async def refresh_snapshots(skill: str | None = Query(None)):
-    """Force an immediate tick. Optional `skill` query runs one only."""
+async def refresh_snapshots(
+    request: Request,
+    skill: str | None = Query(None),
+):
+    """Force an immediate tick for this tenant. Optional `skill` runs one only."""
+    tenant = _tenant_from(request)
+    if not tenant:
+        raise HTTPException(401, "no session — log in first")
     if skill:
         if skill not in skill_runner.SKILL_RUNNERS:
             raise HTTPException(400, f"unknown or LLM-only skill: {skill}")
-        # Re-fetch portfolio via scheduler helper to keep behavior identical
-        portfolio = await scheduler._fetch_portfolio()
+        portfolio = await scheduler._fetch_portfolio_for(tenant)
         if portfolio is None:
-            raise HTTPException(409, "no active Wealthsimple session")
+            raise HTTPException(409, "session expired or portfolio fetch failed")
         snap = skill_runner.SKILL_RUNNERS[skill](portfolio)
-        skill_runner.write_snapshot(snap)
+        skill_runner.write_snapshot(snap, tenant_id=tenant)
         return snap
-    return await scheduler.force_tick()
+    # Run one tick for this tenant only
+    return await scheduler._run_for_session(tenant)
 
 
 @router.get("/scheduler/status")
