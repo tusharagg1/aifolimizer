@@ -1,12 +1,17 @@
 import asyncio
 import json
 import time
-import traceback
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from app.security import (
+    set_session_cookie,
+    clear_session_cookie,
+    enforce_rate_limit,
+    get_logger,
+)
 from app.services import wealthsimple, market_data, macro
 from app.services import (
     fundamentals as fundamentals_svc,
@@ -30,6 +35,9 @@ from app.services.llm_router import (
     active_provider_names,
     verify_sell_signal,
 )
+
+
+_LOG = get_logger("aifolimizer.ws")
 
 router = APIRouter()
 
@@ -113,18 +121,25 @@ class OtpRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request, response: Response):
+    # Per-IP + per-email limits — IP bucket blocks spray attacks, email bucket
+    # protects a targeted account even if the attacker rotates IPs.
+    enforce_rate_limit(request, "login_ip",
+                       max_hits=10, window_seconds=300)
+    enforce_rate_limit(request, "login_email",
+                       max_hits=5, window_seconds=900,
+                       identity_override=req.email.lower())
     try:
         result = await asyncio.to_thread(
             wealthsimple.login, req.email, req.password
         )
+        sid = result.get("session_id") if isinstance(result, dict) else None
+        if sid and not result.get("needs_otp"):
+            set_session_cookie(response, sid)
         return result
     except Exception as e:
-        print("=" * 60)
-        print(f"LOGIN ERROR: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        print("=" * 60)
-        raise HTTPException(status_code=401, detail=str(e))
+        _LOG.exception("login failed", extra={"event": "login_error"})
+        raise HTTPException(status_code=401, detail=str(e)) from e
 
 
 @router.post("/restore")
@@ -148,18 +163,31 @@ async def restore_session_endpoint():
 
 
 @router.post("/verify-otp")
-async def verify_otp(req: OtpRequest):
+async def verify_otp(req: OtpRequest, request: Request, response: Response):
+    # OTP is a 6-digit code → brute-forceable; cap hard.
+    enforce_rate_limit(request, "otp_ip",
+                       max_hits=8, window_seconds=300)
+    enforce_rate_limit(request, "otp_session",
+                       max_hits=5, window_seconds=300,
+                       identity_override=req.session_id)
     try:
         result = await asyncio.to_thread(
             wealthsimple.verify_otp, req.session_id, req.otp
         )
+        sid = result.get("session_id") if isinstance(result, dict) else None
+        if sid:
+            set_session_cookie(response, sid)
         return result
     except Exception as e:
-        print("=" * 60)
-        print(f"OTP ERROR: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        print("=" * 60)
-        raise HTTPException(status_code=401, detail=str(e))
+        _LOG.exception("otp verify failed", extra={"event": "otp_error"})
+        raise HTTPException(status_code=401, detail=str(e)) from e
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Clear the session cookie. WS session token itself expires server-side."""
+    clear_session_cookie(response)
+    return {"ok": True}
 
 
 @router.get("/portfolio")
@@ -179,9 +207,8 @@ async def get_portfolio(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        print(f"PORTFOLIO ERROR: {type(e).__name__}: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=502, detail=f"Wealthsimple error: {e}")
+        _LOG.exception("portfolio fetch failed", extra={"event": "portfolio_error"})
+        raise HTTPException(status_code=502, detail=f"Wealthsimple error: {e}") from e
 
 
 @router.get("/profile")

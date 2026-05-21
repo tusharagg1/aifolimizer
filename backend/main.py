@@ -9,6 +9,9 @@ from app.api import skills as skills_api
 from app.services import wealthsimple
 from app.services import data_router
 from app.jobs import scheduler
+from app.security import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="aifolimizer API", version="1.0.0")
 

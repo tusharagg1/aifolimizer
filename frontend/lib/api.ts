@@ -7,6 +7,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const signal = init?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...init?.headers },
+    credentials: "include",
     ...init,
     signal,
   });
