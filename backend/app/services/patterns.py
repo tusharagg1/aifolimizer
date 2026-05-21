@@ -5,6 +5,10 @@ Uses local pivot points on daily close price — no external deps beyond numpy/p
 import time
 import pandas as pd
 import yfinance as yf
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.patterns")
+
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600
@@ -256,5 +260,5 @@ def detect_patterns(symbol: str, period: str = "1y") -> dict:
         return result_data
 
     except Exception as e:
-        print(f"[patterns] {symbol}: {e}")
+        _LOG.warning(f"[patterns] {symbol}: {e}")
         return {"symbol": symbol, "patterns": [], "dates": [], "close": []}

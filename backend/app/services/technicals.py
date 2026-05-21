@@ -2,6 +2,10 @@ import time
 import pandas as pd
 import ta
 import yfinance as yf
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.technicals")
+
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600  # 1 hour
@@ -256,7 +260,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             "technical_score": technical_score,
         }
     except Exception as e:
-        print(f"[technicals] compute error: {e}")
+        _LOG.warning(f"[technicals] compute error: {e}")
         return {}
 
 
@@ -312,7 +316,7 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
             threads=True,
         )
     except Exception as e:
-        print(f"[technicals] batch download error: {e}")
+        _LOG.warning(f"[technicals] batch download error: {e}")
         data = None
 
     for sym in to_fetch:

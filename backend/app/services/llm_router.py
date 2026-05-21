@@ -22,6 +22,10 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.llm_router")
+
 
 # ── Provider registry ──────────────────────────────────────────────────────────
 
@@ -333,7 +337,7 @@ async def verify_sell_signal(rec: dict) -> bool:
             _record_success(provider["name"])
             return verdict == "SELL"
         except Exception as e:
-            print(f"[llm_router] verify_sell {rec['symbol']} via {provider['name']}: {e}")
+            _LOG.warning(f"[llm_router] verify_sell {rec['symbol']} via {provider['name']}: {e}")
             _record_error(provider["name"])
 
     return True  # all providers failed — keep SELL
@@ -391,7 +395,7 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
             _SENT_LLM_CACHE[hkey] = (score, time.time())
             return score
         except Exception as e:
-            print(f"[llm_router] sentiment {symbol} via {provider['name']}: {e}")
+            _LOG.warning(f"[llm_router] sentiment {symbol} via {provider['name']}: {e}")
             _record_error(provider["name"])
 
     return None

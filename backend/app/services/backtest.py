@@ -41,6 +41,10 @@ from app.services import positioning as positioning_svc
 from app.services.quant import deterministic_split_idx
 from app.services.backtest_validation import run_validation
 from app.services.run_card import generate_run_card, save_run_card
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.backtest")
+
 
 _CACHE: dict[tuple, tuple[dict, float]] = {}
 _CACHE_TTL = 3600
@@ -235,7 +239,7 @@ def _fetch_close(symbol: str, period: str) -> pd.Series:
             auto_adjust=True,
         )
     except Exception as e:
-        print(f"[backtest] fetch {symbol} failed: {e}", flush=True)
+        _LOG.warning(f"[backtest] fetch {symbol} failed: {e}")
         return pd.Series(dtype=float)
     if df is None or df.empty:
         return pd.Series(dtype=float)
@@ -271,7 +275,7 @@ def _prefetch_closes(symbols: list[str], period: str) -> None:
             threads=True,
         )
     except Exception as e:
-        print(f"[backtest] batch prefetch failed: {e}", flush=True)
+        _LOG.warning(f"[backtest] batch prefetch failed: {e}")
         return
     if data is None or data.empty:
         return

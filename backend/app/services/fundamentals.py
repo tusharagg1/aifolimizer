@@ -6,6 +6,10 @@ from datetime import datetime, date as date_type
 import yfinance as yf
 
 from app.services import cache_layer
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.fundamentals")
+
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 6 * 3600  # 6 hours
@@ -95,7 +99,7 @@ def _fetch_one(symbol: str) -> dict:
             "beta": info.get("beta"),
         }
     except Exception as e:
-        print(f"[fundamentals] {symbol}: {type(e).__name__}: {e}")
+        _LOG.warning(f"[fundamentals] {symbol}: {type(e).__name__}: {e}")
         return {}
 
 
@@ -160,7 +164,7 @@ def _fetch_earnings_history_one(symbol: str, quarters: int) -> list[dict]:
             })
         return out
     except Exception as e:
-        print(f"[earnings_history] {symbol}: {type(e).__name__}: {e}")
+        _LOG.warning(f"[earnings_history] {symbol}: {type(e).__name__}: {e}")
         return []
 
 
@@ -414,7 +418,7 @@ def _load_cik_map() -> dict[str, str]:
             if sym:
                 _CIK_MAP[sym] = cik
     except Exception as exc:
-        print(f"[sec] CIK map load failed: {exc}")
+        _LOG.warning(f"[sec] CIK map load failed: {exc}")
     return _CIK_MAP
 
 
@@ -497,7 +501,7 @@ def get_sec_financials(symbol: str) -> dict:
         with urllib.request.urlopen(req, timeout=15) as resp:
             facts = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:
-        print(f"[sec] {symbol}: {exc}")
+        _LOG.warning(f"[sec] {symbol}: {exc}")
         return {}
 
     revenue = (

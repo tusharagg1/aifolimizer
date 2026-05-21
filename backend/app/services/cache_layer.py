@@ -21,6 +21,10 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 from typing import Any
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.cache_layer")
+
 
 try:
     from diskcache import Cache as _DiskCache
@@ -51,7 +55,7 @@ def _get_cache() -> Any:
                     size_limit=200 * 1024 * 1024,  # 200 MB cap
                 )
             except Exception as e:
-                print(f"[cache_layer] init failed: {e}", flush=True)
+                _LOG.warning(f"[cache_layer] init failed: {e}")
                 _cache_singleton = None
     return _cache_singleton
 
@@ -68,7 +72,7 @@ def cache_get(namespace: str, key: str) -> Any | None:
     try:
         return c.get(_build_key(namespace, key))
     except Exception as e:
-        print(f"[cache_layer] get {namespace}/{key} failed: {e}", flush=True)
+        _LOG.warning(f"[cache_layer] get {namespace}/{key} failed: {e}")
         return None
 
 
@@ -80,7 +84,7 @@ def cache_set(namespace: str, key: str, value: Any, ttl_seconds: int) -> None:
     try:
         c.set(_build_key(namespace, key), value, expire=int(ttl_seconds))
     except Exception as e:
-        print(f"[cache_layer] set {namespace}/{key} failed: {e}", flush=True)
+        _LOG.warning(f"[cache_layer] set {namespace}/{key} failed: {e}")
 
 
 def cache_clear_namespace(namespace: str) -> int:
@@ -96,5 +100,5 @@ def cache_clear_namespace(namespace: str) -> int:
                 if c.delete(k):
                     deleted += 1
     except Exception as e:
-        print(f"[cache_layer] clear {namespace} failed: {e}", flush=True)
+        _LOG.warning(f"[cache_layer] clear {namespace} failed: {e}")
     return deleted

@@ -4,6 +4,10 @@ import math
 import time
 import yfinance as yf
 from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.market_data")
+
 
 _FX_CACHE: tuple[float, float] | None = None  # (timestamp, cad_per_usd)
 _FX_TTL = 300  # 5 min — forex moves during market hours
@@ -248,7 +252,7 @@ def fetch_returns(symbols: list[str], period: str = "1y") -> dict[str, list[floa
     try:
         data = yf.download(symbols, period=period, progress=False, auto_adjust=True, group_by="ticker")
     except Exception as e:
-        print(f"[market_data] yfinance download error: {e}")
+        _LOG.warning(f"[market_data] yfinance download error: {e}")
         return {}
 
     out: dict[str, list[float]] = {}

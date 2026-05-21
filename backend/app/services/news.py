@@ -1,6 +1,10 @@
 import time
 from datetime import datetime
 import yfinance as yf
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.news")
+
 
 _cache: dict[str, tuple[list, float]] = {}
 _CACHE_TTL = 1800  # 30 minutes
@@ -57,7 +61,7 @@ def _fetch_one(symbol: str) -> list:
                 })
         return out
     except Exception as e:
-        print(f"[news] {symbol}: {e}")
+        _LOG.warning(f"[news] {symbol}: {e}")
         return []
 
 
