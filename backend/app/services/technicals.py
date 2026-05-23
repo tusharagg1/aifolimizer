@@ -1,8 +1,10 @@
 import time
+
 import pandas as pd
 import ta
 import yfinance as yf
 from app.security import get_logger
+from app.services.data_sources.massive_src import is_tsx
 
 _LOG = get_logger("aifolimizer.services.technicals")
 
@@ -288,9 +290,54 @@ def _slice_symbol(data, symbol: str) -> pd.DataFrame | None:
         return None
 
 
+def _fetch_massive_ohlcv(symbol: str) -> pd.DataFrame | None:
+    """1y daily OHLCV from Massive, returns yfinance-compatible DataFrame."""
+    import os
+    from datetime import datetime, timedelta
+    key = os.environ.get("MASSIVE_API_KEY", "")
+    if not key:
+        return None
+    try:
+        from massive import RESTClient
+        client = RESTClient(api_key=key)
+        to_dt = datetime.now()
+        from_dt = to_dt - timedelta(days=370)
+        records = []
+        for agg in client.list_aggs(
+            ticker=symbol,
+            multiplier=1,
+            timespan="day",
+            from_=from_dt.strftime("%Y-%m-%d"),
+            to=to_dt.strftime("%Y-%m-%d"),
+            limit=500,
+            adjusted=True,
+        ):
+            try:
+                records.append({
+                    "Date": pd.Timestamp(agg.timestamp, unit="ms"),
+                    "Open": float(agg.open),
+                    "High": float(agg.high),
+                    "Low": float(agg.low),
+                    "Close": float(agg.close),
+                    "Volume": float(agg.volume or 0),
+                })
+            except Exception:
+                continue
+        if len(records) < 21:
+            return None
+        df = pd.DataFrame(records).set_index("Date").sort_index()
+        df.index = df.index.tz_localize(None)
+        return df
+    except Exception as e:
+        _LOG.warning(f"[technicals] massive ohlcv {symbol}: {e}")
+        return None
+
+
 def get_technicals(symbols: list[str]) -> dict[str, dict]:
-    """Fetch indicators for symbols. Batches uncached symbols into one
-    yf.download call (one HTTP round-trip vs N).
+    """Fetch indicators for symbols.
+
+    US symbols: Massive OHLCV (falls back to yfinance).
+    TSX symbols: yfinance batch download.
     """
     now = time.time()
     out: dict[str, dict] = {}
@@ -305,23 +352,34 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
     if not to_fetch:
         return out
 
-    try:
-        data = yf.download(
-            to_fetch,
-            period="1y",
-            interval="1d",
-            progress=False,
-            auto_adjust=True,
-            group_by="ticker",
-            threads=True,
-        )
-    except Exception as e:
-        _LOG.warning(f"[technicals] batch download error: {e}")
-        data = None
-
+    needs_yfinance: list[str] = []
     for sym in to_fetch:
-        df = _slice_symbol(data, sym) if data is not None else None
-        result = _compute_from_df(df) if df is not None else {}
-        _cache[sym] = (result, time.time())
-        out[sym] = result
+        if not is_tsx(sym):
+            df = _fetch_massive_ohlcv(sym)
+            if df is not None:
+                result = _compute_from_df(df)
+                _cache[sym] = (result, time.time())
+                out[sym] = result
+                continue
+        needs_yfinance.append(sym)
+
+    if needs_yfinance:
+        try:
+            data = yf.download(
+                needs_yfinance,
+                period="1y",
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+                threads=True,
+            )
+        except Exception as e:
+            _LOG.warning(f"[technicals] yfinance batch error: {e}")
+            data = None
+        for sym in needs_yfinance:
+            df = _slice_symbol(data, sym) if data is not None else None
+            result = _compute_from_df(df) if df is not None else {}
+            _cache[sym] = (result, time.time())
+            out[sym] = result
     return out

@@ -72,6 +72,56 @@ _CRYPTO_ASSET_CLASSES = {"crypto", "cryptocurrency"}
 _REC_CACHE: dict[str, tuple[list, float]] = {}
 _REC_CACHE_TTL = 1800  # 30 minutes
 
+# ── Sub-signal weights (Phase 2). Default mirrors v3 baseline.
+# Phase 5 overwrites this from the `weights` Postgres table.
+_WEIGHTS_CACHE: dict[str, float] = {
+    "w_tech": 1.0, "w_fund": 1.0, "w_macro": 1.0,
+    "w_sentiment": 1.0, "w_skill": 0.5,
+}
+_WEIGHTS_CACHE_TS: float = 0.0
+_WEIGHTS_CACHE_TTL = 300  # 5 minutes — short to react to nightly tuner
+
+
+def _load_weights() -> dict[str, float]:
+    """Best-effort fetch latest weights row from Postgres.
+
+    Falls back to in-memory defaults if pool unavailable. Cached 5 min.
+    """
+    global _WEIGHTS_CACHE_TS
+    if time.time() - _WEIGHTS_CACHE_TS < _WEIGHTS_CACHE_TTL:
+        return _WEIGHTS_CACHE
+    try:
+        # Lazy import — avoid circular dep at module load.
+        from app.db.pool import get_pool
+        pool = get_pool()
+        if pool is None:
+            return _WEIGHTS_CACHE
+        # Sync usage from a sync caller — run a brief asyncio.run if no loop.
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Already inside an event loop; skip refresh this tick.
+                return _WEIGHTS_CACHE
+        except RuntimeError:
+            pass
+
+        async def _q() -> dict | None:
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT w_tech, w_fund, w_macro, w_sentiment, w_skill "
+                    "FROM weights ORDER BY version DESC LIMIT 1"
+                )
+            return dict(row) if row else None
+
+        row = asyncio.run(_q())
+        if row:
+            _WEIGHTS_CACHE.update({k: float(v) for k, v in row.items()})
+            _WEIGHTS_CACHE_TS = time.time()
+    except Exception:
+        # Silent — sub-signal weighting is best-effort; defaults still valid.
+        pass
+    return _WEIGHTS_CACHE
+
 # ── News sentiment cache ───────────────────────────────────────────────────────
 _SENT_CACHE: dict[str, tuple[float, float]] = {}
 _SENT_TTL = 1800  # 30 minutes
@@ -153,6 +203,7 @@ def _score_position(
     macro: dict,
     sentiment: float,
     earnings_move: dict | None = None,
+    skill_evidence: dict | None = None,
 ) -> dict:
     asset_class = (position.get("asset_class") or "").lower()
     is_etf = asset_class in _ETF_ASSET_CLASSES
@@ -332,13 +383,35 @@ def _score_position(
         loss_penalty = -0.25
         reasons.append(f"Down {abs(total_return):.0f}% — review stop-loss")
 
+    # ── Skill evidence (Phase 2 — 5th sub-signal) ─────────────────────────────
+    # Skills augment, never replace the 4 quantitative sub-signals. They vote
+    # in the convergence gate ONLY when skill_confidence ≥ 0.5 (enough skills
+    # ran). Contribution to raw_score is clamped to ±2 so a runaway skill
+    # consensus cannot dominate quantitative signals.
+    weights = _load_weights()
+    w_skill = weights.get("w_skill", 0.5)
+    skill_evidence = skill_evidence or {}
+    skill_consensus = int(skill_evidence.get("skill_consensus") or 0)
+    skill_confidence = float(skill_evidence.get("skill_confidence") or 0.0)
+    skill_score = max(-2.0, min(2.0, (skill_consensus / 4.0) * w_skill))
+    skill_dir = _direction(skill_score, 0.25) if skill_confidence >= 0.5 else 0
+    if skill_consensus != 0 and skill_confidence >= 0.5:
+        reasons.append(
+            f"Skills consensus {skill_consensus:+d} "
+            f"(confidence {skill_confidence:.0%}, w={w_skill:.2f})"
+        )
+
     # ── Signal convergence → confidence ───────────────────────────────────────
     tech_dir = _direction(tech_score, 0.5)
     fund_dir = _direction(fund_score, 0.5) if not is_etf else 0
     macro_dir = _direction(macro_score, 0.3)
     sent_dir = _direction(sentiment, 0.3)
 
-    primary_dirs = [d for d in [tech_dir, fund_dir, macro_dir, sent_dir] if d != 0]
+    # 4-of-5 gate: skill_dir included only when confidence ≥ 0.5 (handled above)
+    primary_dirs = [
+        d for d in [tech_dir, fund_dir, macro_dir, sent_dir, skill_dir]
+        if d != 0
+    ]
     if primary_dirs:
         dominant = max(set(primary_dirs), key=primary_dirs.count)
         confirming = primary_dirs.count(dominant)
@@ -346,8 +419,13 @@ def _score_position(
     else:
         dominant, confirming, conflicting = 0, 0, 0
 
-    if confirming >= 3 and conflicting == 0:
+    # Updated thresholds for 5-signal gate: HIGH = 4-of-5 with no conflict,
+    # LOW = conflicts >= confirming, otherwise MEDIUM. Legacy 4-of-4 path
+    # still triggers HIGH when skill is absent and 3 of 4 align cleanly.
+    if confirming >= 4 and conflicting == 0:
         confidence = "high"
+    elif confirming >= 3 and conflicting == 0:
+        confidence = "high"  # backwards-compatible with 4-signal HIGH
     elif conflicting >= confirming:
         confidence = "low"
     else:
@@ -355,12 +433,18 @@ def _score_position(
 
     # ── Composite score ────────────────────────────────────────────────────────
     # Scale sub-scores: tech(-4→+4), fund(-3→+3), macro(-2→+2), sentiment(-1→+1)
+    # + skill(-2→+2, clamped above). Weighted by w_* loaded above.
+    w_tech = weights.get("w_tech", 1.0)
+    w_fund = weights.get("w_fund", 1.0)
+    w_macro = weights.get("w_macro", 1.0)
+    w_sent = weights.get("w_sentiment", 1.0)
     raw_score = (
         5.0
-        + tech_score
-        + fund_score
-        + (sentiment * 0.8)
-        + macro_score
+        + tech_score * w_tech
+        + fund_score * w_fund
+        + (sentiment * 0.8) * w_sent
+        + macro_score * w_macro
+        + skill_score        # already weighted by w_skill above
         + overweight_penalty
         + loss_penalty
     )
@@ -446,7 +530,7 @@ def _score_position(
 
     # Entry timing: flag if RSI extended — better to wait for pullback
     entry_timing: str
-    if rsi and rsi > 65 and action == "BUY":
+    if rsi and rsi > 65 and action in ("BUY", "ADD"):
         entry_timing = "wait_pullback"
     else:
         entry_timing = "acceptable"
@@ -490,6 +574,22 @@ def _score_position(
             stop_gap_pct = 0.0
         if stop_gap_pct > 0:
             max_loss_dollars = round(position_value * (kelly_pct / 100) * stop_gap_pct, 2)
+
+    # HOLD/NO_EDGE: no trade levels — showing them implies action
+    if action in ("HOLD", "NO_EDGE"):
+        stop_loss = None
+        stop_type = None
+        take_profit = None
+        risk_reward = None
+        kelly_pct = None
+        ev_dollars = None
+        max_loss_dollars = None
+    # TRIM: already in position, stop_loss is still useful; target/RR are not
+    elif action == "TRIM":
+        take_profit = None
+        risk_reward = None
+        kelly_pct = None
+        ev_dollars = None
 
     # ── Signal quality score ──────────────────────────────────────────────────
     # Scored on the full reasons text so quality reflects thesis depth/specificity
@@ -678,23 +778,35 @@ def _decide_action(
     return "HOLD", None
 
 
-def get_recommendations(portfolio_positions: list[dict]) -> list[dict]:
-    """Score all positions. Returns list sorted by action urgency (SELL→BUY→WATCH→HOLD).
+def get_recommendations(
+    portfolio_positions: list[dict],
+    skill_evidence_map: dict[str, dict] | None = None,
+) -> list[dict]:
+    """Score all positions. Returns list sorted by action urgency
+    (SELL→BUY→WATCH→HOLD).
 
     Output is cached 30 minutes keyed by portfolio composition to prevent
-    per-request recalculation which caused BUY→SELL flipping on volatile signals.
+    per-request recalculation which caused BUY→SELL flipping on volatile
+    signals. Cache key includes skill_evidence digest so evidence changes
+    invalidate the cache.
     """
     if not portfolio_positions:
         return []
 
+    skill_evidence_map = skill_evidence_map or {}
+
     # Include rounded position weights in the cache key — overweight_penalty,
     # kelly_pct, ev_dollars and hedge_flag all depend on weight, so a key built
     # on symbols alone would serve stale outputs after a rebalance for 30 min.
+    # Skill evidence digest invalidates cache when consensus changes for any
+    # holding.
     composition = sorted(
         (
             str(p.get("symbol")),
             round(float(p.get("weight") or 0), 1),
             round(float(p.get("market_value_cad") or 0), -2),
+            int((skill_evidence_map.get(p.get("symbol")) or {}).get(
+                "skill_consensus") or 0),
         )
         for p in portfolio_positions
     )
@@ -731,6 +843,7 @@ def get_recommendations(portfolio_positions: list[dict]) -> list[dict]:
             macro_data,
             sent_data.get(sym, 0.0),
             em_data.get(sym) or {},
+            skill_evidence=skill_evidence_map.get(sym),
         )
         results.append(rec)
 

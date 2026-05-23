@@ -31,6 +31,7 @@ from app.services.screener import run_screener, FULL_UNIVERSE
 from app.services.benchmark import compare_to_benchmarks
 from app.services.portfolio_optimizer import optimize
 from app.services.llm_router import (
+    generate_portfolio_commentary,
     generate_narratives_batch,
     active_provider_names,
     verify_sell_signal,
@@ -90,6 +91,7 @@ async def _get_portfolio(
         if account_id and account_id in per_account:
             acc = per_account[account_id]
             cash = float(acc.get("cash_balance") or 0.0)
+            usd_cash = float(acc.get("usd_cash_balance") or 0.0)
             ws_total = float(acc.get("invested_value") or 0.0)
             pnl = float(acc.get("unrealized_pnl_cad") or 0.0)
             raw = await asyncio.to_thread(
@@ -97,6 +99,10 @@ async def _get_portfolio(
             )
         else:
             cash = sum(a.cash_balance for a in profile.accounts) if profile else 0.0
+            usd_cash = sum(
+                float(per_account.get(a.type, {}).get("usd_cash_balance") or 0.0)
+                for a in profile.accounts
+            ) if profile else 0.0
             ws_total = sum(
                 a.invested_value for a in profile.accounts
             ) if profile else 0.0
@@ -105,7 +111,7 @@ async def _get_portfolio(
                 wealthsimple.get_all_positions, session_id
             )
 
-        portfolio = market_data.enrich(raw, cash, ws_total, pnl)
+        portfolio = market_data.enrich(raw, cash, ws_total, pnl, usd_cash)
         _PORTFOLIO_CACHE[key] = (portfolio, time.time())
         return portfolio
 
@@ -559,6 +565,36 @@ async def recommendations_endpoint(session_id: str = Query(...)):
     return {"recommendations": recs, "signal_changes": signal_changes}
 
 
+@router.get("/ai-commentary")
+async def ai_commentary_endpoint(session_id: str = Query(...)):
+    """AI portfolio commentary: 2-3 sentence assessment + 2-4 actionable bullets."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    if not active_provider_names():
+        return {"commentary": None, "actions": [], "provider": None, "error": "no_llm_keys"}
+
+    try:
+        portfolio = await _get_portfolio(session_id, session)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    positions_dicts = [p.model_dump() for p in portfolio.positions]
+    recs = await asyncio.to_thread(get_recommendations, positions_dicts)
+    health = compute_health_score(portfolio)
+    summary = {
+        **portfolio.summary.model_dump(),
+        "grade": health.get("grade"),
+        "score": health.get("score"),
+    }
+
+    result = await generate_portfolio_commentary(summary, recs)
+    if not result:
+        return {"commentary": None, "actions": [], "provider": None, "error": "llm_failed"}
+    return result
+
+
 @router.get("/ai-narratives")
 async def ai_narratives_endpoint(session_id: str = Query(...)):
     """AI narrative for each recommendation. Uses best available free LLM."""
@@ -655,6 +691,403 @@ async def llm_status_endpoint(session_id: str = Query(...)):
     if not session:
         raise HTTPException(status_code=401, detail="Session expired")
     return {"available_providers": active_provider_names()}
+
+
+# ── Phase 3: integrated signals (5-signal breakdown) ────────────────────────
+
+def _session_tenant_hash(session_id: str) -> str:
+    import hashlib
+    return hashlib.sha1(session_id.encode("utf-8")).hexdigest()[:16]
+
+
+@router.get("/signals")
+async def get_integrated_signals(
+    session_id: str = Query(...),
+):
+    """Latest integrated signal per holding (5-signal breakdown).
+
+    Reads from Redis hot cache if present; falls back to Postgres latest row
+    per symbol. PII-stripped (no account_id, no email, no portfolio totals).
+    """
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    thash = _session_tenant_hash(session_id)
+
+    # Hot cache attempt
+    try:
+        from app.cache import get_redis
+        r = get_redis()
+        if r is not None:
+            blob = await r.get(f"signals:{thash}")
+            if blob:
+                return json.loads(blob)
+    except Exception:
+        pass
+
+    # Postgres fallback
+    try:
+        from app.db.repositories import signals_repo
+        rows = await signals_repo.latest_for_tenant(thash)
+    except Exception as e:
+        raise HTTPException(503, f"signals unavailable: {e}")
+
+    signals = [
+        {
+            "symbol": r["symbol"],
+            "action": r["action"],
+            "conviction": r.get("conviction"),
+            "score": float(r["score"]) if r.get("score") is not None else None,
+            "sub_signals": {
+                "tech": float(r["tech_score"])
+                    if r.get("tech_score") is not None else None,
+                "fund": float(r["fund_score"])
+                    if r.get("fund_score") is not None else None,
+                "macro": float(r["macro_score"])
+                    if r.get("macro_score") is not None else None,
+                "sentiment": float(r["sentiment_score"])
+                    if r.get("sentiment_score") is not None else None,
+                "skill_consensus": r.get("skill_consensus"),
+                "skill_confidence": float(r["skill_confidence"])
+                    if r.get("skill_confidence") is not None else None,
+            },
+            "skill_evidence": r.get("skill_evidence"),
+            # Phase 11 Kelly audit: surface position-sizing recommendation.
+            "kelly_pct": float(r["kelly_pct"])
+                if r.get("kelly_pct") is not None else None,
+            "win_prob": float(r["win_prob"])
+                if r.get("win_prob") is not None else None,
+            "risk_reward": float(r["risk_reward"])
+                if r.get("risk_reward") is not None else None,
+            "ts": r["ts"].isoformat() if r.get("ts") else None,
+        }
+        for r in rows
+    ]
+    return {"as_of": rows[0]["ts"].isoformat() if rows else None,
+            "signals": signals}
+
+
+@router.get("/signals/history")
+async def get_signal_history(
+    session_id: str = Query(...),
+    symbol: str = Query(..., min_length=1),
+    days: int = Query(30, ge=1, le=365),
+):
+    """Time-series of integrated signal for one symbol."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.db.repositories import signals_repo
+        rows = await signals_repo.history_for_symbol(
+            thash, symbol.upper(), days=days,
+        )
+    except Exception as e:
+        raise HTTPException(503, f"history unavailable: {e}")
+
+    return {
+        "symbol": symbol.upper(),
+        "days": days,
+        "points": [
+            {
+                "ts": r["ts"].isoformat() if r.get("ts") else None,
+                "score": float(r["score"]) if r.get("score") is not None else None,
+                "action": r.get("action"),
+                "tech": float(r["tech_score"])
+                    if r.get("tech_score") is not None else None,
+                "fund": float(r["fund_score"])
+                    if r.get("fund_score") is not None else None,
+                "macro": float(r["macro_score"])
+                    if r.get("macro_score") is not None else None,
+                "sentiment": float(r["sentiment_score"])
+                    if r.get("sentiment_score") is not None else None,
+                "skill": r.get("skill_consensus"),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/discovery/top")
+async def get_discovery_top(
+    session_id: str = Query(...),
+    n: int = Query(5, ge=1, le=20),
+):
+    """Phase 13: cached top N discovery picks (nightly scan output)."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.services import discovery
+        picks = await discovery.get_cached_top(thash)
+        return {"picks": picks[:n], "n": min(n, len(picks))}
+    except Exception as e:
+        raise HTTPException(503, f"discovery unavailable: {e}")
+
+
+@router.get("/discovery/scan")
+async def post_discovery_scan(
+    session_id: str = Query(...),
+    min_score: float = Query(6.0, ge=0.0, le=10.0),
+):
+    """Phase 13: on-demand fresh scan (slower than /discovery/top)."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.services import discovery
+        portfolio = await _get_portfolio(
+            session_id, session, "", max_age_s=300,
+        )
+        picks = await discovery.scan_universe(
+            thash, portfolio=portfolio, min_score=min_score,
+        )
+        return {"picks": picks}
+    except Exception as e:
+        raise HTTPException(503, f"discovery scan failed: {e}")
+
+
+class WatchlistAddV2Request(BaseModel):
+    session_id: str
+    symbol: str
+    note: str | None = None
+
+
+@router.post("/discovery/watchlist")
+async def add_watchlist(body: WatchlistAddV2Request):
+    """Phase 13: add a ticker to discovery watchlist (Postgres)."""
+    session = wealthsimple.get_session(body.session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(body.session_id)
+    try:
+        from app.db.pool import get_pool
+        pool = get_pool()
+        if pool is None:
+            raise HTTPException(503, "DB unavailable")
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO watchlist (tenant_hash, symbol, note)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (tenant_hash, symbol) DO UPDATE
+                  SET note = EXCLUDED.note
+                """,
+                thash, body.symbol.upper(), body.note,
+            )
+        return {"status": "ok", "symbol": body.symbol.upper()}
+    except Exception as e:
+        raise HTTPException(503, f"watchlist add failed: {e}")
+
+
+@router.delete("/discovery/watchlist/{symbol}")
+async def remove_watchlist(symbol: str, session_id: str = Query(...)):
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.db.pool import get_pool
+        pool = get_pool()
+        if pool is None:
+            raise HTTPException(503, "DB unavailable")
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM watchlist "
+                "WHERE tenant_hash = $1 AND symbol = $2",
+                thash, symbol.upper(),
+            )
+        return {"status": "ok", "removed": symbol.upper()}
+    except Exception as e:
+        raise HTTPException(503, f"watchlist remove failed: {e}")
+
+
+@router.get("/discovery/watchlist")
+async def list_watchlist(session_id: str = Query(...)):
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.db.pool import get_pool
+        pool = get_pool()
+        if pool is None:
+            raise HTTPException(503, "DB unavailable")
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT symbol, note, added_at FROM watchlist "
+                "WHERE tenant_hash = $1 ORDER BY added_at DESC",
+                thash,
+            )
+        return {
+            "watchlist": [
+                {
+                    "symbol": r["symbol"],
+                    "note": r["note"],
+                    "added_at": (
+                        r["added_at"].isoformat() if r.get("added_at") else None
+                    ),
+                }
+                for r in rows
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(503, f"watchlist list failed: {e}")
+
+
+@router.get("/risk-gate")
+async def get_risk_gate(session_id: str = Query(...)):
+    """Phase 12: current portfolio-level risk gate state."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.services import risk_gate
+        state = await risk_gate.get_current(thash)
+        if state is None:
+            return {"gate": None}
+        return {"gate": state.to_dict()}
+    except Exception as e:
+        raise HTTPException(503, f"risk_gate unavailable: {e}")
+
+
+class RiskGateOverrideRequest(BaseModel):
+    session_id: str
+    reason: str
+    hours: int = 24
+
+
+@router.post("/risk-gate/override")
+async def post_risk_gate_override(body: RiskGateOverrideRequest):
+    """Phase 12: manual override (reset gate to 'trade' for N hours).
+    Logged with reason. Max 24h.
+    """
+    session = wealthsimple.get_session(body.session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(body.session_id)
+    try:
+        from app.services import risk_gate
+        state = await risk_gate.override(
+            thash, reason=body.reason, hours=body.hours,
+        )
+        return {"gate": state.to_dict()}
+    except Exception as e:
+        raise HTTPException(503, f"override failed: {e}")
+
+
+@router.get("/kpis")
+async def get_live_kpis(
+    session_id: str = Query(...),
+    window: int = Query(30, ge=7, le=180),
+):
+    """Phase 10: EV / PF / Sharpe / DD / regime-breakdown for the live
+    paper-trade book over the trailing window."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    thash = _session_tenant_hash(session_id)
+    try:
+        from app.services import live_metrics
+        latest = await live_metrics.latest(thash, window_days=window)
+        if latest is None:
+            # No snapshot yet → compute now (returns empty if no closed recs).
+            kpi_now = await live_metrics.kpis(thash, window_days=window)
+            return {"kpis": kpi_now, "from": "live"}
+        return {"kpis": latest, "from": "snapshot"}
+    except Exception as e:
+        raise HTTPException(503, f"kpis unavailable: {e}")
+
+
+@router.get("/calibration")
+async def get_calibration(
+    session_id: str = Query(...),
+    horizon: int = Query(21, ge=1, le=63),
+):
+    """Phase 9: latest Brier + ECE + reliability bins report."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    try:
+        from app.services.calibration import latest_report
+        r = await latest_report(horizon_days=horizon)
+        if r is None:
+            return {"report": None, "reason": "no report yet"}
+        return {"report": r}
+    except Exception as e:
+        raise HTTPException(503, f"calibration unavailable: {e}")
+
+
+@router.get("/regime")
+async def get_current_regime(session_id: str = Query(...)):
+    """Phase 8: current market regime classification + per-skill multipliers
+    in effect for the current composite."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+    try:
+        from app.services import market_regime
+        cur = await market_regime.get_current()
+        if cur is None:
+            return {"regime": None, "multipliers": {}}
+        return {
+            "regime": cur.to_dict(),
+            "multipliers": market_regime.initial_multipliers_for(cur.composite),
+        }
+    except Exception as e:
+        raise HTTPException(503, f"regime unavailable: {e}")
+
+
+@router.get("/weights")
+async def get_weights(
+    session_id: str = Query(...),
+    limit: int = Query(30, ge=1, le=200),
+):
+    """Current 5-signal weights + last N audit versions."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    try:
+        from app.db.repositories import weights_repo
+        current = await weights_repo.current()
+        history = await weights_repo.history(limit=limit)
+    except Exception as e:
+        raise HTTPException(503, f"weights unavailable: {e}")
+
+    return {
+        "current": {
+            "version": current.get("version"),
+            "ts": current["ts"].isoformat() if current.get("ts") else None,
+            "w_tech": float(current.get("w_tech") or 0),
+            "w_fund": float(current.get("w_fund") or 0),
+            "w_macro": float(current.get("w_macro") or 0),
+            "w_sentiment": float(current.get("w_sentiment") or 0),
+            "w_skill": float(current.get("w_skill") or 0),
+            "reason": current.get("reason"),
+            "objective": current.get("objective"),
+        },
+        "history": [
+            {
+                "version": h.get("version"),
+                "ts": h["ts"].isoformat() if h.get("ts") else None,
+                "w_tech": float(h.get("w_tech") or 0),
+                "w_fund": float(h.get("w_fund") or 0),
+                "w_macro": float(h.get("w_macro") or 0),
+                "w_sentiment": float(h.get("w_sentiment") or 0),
+                "w_skill": float(h.get("w_skill") or 0),
+                "reason": h.get("reason"),
+                "objective": h.get("objective"),
+            }
+            for h in history
+        ],
+    }
 
 
 # ── Watchlist ──────────────────────────────────────────────────────────────────

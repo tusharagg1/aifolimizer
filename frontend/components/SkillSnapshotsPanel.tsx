@@ -488,11 +488,11 @@ function SkillSnapshotsPanel() {
     <div className="border border-slate-800/60 bg-slate-900/20 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-200">Codified Skill Snapshots</h3>
+          <h3 className="text-sm font-semibold text-slate-200">Last Skill Analysis Results</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Background-computed every {scheduler?.is_market_hours ? "15 min (market hours)" : "60 min (off-hours)"}.
+            Cached results from the last time each skill ran. Re-runs automatically every {scheduler?.is_market_hours ? "15 min during market hours" : "60 min off-hours"}.
             {scheduler?.last_run_ts && (
-              <> Last tick: {formatRelative(new Date(scheduler.last_run_ts * 1000).toISOString())}.</>
+              <> Last run: {formatRelative(new Date(scheduler.last_run_ts * 1000).toISOString())}.</>
             )}
           </p>
         </div>
@@ -512,8 +512,9 @@ function SkillSnapshotsPanel() {
       )}
 
       {sorted.length === 0 ? (
-        <div className="text-xs text-slate-500 py-6 text-center">
-          No snapshots yet. Scheduler runs after first login.
+        <div className="py-6 text-center space-y-1">
+          <p className="text-xs text-slate-400">No results yet.</p>
+          <p className="text-[11px] text-slate-500">Run any skill in the Claude chat — e.g. <span className="font-mono text-indigo-400">/portfolio-health</span> or <span className="font-mono text-indigo-400">/daily-briefing</span> — and results cache here automatically.</p>
         </div>
       ) : (
         <div className="space-y-2">

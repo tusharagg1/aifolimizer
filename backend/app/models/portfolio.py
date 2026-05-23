@@ -37,6 +37,7 @@ class PortfolioSummary(BaseModel):
     total_cost: float
     total_return_pct: float
     cash_available: float
+    cash_available_usd: float = 0.0
     day_change_cad: float = 0.0
 
 

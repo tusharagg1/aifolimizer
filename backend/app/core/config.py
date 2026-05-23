@@ -13,6 +13,20 @@ class Settings(BaseSettings):
     ws_email: str = ""
     ws_password: str = ""
 
+    # Local TimescaleDB + Redis (Phase 0)
+    postgres_dsn: str = (
+        "postgresql://aifolimizer:aifolimizer@localhost:5432/aifolimizer"
+    )
+    redis_url: str = "redis://localhost:6379/0"
+
+    # Push notifications (Phase 4)
+    ntfy_topic: str = ""
+
+    # Error tracking (Phase 15 — opt-in, empty = disabled)
+    sentry_dsn: str = ""
+    environment: str = "dev"
+    app_version: str = "v4.3"
+
     # LLM provider keys — optional, all free tiers, at least one recommended
     github_token: str = ""          # GitHub Models (GPT-4o-mini, free with Pro)
     google_api_key: str = ""        # Google AI Studio (Gemini Flash, free)

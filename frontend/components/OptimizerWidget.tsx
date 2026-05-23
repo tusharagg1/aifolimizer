@@ -19,7 +19,7 @@ function OptimizerWidget({ data, loading }: Props) {
   if (loading) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-        <h2 className="text-sm font-semibold text-white mb-3">Efficient Frontier Optimizer</h2>
+        <h2 className="text-sm font-semibold text-white mb-3">Rebalancing Suggestions</h2>
         <div className="space-y-2">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="h-8 bg-slate-800/40 rounded animate-pulse" />
@@ -47,7 +47,10 @@ function OptimizerWidget({ data, loading }: Props) {
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
       {/* Header metrics */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold text-white">Efficient Frontier Optimizer</h2>
+        <div>
+          <h2 className="text-sm font-semibold text-white">Rebalancing Suggestions</h2>
+          <p className="text-[10px] text-slate-500 mt-0.5">Math-optimal weights to maximize return per unit of risk (Sharpe ratio). Shows what to increase, decrease, or trim.</p>
+        </div>
         <div className="flex gap-4 text-xs">
           <div className="text-right">
             <p className="text-slate-500">Expected Return</p>

@@ -30,6 +30,7 @@ import pandas as pd
 import ta
 
 from app.services import data_router
+from app.services.backtest import _cagr
 
 _BENCH_SPY = "SPY"
 _BENCH_XEQT = "XEQT.TO"
@@ -250,16 +251,6 @@ def _max_dd(equity: pd.Series) -> float:
         return 0.0
     peak = equity.cummax()
     return float(((equity - peak) / peak).min() * 100)
-
-
-def _cagr(start: float, end: float, days: int) -> float:
-    if start <= 0 or days <= 0:
-        return 0.0
-    years = days / 365.25
-    try:
-        return float(((end / start) ** (1 / years) - 1) * 100)
-    except Exception:
-        return 0.0
 
 
 def _simulate(

@@ -122,9 +122,16 @@ export async function wsGetNarratives(session_id: string, signal?: AbortSignal) 
   );
 }
 
-export async function wsGetLlmStatus(session_id: string) {
-  return apiFetch<{ available_providers: string[] }>(
-    `/ws/llm-status?session_id=${session_id}`
+export interface PortfolioCommentary {
+  commentary: string | null;
+  actions: string[];
+  provider: string | null;
+  error?: string;
+}
+
+export async function wsGetPortfolioCommentary(session_id: string, signal?: AbortSignal) {
+  return apiFetch<PortfolioCommentary>(
+    `/ws/ai-commentary?session_id=${session_id}`, { signal },
   );
 }
 
@@ -237,6 +244,7 @@ export interface PortfolioSummary {
   total_cost: number;
   total_return_pct: number;
   cash_available: number;
+  cash_available_usd?: number;
   day_change_cad: number;
 }
 
@@ -480,7 +488,7 @@ export interface MacroSnapshot {
 
 export interface SkillSnapshot {
   skill: string;
-  status: "ok" | "error" | string;
+  status: "ok" | "error" | "session_expired" | string;
   computed_at: string;
   ttl_minutes: number;
   expires_at: number;
@@ -505,19 +513,8 @@ export interface SchedulerStatus {
   is_market_hours: boolean;
 }
 
-export async function fetchSkillList(signal?: AbortSignal) {
-  return apiFetch<SkillListResponse>("/skills/list", { signal });
-}
-
 export async function fetchAllSnapshots(signal?: AbortSignal) {
   return apiFetch<{ snapshots: SkillSnapshot[] }>("/skills/snapshots", { signal });
-}
-
-export async function fetchSnapshot(skill: string, signal?: AbortSignal) {
-  return apiFetch<SkillSnapshot>(
-    `/skills/snapshot/${encodeURIComponent(skill)}`,
-    { signal },
-  );
 }
 
 export async function refreshSnapshots(skill?: string) {
@@ -622,4 +619,263 @@ export async function fetchTrustCalibration(horizon = 21, signal?: AbortSignal) 
 
 export async function fetchTrustTrackRecord(signal?: AbortSignal) {
   return apiFetch<TrackRecord>("/skills/trust/track-record", { signal });
+}
+
+// ── Phase 3: integrated signals ────────────────────────────────────────────
+
+export interface IntegratedSubSignals {
+  tech: number | null;
+  fund: number | null;
+  macro: number | null;
+  sentiment: number | null;
+  skill_consensus: number | null;
+  skill_confidence: number | null;
+}
+
+export interface IntegratedSignal {
+  symbol: string;
+  action: string;
+  conviction: string | null;
+  score: number | null;
+  sub_signals: IntegratedSubSignals;
+  skill_evidence: Record<string, number> | null;
+  /** Phase 11: position-sizing surface. */
+  kelly_pct: number | null;
+  win_prob: number | null;
+  risk_reward: number | null;
+  ts: string | null;
+}
+
+export interface IntegratedSignalsResponse {
+  as_of: string | null;
+  signals: IntegratedSignal[];
+}
+
+export async function fetchIntegratedSignals(
+  sessionId: string,
+  signal?: AbortSignal,
+) {
+  return apiFetch<IntegratedSignalsResponse>(
+    `/ws/signals?session_id=${encodeURIComponent(sessionId)}`,
+    { signal },
+  );
+}
+
+export interface SignalHistoryPoint {
+  ts: string | null;
+  score: number | null;
+  action: string | null;
+  tech: number | null;
+  fund: number | null;
+  macro: number | null;
+  sentiment: number | null;
+  skill: number | null;
+}
+
+export interface SignalHistoryResponse {
+  symbol: string;
+  days: number;
+  points: SignalHistoryPoint[];
+}
+
+export async function fetchSignalHistory(
+  sessionId: string,
+  symbol: string,
+  days = 30,
+  signal?: AbortSignal,
+) {
+  const qs =
+    `?session_id=${encodeURIComponent(sessionId)}` +
+    `&symbol=${encodeURIComponent(symbol)}&days=${days}`;
+  return apiFetch<SignalHistoryResponse>(`/ws/signals/history${qs}`, { signal });
+}
+
+export interface WeightsRow {
+  version: number | null;
+  ts: string | null;
+  w_tech: number;
+  w_fund: number;
+  w_macro: number;
+  w_sentiment: number;
+  w_skill: number;
+  reason?: string | null;
+  objective?: string | null;
+}
+
+export interface WeightsResponse {
+  current: WeightsRow;
+  history: WeightsRow[];
+}
+
+export async function fetchWeights(
+  sessionId: string,
+  limit = 30,
+  signal?: AbortSignal,
+) {
+  return apiFetch<WeightsResponse>(
+    `/ws/weights?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`,
+    { signal },
+  );
+}
+
+// ── Phase 10: live KPIs ────────────────────────────────────────────────────
+
+export interface LiveKPIs {
+  expectancy_pct: number;
+  profit_factor: number;
+  sharpe: number;
+  sortino: number;
+  max_drawdown_pct: number;
+  hit_rate: number;
+  avg_win_pct: number;
+  avg_loss_pct: number;
+  n_trades: number;
+  after_cost_drag_bps: number;
+  regime_breakdown: Record<
+    string,
+    { pf: number; expectancy_pct: number; n: number }
+  >;
+  window_days: number;
+  ts: string | null;
+}
+
+export interface LiveKPIsResponse {
+  kpis: LiveKPIs;
+  from: "snapshot" | "live";
+}
+
+export async function fetchLiveKPIs(
+  sessionId: string,
+  window = 30,
+  signal?: AbortSignal,
+) {
+  return apiFetch<LiveKPIsResponse>(
+    `/ws/kpis?session_id=${encodeURIComponent(sessionId)}&window=${window}`,
+    { signal },
+  );
+}
+
+// ── Phase 12: risk gate ────────────────────────────────────────────────────
+
+export interface RiskGateState {
+  status: "trade" | "reduce_size" | "halt";
+  size_multiplier: number;
+  reasons: string[];
+  triggers: Record<string, unknown>;
+  triggered_at: string;
+  valid_until: string;
+}
+
+export interface RiskGateResponse {
+  gate: RiskGateState | null;
+}
+
+export async function fetchRiskGate(
+  sessionId: string,
+  signal?: AbortSignal,
+) {
+  return apiFetch<RiskGateResponse>(
+    `/ws/risk-gate?session_id=${encodeURIComponent(sessionId)}`,
+    { signal },
+  );
+}
+
+export async function overrideRiskGate(
+  sessionId: string,
+  reason: string,
+  hours = 24,
+) {
+  return apiFetch<RiskGateResponse>("/ws/risk-gate/override", {
+    method: "POST",
+    body: JSON.stringify({ session_id: sessionId, reason, hours }),
+  });
+}
+
+// ── Phase 13: discovery ───────────────────────────────────────────────────
+
+export interface DiscoveryPick {
+  symbol: string;
+  action: string;
+  score: number;
+  conviction: string | null;
+  kelly_pct: number | null;
+  win_prob: number | null;
+  risk_reward: number | null;
+  current_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  reasons: string[];
+  sector: string | null;
+  warning?: string;
+}
+
+export interface DiscoveryTopResponse {
+  picks: DiscoveryPick[];
+  n: number;
+}
+
+export async function fetchDiscoveryTop(
+  sessionId: string,
+  n = 5,
+  signal?: AbortSignal,
+) {
+  return apiFetch<DiscoveryTopResponse>(
+    `/ws/discovery/top?session_id=${encodeURIComponent(sessionId)}&n=${n}`,
+    { signal },
+  );
+}
+
+export async function fetchDiscoveryScan(
+  sessionId: string,
+  minScore = 6.0,
+  signal?: AbortSignal,
+) {
+  return apiFetch<{ picks: DiscoveryPick[] }>(
+    `/ws/discovery/scan?session_id=${encodeURIComponent(sessionId)}&min_score=${minScore}`,
+    { signal },
+  );
+}
+
+export interface WatchlistEntry {
+  symbol: string;
+  note: string | null;
+  added_at: string | null;
+}
+
+export async function fetchWatchlistV2(
+  sessionId: string,
+  signal?: AbortSignal,
+) {
+  return apiFetch<{ watchlist: WatchlistEntry[] }>(
+    `/ws/discovery/watchlist?session_id=${encodeURIComponent(sessionId)}`,
+    { signal },
+  );
+}
+
+export async function addWatchlistV2(
+  sessionId: string,
+  symbol: string,
+  note?: string,
+) {
+  return apiFetch<{ status: string; symbol: string }>(
+    "/ws/discovery/watchlist",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: sessionId,
+        symbol,
+        note: note ?? null,
+      }),
+    },
+  );
+}
+
+export async function removeWatchlistV2(
+  sessionId: string,
+  symbol: string,
+) {
+  return apiFetch<{ status: string; removed: string }>(
+    `/ws/discovery/watchlist/${encodeURIComponent(symbol)}?session_id=${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
+  );
 }

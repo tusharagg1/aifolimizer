@@ -26,7 +26,7 @@ def _fmt_date(ts) -> str:
         return str(ts)
 
 
-def _fetch_one(symbol: str) -> list:
+def _fetch_one_yfinance(symbol: str) -> list:
     try:
         articles = yf.Ticker(symbol).news or []
         out = []
@@ -61,8 +61,12 @@ def _fetch_one(symbol: str) -> list:
                 })
         return out
     except Exception as e:
-        _LOG.warning(f"[news] {symbol}: {e}")
+        _LOG.warning(f"[news] yfinance {symbol}: {e}")
         return []
+
+
+def _fetch_one(symbol: str) -> list:
+    return _fetch_one_yfinance(symbol)
 
 
 def get_news(symbols: list[str]) -> dict[str, list]:

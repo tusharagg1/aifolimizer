@@ -347,17 +347,18 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
             continue
         acc_type = _detect_account_type(acc)
         acc_pnl = 0.0
+        usd_cash_balance = 0.0
         if not acc.get("cash") and not acc.get("available_to_trade"):
             try:
                 balances = ws.get_account_balances(acc_id)
                 _debug(f"[WS] balances({acc_type}): {balances}")
                 if isinstance(balances, dict):
                     cad_cash = float(balances.get("sec-c-cad") or 0)
-                    usd_cash = float(balances.get("sec-c-usd") or 0)
-                    if usd_cash > 0:
+                    usd_cash_balance = float(balances.get("sec-c-usd") or 0)
+                    if usd_cash_balance > 0:
                         from app.services.market_data import _get_cad_per_usd
                         total_cash_cad = round(
-                            cad_cash + usd_cash * _get_cad_per_usd(), 2
+                            cad_cash + usd_cash_balance * _get_cad_per_usd(), 2
                         )
                     else:
                         total_cash_cad = cad_cash
@@ -384,6 +385,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         )
         per_account[acc_type] = {
             "cash_balance": float(acc.get("cash") or 0),
+            "usd_cash_balance": usd_cash_balance,
             "invested_value": nlv,
             "unrealized_pnl_cad": acc_pnl,
         }

@@ -1438,5 +1438,265 @@ async def list_skill_snapshots() -> dict:
     }
 
 
+# ── Phase 3: integrated signal MCP tools ────────────────────────────────────
+
+def _active_tenant_hash() -> str | None:
+    sid = _state.get("session_id")
+    if not sid:
+        return None
+    import hashlib
+    return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+
+
+@mcp.tool()
+async def get_integrated_signals() -> dict:
+    """Return latest integrated 5-signal buy/sell signal per holding.
+
+    Combines tech, fund, macro, sentiment, and skill evidence into one score
+    + action per symbol. Reads from Postgres signal_history (latest row per
+    symbol). PII-stripped.
+    """
+    thash = _active_tenant_hash()
+    if not thash:
+        return {"error": "no active session"}
+    try:
+        from app.db import init_pool, close_pool
+        from app.db.repositories import signals_repo
+        await init_pool()
+        rows = await signals_repo.latest_for_tenant(thash)
+        return {
+            "as_of": rows[0]["ts"].isoformat() if rows else None,
+            "signals": [
+                {
+                    "symbol": r["symbol"],
+                    "action": r["action"],
+                    "conviction": r.get("conviction"),
+                    "score": float(r["score"])
+                        if r.get("score") is not None else None,
+                    "tech": float(r["tech_score"])
+                        if r.get("tech_score") is not None else None,
+                    "fund": float(r["fund_score"])
+                        if r.get("fund_score") is not None else None,
+                    "macro": float(r["macro_score"])
+                        if r.get("macro_score") is not None else None,
+                    "sentiment": float(r["sentiment_score"])
+                        if r.get("sentiment_score") is not None else None,
+                    "skill_consensus": r.get("skill_consensus"),
+                    "skill_confidence": float(r["skill_confidence"])
+                        if r.get("skill_confidence") is not None else None,
+                    "skill_evidence": r.get("skill_evidence"),
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_signal_history(symbol: str, days: int = 30) -> dict:
+    """Time-series of integrated signal for one symbol."""
+    thash = _active_tenant_hash()
+    if not thash:
+        return {"error": "no active session"}
+    try:
+        from app.db import init_pool, close_pool
+        from app.db.repositories import signals_repo
+        await init_pool()
+        rows = await signals_repo.history_for_symbol(
+            thash, symbol.upper(), days=days,
+        )
+        return {
+            "symbol": symbol.upper(),
+            "days": days,
+            "points": [
+                {
+                    "ts": r["ts"].isoformat() if r.get("ts") else None,
+                    "score": float(r["score"])
+                        if r.get("score") is not None else None,
+                    "action": r.get("action"),
+                    "tech": float(r["tech_score"])
+                        if r.get("tech_score") is not None else None,
+                    "fund": float(r["fund_score"])
+                        if r.get("fund_score") is not None else None,
+                    "macro": float(r["macro_score"])
+                        if r.get("macro_score") is not None else None,
+                    "sentiment": float(r["sentiment_score"])
+                        if r.get("sentiment_score") is not None else None,
+                    "skill": r.get("skill_consensus"),
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_discovery_picks(n: int = 5) -> dict:
+    """Phase 13: top N new-symbol discovery picks from the last nightly
+    scan (S&P500 + TSX60 + watchlist - already-held). Use to find new
+    BUY ideas beyond your current portfolio.
+    """
+    thash = _active_tenant_hash()
+    if not thash:
+        return {"error": "no active session"}
+    try:
+        from app.db import init_pool, close_pool
+        from app.services import discovery
+        await init_pool()
+        picks = await discovery.get_cached_top(thash)
+        return {"picks": picks[:n], "n": min(n, len(picks))}
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_risk_gate_state() -> dict:
+    """Phase 12: current portfolio-level risk gate state. Tells you if the
+    system is currently allowing new BUYs, scaling them down, or halting
+    them entirely due to drawdown / VIX / loss-streak / calibration
+    triggers. Includes valid_until — gate auto-clears after that.
+    """
+    thash = _active_tenant_hash()
+    if not thash:
+        return {"error": "no active session"}
+    try:
+        from app.db import init_pool, close_pool
+        from app.services import risk_gate
+        await init_pool()
+        state = await risk_gate.get_current(thash)
+        return state.to_dict() if state else {"gate": None}
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_live_kpis(window_days: int = 30) -> dict:
+    """Phase 10: live EV / PF / Sharpe / Sortino / Max DD / regime-breakdown
+    over trailing window for the active session. The headline metrics you
+    actually want to optimize for — not 'accuracy'.
+    """
+    thash = _active_tenant_hash()
+    if not thash:
+        return {"error": "no active session"}
+    try:
+        from app.db import init_pool, close_pool
+        from app.services import live_metrics
+        await init_pool()
+        latest = await live_metrics.latest(thash, window_days=window_days)
+        if latest is None:
+            return await live_metrics.kpis(thash, window_days=window_days)
+        return latest
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_calibration_report(horizon_days: int = 21) -> dict:
+    """Phase 9: latest calibration report (Brier + ECE + reliability bins).
+    Use to check whether predicted win-probabilities match realized win
+    rates. ECE > 0.15 + overconfident verdict = the model is too sure of
+    itself; trust the signal less for sizing.
+    """
+    try:
+        from app.db import init_pool, close_pool
+        from app.services.calibration import latest_report
+        await init_pool()
+        r = await latest_report(horizon_days=horizon_days)
+        return {"report": r} if r else {"report": None,
+                                         "reason": "no report yet"}
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_current_regime() -> dict:
+    """Phase 8: return current market regime classification + per-skill
+    multipliers in effect. Use to debug why a skill's score is up/down vs
+    its baseline this tick.
+    """
+    try:
+        from app.db import init_pool, close_pool
+        from app.services import market_regime
+        await init_pool()
+        cur = await market_regime.get_current()
+        if cur is None:
+            return {"regime": None, "multipliers": {}}
+        return {
+            "regime": cur.to_dict(),
+            "multipliers": market_regime.initial_multipliers_for(
+                cur.composite,
+            ),
+        }
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
+@mcp.tool()
+async def get_weights_history(limit: int = 30) -> dict:
+    """Current 5-signal weights + last N audit versions from the nightly
+    tuner (Phase 5 / 11). Use to see how the system is learning to weight
+    different signal sources over time.
+    """
+    try:
+        from app.db import init_pool, close_pool
+        from app.db.repositories import weights_repo
+        await init_pool()
+        current = await weights_repo.current()
+        history = await weights_repo.history(limit=limit)
+        return {
+            "current": {
+                "version": current.get("version"),
+                "w_tech": float(current.get("w_tech") or 0),
+                "w_fund": float(current.get("w_fund") or 0),
+                "w_macro": float(current.get("w_macro") or 0),
+                "w_sentiment": float(current.get("w_sentiment") or 0),
+                "w_skill": float(current.get("w_skill") or 0),
+                "reason": current.get("reason"),
+                "objective": current.get("objective"),
+            },
+            "history": [
+                {
+                    "version": h.get("version"),
+                    "ts": h["ts"].isoformat() if h.get("ts") else None,
+                    "w_skill": float(h.get("w_skill") or 0),
+                    "w_tech": float(h.get("w_tech") or 0),
+                    "w_fund": float(h.get("w_fund") or 0),
+                    "w_macro": float(h.get("w_macro") or 0),
+                    "w_sentiment": float(h.get("w_sentiment") or 0),
+                    "reason": h.get("reason"),
+                }
+                for h in history
+            ],
+        }
+    finally:
+        try:
+            await close_pool()
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     mcp.run()

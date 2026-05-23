@@ -12,7 +12,7 @@ interface Props {
 
 const COLORS = ["#6366f1", "#22d3ee", "#f59e0b", "#10b981", "#f43f5e", "#a78bfa", "#34d399"];
 
-function AllocationChart({ positions, cashAvailable, totalValue }: Props) {
+function AllocationChart({ positions, cashAvailable }: Props) {
   const grouped: Record<string, number> = {};
 
   for (const p of positions) {
@@ -24,9 +24,12 @@ function AllocationChart({ positions, cashAvailable, totalValue }: Props) {
     grouped["Cash"] = (grouped["Cash"] || 0) + cashAvailable;
   }
 
+  // Use sum of all grouped values as denominator so slices always add to 100%
+  // (backend total_value = invested_value only, excluding cash)
+  const groupedTotal = Object.values(grouped).reduce((s, v) => s + v, 0);
   const data = Object.entries(grouped).map(([name, value]) => ({
     name,
-    value: parseFloat(((value / totalValue) * 100).toFixed(1)),
+    value: parseFloat(((value / groupedTotal) * 100).toFixed(1)),
   }));
 
   return (
