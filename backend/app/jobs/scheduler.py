@@ -553,6 +553,122 @@ async def _score_once_if_due() -> dict | None:
         except Exception as e:
             _LOG.warning("nightly LLM skills failed: %s", e)
 
+        # Phase 15: event-driven LLM skills for recent earnings surprises +
+        # crowding regime shifts. Runs out-of-band from fixed scheduler so
+        # material market events trigger fresh LLM reasoning immediately.
+        try:
+            from app.services import (
+                event_dispatcher, fundamentals, positioning,
+            )
+            from app.api.ws import _get_portfolio as _gp_evt
+            import hashlib as _h_evt
+            from datetime import datetime as _dt, timedelta as _td
+
+            event_results: list[dict] = []
+            recent_cutoff = (
+                _dt.utcnow() - _td(days=7)
+            ).date().isoformat()
+
+            for sid in _active_session_ids():
+                session = wealthsimple.get_session(sid)
+                if not session:
+                    continue
+                try:
+                    portfolio = await _gp_evt(
+                        sid, session, "", max_age_s=300,
+                    )
+                except Exception:
+                    continue
+                if not portfolio or not portfolio.positions:
+                    continue
+
+                thash = _h_evt.sha1(sid.encode("utf-8")).hexdigest()[:16]
+                symbols = [
+                    p.symbol for p in portfolio.positions
+                    if getattr(p, "symbol", None)
+                ]
+                if not symbols:
+                    continue
+
+                # --- Earnings surprises (last 7d, latest quarter only) ---
+                try:
+                    history = await asyncio.to_thread(
+                        fundamentals.get_earnings_history, symbols, 1,
+                    )
+                    for sym, quarters in (history or {}).items():
+                        if not quarters:
+                            continue
+                        latest = quarters[0]
+                        q_date = (latest.get("quarter") or "")[:10]
+                        if q_date < recent_cutoff:
+                            continue
+                        surprise = latest.get("surprise_pct")
+                        if surprise is None:
+                            continue
+                        result = await event_dispatcher.on_earnings_surprise(
+                            thash, sym, float(surprise),
+                            context={
+                                "earnings_date": q_date,
+                                "eps_actual": latest.get("eps_actual"),
+                                "eps_estimate": latest.get("eps_estimate"),
+                                "outcome": latest.get("outcome"),
+                            },
+                        )
+                        if result.get("status") == "ok":
+                            event_results.append({
+                                "tenant": sid[:8],
+                                "event": "earnings_surprise",
+                                "ticker": sym,
+                                "surprise_pct": surprise,
+                            })
+                except Exception as e:
+                    _LOG.warning("earnings event scan failed: %s", e)
+
+                # --- Crowding regime shifts ---
+                try:
+                    top_syms = [
+                        p.symbol for p in sorted(
+                            portfolio.positions,
+                            key=lambda p: p.weight or 0,
+                            reverse=True,
+                        )[:15]
+                        if getattr(p, "symbol", None)
+                    ]
+                    await asyncio.to_thread(
+                        positioning.snapshot_to_history, top_syms,
+                    )
+                    shifts = await asyncio.to_thread(
+                        positioning.detect_regime_shifts,
+                        top_syms, 30, 25.0,
+                    )
+                    for shift in shifts or []:
+                        sym = shift.get("symbol")
+                        if not sym:
+                            continue
+                        result = await event_dispatcher.on_crowding_flip(
+                            thash, sym,
+                            float(shift.get("from_score") or 0),
+                            float(shift.get("to_score") or 0),
+                            context={
+                                "from_label": shift.get("from_label"),
+                                "to_label": shift.get("to_label"),
+                                "direction": shift.get("direction"),
+                            },
+                        )
+                        if result.get("status") == "ok":
+                            event_results.append({
+                                "tenant": sid[:8],
+                                "event": "crowding_flip",
+                                "ticker": sym,
+                                "delta": shift.get("delta"),
+                            })
+                except Exception as e:
+                    _LOG.warning("crowding event scan failed: %s", e)
+
+            _LAST_SCORE_RESULT["event_triggers"] = event_results
+        except Exception as e:
+            _LOG.warning("event-driven skills loop failed: %s", e)
+
         # Phase 10: snapshot live KPIs (PF, Sharpe, DD) for each active tenant.
         try:
             from app.services import live_metrics
