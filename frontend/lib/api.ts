@@ -236,6 +236,8 @@ export interface Position {
   book_cost_cad: number;
   market_value: number;
   market_value_cad: number;
+  current_price?: number;
+  current_price_cad?: number;
   day_change_pct: number;
   total_return_pct: number;
   weight: number;
