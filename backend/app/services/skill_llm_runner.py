@@ -58,17 +58,32 @@ def _snapshot(
     }
 
 
+_THINK_TAG_RE = __import__("re").compile(
+    r"<think>.*?</think>", __import__("re").DOTALL | __import__("re").IGNORECASE,
+)
+
+
 def _parse_json_safe(text: str | None) -> dict | None:
     if not text:
         return None
-    text = text.strip()
+    # DeepSeek-R1 + similar reasoning models wrap chain-of-thought in
+    # <think>...</think>. Strip before JSON detection.
+    text = _THINK_TAG_RE.sub("", text).strip()
     if text.startswith("```"):
         text = text.strip("`")
         if text.startswith("json"):
             text = text[4:]
+    # Reasoning models sometimes return prose then JSON. Find first { ... }.
     try:
         return json.loads(text)
     except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                return None
         return None
 
 
@@ -88,11 +103,15 @@ async def _call_llm_json(
     for adversarial/sell-verify, cheap mini for narrative/briefing). Other
     providers ignore.
     """
+    # Reasoning models (deepseek-r1, o-series when scoped) need extra budget
+    # for chain-of-thought tokens before the final answer.
+    reasoning_tasks = {"adversarial", "sell_verify"}
+    max_tok = 1500 if task in reasoning_tasks else 400
     for provider in llm_router._available_providers():
         try:
             text = await llm_router._call_provider(
                 provider, prompt, system=system,
-                max_tokens=400, temperature=0.3, task=task,
+                max_tokens=max_tok, temperature=0.3, task=task,
             )
             data = _parse_json_safe(text)
             if data is not None:
