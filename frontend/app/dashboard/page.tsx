@@ -112,6 +112,7 @@ function PriceChart({
   useEffect(() => {
     if (!containerRef.current || !histData) return;
     let cancelled = false;
+    let ro: ResizeObserver | null = null;
 
     import("lightweight-charts").then(({ createChart, ColorType, AreaSeries, LineSeries }) => {
       if (cancelled || !containerRef.current) return;
@@ -165,14 +166,19 @@ function PriceChart({
 
       chart.timeScale().fitContent();
 
-      const ro = new ResizeObserver(() => {
-        if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
-      });
-      ro.observe(containerRef.current);
+      if (!cancelled && containerRef.current) {
+        ro = new ResizeObserver(() => {
+          if (containerRef.current && chartRef.current) {
+            chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+          }
+        });
+        ro.observe(containerRef.current);
+      }
     });
 
     return () => {
       cancelled = true;
+      ro?.disconnect();
       if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
     };
   }, [histData]);

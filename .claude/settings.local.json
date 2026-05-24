@@ -210,7 +210,13 @@
       "Bash(powershell.exe \"Get-Content C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\mcp_server.py -Tail 10\")",
       "Bash(powershell.exe \"Get-Content C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\\\\lib\\\\api.ts -Tail 30\")",
       "Bash(powershell.exe \"Select-String -Path 'C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\app\\\\jobs\\\\tasks.py' -Pattern 'phase|skill_llm|adversarial' | Select-Object LineNumber,Line\")",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/ -x --tb=short -q)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/ -x --tb=short -q)",
+      "PowerShell(Invoke-RestMethod -Uri \"http://localhost:8000/health\" -TimeoutSec 5 2>$null)",
+      "Bash(curl -s -X POST http://localhost:8000/ws/restore-session -H \"Content-Type: application/json\" -d \"{}\")",
+      "Bash(python -c \"import sys,json; paths=json.load\\(sys.stdin\\)['paths']; [print\\(p\\) for p in paths if 'session' in p or 'restore' in p]\")",
+      "Bash(curl -s -X POST http://localhost:8000/ws/restore -H \"Content-Type: application/json\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -o NUL -w \"%{http_code}\" http://localhost:3000)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",
