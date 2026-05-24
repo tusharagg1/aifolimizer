@@ -64,6 +64,23 @@ async def failed_jobs(limit: int = 20) -> list[dict[str, Any]]:
     return out[:limit]
 
 
+@router.get("/sentry/digest")
+async def sentry_digest(limit: int = 10, force: bool = False) -> dict[str, Any]:
+    """Latest Sentry issues digest. `force=true` triggers a live fetch
+    instead of returning the cached scheduler value."""
+    if force:
+        from app.services import sentry_monitor
+        try:
+            return sentry_monitor.build_digest(limit=limit)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+    from app.jobs.scheduler import get_last_sentry_digest
+    cached = get_last_sentry_digest()
+    if cached is None:
+        return {"count": 0, "issues": [], "cached": True, "note": "no digest yet"}
+    return {**cached, "cached": True}
+
+
 @router.post("/jobs/{job_id}/retry")
 async def retry_job(job_id: str) -> dict[str, Any]:
     from rq.job import Job

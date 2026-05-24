@@ -1698,5 +1698,20 @@ async def get_weights_history(limit: int = 30) -> dict:
             pass
 
 
+@mcp.tool()
+async def get_sentry_issues(limit: int = 10) -> dict:
+    """
+    Pull top unresolved Sentry errors from the last 24h with stack frames.
+    Use this to triage live production bugs. Returns issue count, title,
+    culprit, occurrence count, affected users, and in-app stack frames
+    (file/function/line/context) so Claude can propose fixes.
+    """
+    from app.services import sentry_monitor
+    try:
+        return sentry_monitor.build_digest(limit=limit)
+    except RuntimeError as e:
+        return {"error": str(e), "issues": []}
+
+
 if __name__ == "__main__":
     mcp.run()

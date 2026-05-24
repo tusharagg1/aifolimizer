@@ -47,7 +47,17 @@ def _migrate_legacy() -> None:
 
 
 _REC_CACHE: dict[str, tuple[list, float]] = {}
-_REC_CACHE_TTL = 1800  # 30 minutes
+_REC_CACHE_TTL = 1800  # 30 minutes (legacy bulk cache, kept for fallback)
+
+# Per-symbol rec cache — adding 1 symbol only re-scores that symbol.
+_PER_SYM_CACHE: dict[str, tuple[dict, float]] = {}
+_PER_SYM_TTL = 1800
+# Cache shared market_breadth (macro) — same for every symbol
+_MACRO_CACHE: tuple[dict, float] | None = None
+_MACRO_TTL = 3600
+
+_PER_FETCH_TIMEOUT_S = 15.0
+_SENT_TIMEOUT_S = 8.0
 
 _ACTION_ORDER = {"BUY": 0, "WATCH": 1, "PASS": 2}
 
@@ -74,7 +84,10 @@ def add_symbol(symbol: str, notes: str = "") -> list[dict]:
     items = load_watchlist()
     if any(i["symbol"] == sym for i in items):
         return items
-    items.append({"symbol": sym, "notes": notes, "added_at": time.strftime("%Y-%m-%d")})
+    items.append({
+        "symbol": sym, "notes": notes,
+        "added_at": time.strftime("%Y-%m-%d"),
+    })
     _save(items)
     return items
 
@@ -83,7 +96,69 @@ def remove_symbol(symbol: str) -> list[dict]:
     sym = symbol.strip().upper()
     items = [i for i in load_watchlist() if i["symbol"] != sym]
     _save(items)
+    _PER_SYM_CACHE.pop(sym, None)
     return items
+
+
+def _get_macro_cached() -> dict:
+    global _MACRO_CACHE
+    if _MACRO_CACHE and time.time() - _MACRO_CACHE[1] < _MACRO_TTL:
+        return _MACRO_CACHE[0]
+    try:
+        m = market_breadth()
+    except Exception:
+        m = {}
+    _MACRO_CACHE = (m, time.time())
+    return m
+
+
+def _score_one_symbol(sym: str, notes: str, macro_data: dict) -> dict:
+    """Fetch + score a single symbol with hard per-call timeouts."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        tech_f = pool.submit(tech_svc.get_technicals, [sym])
+        fund_f = pool.submit(fund_svc.get_fundamentals, [sym])
+        sent_f = pool.submit(_get_sentiment, sym)
+        try:
+            tech_data = tech_f.result(timeout=_PER_FETCH_TIMEOUT_S)
+        except Exception:
+            tech_data = {}
+        try:
+            fund_data = fund_f.result(timeout=_PER_FETCH_TIMEOUT_S)
+        except Exception:
+            fund_data = {}
+        try:
+            sent_score = sent_f.result(timeout=_SENT_TIMEOUT_S)
+        except Exception:
+            sent_score = 0.0
+
+    try:
+        em_data = get_earnings_expected_moves([sym], fund_data, tech_data)
+    except Exception:
+        em_data = {}
+
+    fd = fund_data.get(sym) or {}
+    currency = "CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD"
+    position = {
+        "symbol": sym,
+        "name": fd.get("longName") or fd.get("shortName") or sym,
+        "currency": currency,
+        "asset_class": fd.get("quoteType", "stock").lower(),
+        "weight": 0.0,
+        "market_value_cad": 0.0,
+        "total_return_pct": 0.0,
+        "quantity": 0.0,
+    }
+    rec = _score_position(
+        sym, position, tech_data.get(sym) or {}, fd, macro_data,
+        sent_score, em_data.get(sym) or {},
+    )
+    if rec["action"] == "SELL":
+        rec["action"] = "PASS"
+    elif rec["action"] == "HOLD":
+        rec["action"] = "WATCH"
+    rec["source"] = "watchlist"
+    rec["notes"] = notes
+    return rec
 
 
 def get_watchlist_recommendations() -> list[dict]:
@@ -91,64 +166,55 @@ def get_watchlist_recommendations() -> list[dict]:
     if not items:
         return []
 
-    cache_key = ",".join(sorted(i["symbol"] for i in items))
-    entry = _REC_CACHE.get(cache_key)
-    if entry and time.time() - entry[1] < _REC_CACHE_TTL:
-        return entry[0]
-
-    symbols = [i["symbol"] for i in items]
+    macro_data = _get_macro_cached()
+    now = time.time()
     notes_map = {i["symbol"]: i.get("notes", "") for i in items}
+    results: list[dict] = []
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        tech_f = pool.submit(tech_svc.get_technicals, symbols)
-        fund_f = pool.submit(fund_svc.get_fundamentals, symbols)
-        macro_f = pool.submit(market_breadth)
-        sent_fs = {sym: pool.submit(_get_sentiment, sym) for sym in symbols}
-        tech_data = tech_f.result()
-        fund_data = fund_f.result()
-        macro_data = macro_f.result()
-        sent_data = {sym: f.result() for sym, f in sent_fs.items()}
+    # Fetch symbols not in cache (or stale) in parallel.
+    stale_syms: list[str] = []
+    for i in items:
+        sym = i["symbol"]
+        entry = _PER_SYM_CACHE.get(sym)
+        if entry and now - entry[1] < _PER_SYM_TTL:
+            rec = dict(entry[0])
+            rec["notes"] = notes_map.get(sym, "")
+            results.append(rec)
+        else:
+            stale_syms.append(sym)
 
-    try:
-        em_data = get_earnings_expected_moves(symbols, fund_data, tech_data)
-    except Exception:
-        em_data = {}
-
-    results = []
-    for sym in symbols:
-        fd = fund_data.get(sym) or {}
-        currency = "CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD"
-        position = {
-            "symbol": sym,
-            "name": fd.get("longName") or fd.get("shortName") or sym,
-            "currency": currency,
-            "asset_class": fd.get("quoteType", "stock").lower(),
-            "weight": 0.0,
-            "market_value_cad": 0.0,
-            "total_return_pct": 0.0,
-            "quantity": 0.0,
-        }
-
-        rec = _score_position(
-            sym,
-            position,
-            tech_data.get(sym) or {},
-            fd,
-            macro_data,
-            sent_data.get(sym, 0.0),
-            em_data.get(sym) or {},
-        )
-
-        # Remap: can't SELL or HOLD what isn't owned
-        if rec["action"] == "SELL":
-            rec["action"] = "PASS"
-        elif rec["action"] == "HOLD":
-            rec["action"] = "WATCH"
-
-        rec["source"] = "watchlist"
-        rec["notes"] = notes_map.get(sym, "")
-        results.append(rec)
+    if stale_syms:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(8, len(stale_syms))
+        ) as pool:
+            futures = {
+                pool.submit(
+                    _score_one_symbol, sym, notes_map.get(sym, ""), macro_data,
+                ): sym
+                for sym in stale_syms
+            }
+            # Per-future timeout — one slow yfinance call can't block others.
+            wait_s = _PER_FETCH_TIMEOUT_S + _SENT_TIMEOUT_S
+            for f in concurrent.futures.as_completed(futures, timeout=None):
+                sym = futures[f]
+                try:
+                    rec = f.result(timeout=wait_s)
+                    _PER_SYM_CACHE[sym] = (rec, time.time())
+                    results.append(rec)
+                except Exception as e:
+                    _LOG.warning(
+                        "watchlist: scoring %s failed: %s", sym, e,
+                    )
+                    # Placeholder so frontend still sees the symbol.
+                    results.append({
+                        "symbol": sym, "action": "WATCH", "score": 0,
+                        "confidence": "low", "current_price": None,
+                        "take_profit": None, "stop_loss": None,
+                        "risk_reward": None,
+                        "reasons": [f"data fetch failed: {e}"],
+                        "flags": ["data_unavailable"], "currency": "USD",
+                        "source": "watchlist", "notes": notes_map.get(sym, ""),
+                    })
 
     results.sort(key=lambda r: (_ACTION_ORDER.get(r["action"], 9), -r["score"]))
-    _REC_CACHE[cache_key] = (results, time.time())
     return results

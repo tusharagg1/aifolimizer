@@ -12,6 +12,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     signal,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      sessionStorage.removeItem("ws_session_id");
+      sessionStorage.removeItem("ws_profile");
+    }
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "Request failed");
   }
@@ -409,7 +413,8 @@ export async function wsGetWatchlistRecommendations(
   signal?: AbortSignal,
 ) {
   return apiFetch<WatchlistRecommendationsResponse>(
-    `/ws/watchlist/recommendations?session_id=${session_id}`, { signal },
+    `/ws/watchlist/recommendations?session_id=${session_id}`,
+    { signal: signal ?? AbortSignal.timeout(60_000) },
   );
 }
 
