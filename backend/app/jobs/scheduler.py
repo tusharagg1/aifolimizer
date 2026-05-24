@@ -50,6 +50,11 @@ _MAX_TENANT_FANOUT = 5
 # In-process — fine because the scheduler is a single process.
 _SESSION_EXPIRED_PUSHED: set[tuple[str, str]] = set()
 
+# Phase 15: event_dispatcher state — track last seen regime composite and
+# per-tenant risk-gate status so material flips can fire LLM skill re-runs.
+_PREV_REGIME = None
+_PREV_GATE_STATUS: dict[str, str] = {}
+
 # Nightly score: any tick at/after this Eastern-time hour triggers it once per day.
 _SCORE_HOUR_ET = 16  # 4pm ET — 30 min post US close, captures end-of-day prices
 _SCORE_LOOP_INTERVAL_S = 30 * 60  # check every 30 min whether to fire
@@ -257,11 +262,21 @@ async def _handle_session_expired(sid: str) -> None:
 
 
 async def _run_for_session(sid: str) -> dict:
+    global _PREV_REGIME
     # Phase 8: refresh market regime once per tick (cheap, cached 1h
     # inside market_breadth so back-to-back ticks reuse the same data).
     try:
         from app.services import market_regime
-        await market_regime.classify_and_persist()
+        new_regime = await market_regime.classify_and_persist()
+        # Phase 15: event-driven regime flip → fire LLM skills out-of-band.
+        try:
+            from app.services import event_dispatcher
+            await event_dispatcher.on_regime_flip(
+                _PREV_REGIME, new_regime, tenant_hashes=[_tenant_hash(sid)],
+            )
+        except Exception as e:
+            _LOG.warning("regime flip dispatch failed: %s", e)
+        _PREV_REGIME = new_regime
     except Exception as e:
         _LOG.warning("regime classify failed: %s", e)
 
@@ -321,6 +336,17 @@ async def _run_for_session(sid: str) -> dict:
         try:
             from app.services import risk_gate
             gate = await risk_gate.evaluate_and_persist(thash)
+            # Phase 15: event-driven drawdown breach → fire risk LLM skill.
+            try:
+                from app.services import event_dispatcher
+                prev_status = _PREV_GATE_STATUS.get(thash)
+                await event_dispatcher.on_drawdown_breach(
+                    thash, prev_status, gate.status,
+                    context={"reasons": gate.reasons, "triggers": gate.triggers},
+                )
+                _PREV_GATE_STATUS[thash] = gate.status
+            except Exception as e:
+                _LOG.warning("drawdown breach dispatch failed: %s", e)
             if gate.status == "halt":
                 recs = [
                     r for r in recs

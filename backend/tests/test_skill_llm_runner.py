@@ -22,7 +22,7 @@ def _patch_llm(monkeypatch):
 
 
 def _set_llm_response(monkeypatch, payload):
-    async def _fake(prompt, system):
+    async def _fake(prompt, system, *, task=None):
         return payload
     monkeypatch.setattr(r, "_call_llm_json", _fake)
 
@@ -55,7 +55,7 @@ def test_adversarial_research_no_providers(monkeypatch):
 
 
 def test_adversarial_research_llm_failure(monkeypatch):
-    async def _fail(prompt, system):
+    async def _fail(prompt, system, *, task=None):
         return None
     monkeypatch.setattr(r, "_call_llm_json", _fail)
     snap = asyncio.run(r.run_adversarial_research("AAPL", {}))

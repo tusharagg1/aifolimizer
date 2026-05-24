@@ -79,13 +79,20 @@ def _providers_available() -> bool:
         return False
 
 
-async def _call_llm_json(prompt: str, system: str) -> dict | None:
-    """Best-effort: call first available provider, parse JSON, return dict."""
+async def _call_llm_json(
+    prompt: str, system: str, *, task: str | None = None,
+) -> dict | None:
+    """Best-effort: call first available provider, parse JSON, return dict.
+
+    `task` routes GitHub Models to a task-appropriate model (reasoning model
+    for adversarial/sell-verify, cheap mini for narrative/briefing). Other
+    providers ignore.
+    """
     for provider in llm_router._available_providers():
         try:
             text = await llm_router._call_provider(
                 provider, prompt, system=system,
-                max_tokens=400, temperature=0.3,
+                max_tokens=400, temperature=0.3, task=task,
             )
             data = _parse_json_safe(text)
             if data is not None:
@@ -122,6 +129,37 @@ _COMP_SYSTEM = (
     "\"loser_action\":\"hold|trim|exit\"}. No prose outside the JSON object."
 )
 
+_RISK_SYSTEM = (
+    "You are a Bridgewater-style portfolio risk analyst. Given a portfolio "
+    "snapshot, produce JSON {\"risk_level\":\"low|moderate|elevated|high\","
+    "\"top_risk\":\"concentration|drawdown|correlation|macro|liquidity\","
+    "\"action\":\"hold|reduce|hedge|rebalance\",\"reason\":\"...\"}. "
+    "No prose outside the JSON object."
+)
+
+_HEALTH_SYSTEM = (
+    "You are a BlackRock portfolio health analyst. Given allocation + "
+    "concentration data, produce JSON {\"health\":\"healthy|attention|"
+    "unhealthy\",\"top_issue\":\"concentration|sector_skew|cash_drag|"
+    "duplication|none\",\"action\":\"hold|rebalance|trim_top|add_diversifier\","
+    "\"reason\":\"...\"}. No prose outside the JSON object."
+)
+
+_MACRO_SYSTEM = (
+    "You are a McKinsey macro strategist. Given macro indicators "
+    "(rates, inflation, FX, regime), produce JSON {\"regime\":\"risk_on|"
+    "risk_off|stagflation|recovery|late_cycle\",\"posture\":\"offense|"
+    "neutral|defense\",\"action\":\"hold|rotate_defensive|rotate_growth|"
+    "raise_cash\",\"reason\":\"...\"}. No prose outside the JSON object."
+)
+
+_BRIEFING_SYSTEM = (
+    "You are a CIO writing a 1-paragraph morning briefing. Given portfolio + "
+    "regime + alerts, produce JSON {\"headline\":\"...\",\"top_concern\":"
+    "\"...\",\"top_opportunity\":\"...\",\"action_today\":\"...\"}. "
+    "Be specific, cite numbers. No prose outside the JSON object."
+)
+
 
 def _adv_prompt(ticker: str, context: dict) -> str:
     return (
@@ -149,6 +187,62 @@ def _comp_prompt(a: str, b: str) -> str:
     )
 
 
+def _risk_prompt(ctx: dict) -> str:
+    return (
+        f"Portfolio max drawdown: {ctx.get('max_drawdown_pct', 'n/a')}%\n"
+        f"VIX: {ctx.get('vix', 'n/a')}\n"
+        f"Top position weight: {ctx.get('top_weight_pct', 'n/a')}%\n"
+        f"Sector concentration (top sector %): "
+        f"{ctx.get('top_sector_pct', 'n/a')}%\n"
+        f"Loss streak (7d consecutive losers): "
+        f"{ctx.get('loss_streak', 0)}\n"
+        f"Calibration ECE: {ctx.get('calibration_ece', 'n/a')}\n"
+        "Produce the JSON risk assessment now."
+    )
+
+
+def _health_prompt(ctx: dict) -> str:
+    return (
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Cash %: {ctx.get('cash_pct', 'n/a')}%\n"
+        f"Equity %: {ctx.get('equity_pct', 'n/a')}%\n"
+        f"Crypto %: {ctx.get('crypto_pct', 'n/a')}%\n"
+        f"Top position: {ctx.get('top_symbol', 'n/a')} "
+        f"({ctx.get('top_weight_pct', 'n/a')}%)\n"
+        f"N positions: {ctx.get('n_positions', 'n/a')}\n"
+        f"Top sector: {ctx.get('top_sector', 'n/a')} "
+        f"({ctx.get('top_sector_pct', 'n/a')}%)\n"
+        "Produce the JSON health assessment now."
+    )
+
+
+def _macro_prompt(ctx: dict) -> str:
+    return (
+        f"Fed funds rate: {ctx.get('fed_funds', 'n/a')}%\n"
+        f"10y yield: {ctx.get('ten_y_yield', 'n/a')}%\n"
+        f"CPI YoY: {ctx.get('cpi_yoy', 'n/a')}%\n"
+        f"CAD/USD: {ctx.get('cad_usd', 'n/a')}\n"
+        f"VIX: {ctx.get('vix', 'n/a')}\n"
+        f"SPY vs SMA200: {ctx.get('spy_vs_sma200_pct', 'n/a')}%\n"
+        f"Regime composite: {ctx.get('regime_composite', 'n/a')}\n"
+        "Produce the JSON macro posture now."
+    )
+
+
+def _briefing_prompt(ctx: dict) -> str:
+    return (
+        f"Date: {ctx.get('date', 'today')}\n"
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Day change: {ctx.get('day_change_pct', 'n/a')}%\n"
+        f"Regime: {ctx.get('regime_composite', 'n/a')}\n"
+        f"Risk gate: {ctx.get('risk_gate_status', 'trade')}\n"
+        f"Open alerts: {ctx.get('n_alerts', 0)}\n"
+        f"Top mover: {ctx.get('top_mover', 'n/a')}\n"
+        f"Earnings today: {ctx.get('earnings_today', 0)}\n"
+        "Produce the JSON briefing now."
+    )
+
+
 # ── Public skill runners ───────────────────────────────────────────────────
 
 async def run_adversarial_research(
@@ -162,6 +256,7 @@ async def run_adversarial_research(
         )
     data = await _call_llm_json(
         _adv_prompt(ticker, context or {}), _ADV_SYSTEM,
+        task="adversarial",
     )
     if data is None:
         return _snapshot(
@@ -198,6 +293,7 @@ async def run_earnings_postmortem(
         )
     data = await _call_llm_json(
         _earn_prompt(ticker, context or {}), _EARN_SYSTEM,
+        task="earnings_pm",
     )
     if data is None:
         return _snapshot(
@@ -227,7 +323,9 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
             "stock-compare",
             status="error", error="no_llm_provider",
         )
-    data = await _call_llm_json(_comp_prompt(a, b), _COMP_SYSTEM)
+    data = await _call_llm_json(
+        _comp_prompt(a, b), _COMP_SYSTEM, task="stock_compare",
+    )
     if data is None:
         return _snapshot(
             "stock-compare",
@@ -247,6 +345,131 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
              "reason": "loses comparison"},
         ],
         key_insights=[f"{winner} > {loser}: {data.get('reason', '—')}"],
+    )
+
+
+async def run_risk_assessment(context: dict | None = None) -> dict[str, Any]:
+    if not _providers_available():
+        return _snapshot(
+            "risk-assessment", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _risk_prompt(context or {}), _RISK_SYSTEM, task="risk_assess",
+    )
+    if data is None:
+        return _snapshot(
+            "risk-assessment", status="error", error="llm_no_response",
+        )
+    level = (data.get("risk_level") or "moderate").lower()
+    action = (data.get("action") or "hold").lower()
+    return _snapshot(
+        "risk-assessment",
+        summary={"risk_level": level, "top_risk": data.get("top_risk")},
+        actionable=[{
+            "recommendation": action, "reason": data.get("reason", ""),
+        }],
+        alerts=(
+            [{"level": "warn" if level in ("elevated", "high") else "info",
+              "message": f"Risk level: {level}"}]
+            if level != "low" else []
+        ),
+        key_insights=[
+            f"Risk: {level} — top concern: {data.get('top_risk', '—')}",
+            f"Action: {action} — {data.get('reason', '—')}",
+        ],
+    )
+
+
+async def run_portfolio_health(context: dict | None = None) -> dict[str, Any]:
+    if not _providers_available():
+        return _snapshot(
+            "portfolio-health", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _health_prompt(context or {}), _HEALTH_SYSTEM,
+        task="portfolio_health",
+    )
+    if data is None:
+        return _snapshot(
+            "portfolio-health", status="error", error="llm_no_response",
+        )
+    health = (data.get("health") or "attention").lower()
+    action = (data.get("action") or "hold").lower()
+    return _snapshot(
+        "portfolio-health",
+        summary={"health": health, "top_issue": data.get("top_issue")},
+        actionable=[{
+            "recommendation": action, "reason": data.get("reason", ""),
+        }],
+        alerts=(
+            [{"level": "warn", "message": f"Health: {health}"}]
+            if health == "unhealthy" else []
+        ),
+        key_insights=[
+            f"Health: {health} — issue: {data.get('top_issue', '—')}",
+            f"Action: {action} — {data.get('reason', '—')}",
+        ],
+    )
+
+
+async def run_macro_impact(context: dict | None = None) -> dict[str, Any]:
+    if not _providers_available():
+        return _snapshot(
+            "macro-impact", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _macro_prompt(context or {}), _MACRO_SYSTEM, task="macro_impact",
+    )
+    if data is None:
+        return _snapshot(
+            "macro-impact", status="error", error="llm_no_response",
+        )
+    regime = (data.get("regime") or "neutral").lower()
+    posture = (data.get("posture") or "neutral").lower()
+    action = (data.get("action") or "hold").lower()
+    return _snapshot(
+        "macro-impact",
+        summary={"regime": regime, "posture": posture},
+        actionable=[{
+            "recommendation": action, "reason": data.get("reason", ""),
+        }],
+        key_insights=[
+            f"Regime: {regime} — posture: {posture}",
+            f"Action: {action} — {data.get('reason', '—')}",
+        ],
+    )
+
+
+async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
+    if not _providers_available():
+        return _snapshot(
+            "daily-briefing", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _briefing_prompt(context or {}), _BRIEFING_SYSTEM,
+        task="daily_briefing",
+    )
+    if data is None:
+        return _snapshot(
+            "daily-briefing", status="error", error="llm_no_response",
+        )
+    return _snapshot(
+        "daily-briefing",
+        summary={
+            "headline": data.get("headline", ""),
+            "top_concern": data.get("top_concern", ""),
+            "top_opportunity": data.get("top_opportunity", ""),
+        },
+        actionable=[{
+            "recommendation": data.get("action_today", "hold"),
+            "reason": data.get("headline", ""),
+        }],
+        key_insights=[
+            data.get("headline", ""),
+            f"Concern: {data.get('top_concern', '—')}",
+            f"Opportunity: {data.get('top_opportunity', '—')}",
+            f"Action: {data.get('action_today', '—')}",
+        ],
     )
 
 
