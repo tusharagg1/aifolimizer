@@ -216,7 +216,8 @@
       "Bash(python -c \"import sys,json; paths=json.load\\(sys.stdin\\)['paths']; [print\\(p\\) for p in paths if 'session' in p or 'restore' in p]\")",
       "Bash(curl -s -X POST http://localhost:8000/ws/restore -H \"Content-Type: application/json\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
-      "Bash(curl -s -o NUL -w \"%{http_code}\" http://localhost:3000)"
+      "Bash(curl -s -o NUL -w \"%{http_code}\" http://localhost:3000)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000\" -TimeoutSec 5 -UseBasicParsing; $r.StatusCode } catch { $_.Exception.Message })"
     ],
     "additionalDirectories": [
       "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",
