@@ -16,6 +16,10 @@ from app.services import technicals as tech_svc
 from app.services.fundamentals import get_earnings_expected_moves
 from app.services.macro import market_breadth
 from app.services.recommendations import _get_sentiment, _score_position
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.watchlist")
+
 
 # Persist in the user's home so watchlist survives across branch switches,
 # git worktrees, repo moves and clean checkouts. The legacy in-repo location
@@ -39,7 +43,7 @@ def _migrate_legacy() -> None:
             encoding="utf-8",
         )
     except Exception as e:
-        print(f"[watchlist] migration failed: {e}", flush=True)
+        _LOG.warning(f"[watchlist] migration failed: {e}")
 
 
 _REC_CACHE: dict[str, tuple[list, float]] = {}

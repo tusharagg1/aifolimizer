@@ -1,700 +1,933 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
+  wsLogin,
+  wsVerifyOtp,
+  wsRestoreSession,
   wsGetPortfolio,
   wsGetHealthScore,
-  wsGetAlerts,
   wsGetRecommendations,
-  wsGetMacro,
-  wsGetNarratives,
-  wsGetBenchmark,
-  wsGetOptimizer,
   wsGetCrowding,
   wsGetWatchlist,
+  wsAddToWatchlist,
+  wsRemoveFromWatchlist,
   wsGetWatchlistRecommendations,
-  wsRestoreSession,
-  PortfolioResponse,
+  wsGetPriceHistory,
+} from "@/lib/api";
+import type {
   UserProfile,
+  Position,
+  PortfolioSummary,
   HealthScore,
-  Alert,
   Recommendation,
-  SignalChange,
-  MacroSnapshot,
-  BenchmarkResult,
-  OptimizerResult,
   CrowdingMap,
   WatchlistItem,
   WatchlistRecommendation,
+  PriceHistory,
 } from "@/lib/api";
-import { usePortfolioStream } from "@/hooks/usePortfolioStream";
-import PortfolioTable from "@/components/PortfolioTable";
-import AllocationChart from "@/components/AllocationChart";
-import PriceChart from "@/components/PriceChart";
-import HealthScoreWidget from "@/components/HealthScoreWidget";
-import AlertsPanel from "@/components/AlertsPanel";
-import RecommendationsPanel from "@/components/RecommendationsPanel";
-import SkillSnapshotsPanel from "@/components/SkillSnapshotsPanel";
-import TrustDashboardPanel from "@/components/TrustDashboardPanel";
-import WatchlistPanel from "@/components/WatchlistPanel";
-import ScreenerPanel from "@/components/ScreenerPanel";
-import MacroWidget from "@/components/MacroWidget";
-import BenchmarkWidget from "@/components/BenchmarkWidget";
-import OptimizerWidget from "@/components/OptimizerWidget";
-import CountdownLabel from "@/components/CountdownLabel";
 
-function currency(val: number) {
-  return val.toLocaleString("en-CA", { style: "currency", currency: "CAD" });
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+type Action = "BUY" | "ADD" | "WATCH" | "HOLD" | "TRIM" | "SELL" | "NO_EDGE" | "PASS";
+
+const SIGNAL_CFG: Record<Action, { bg: string; text: string; border: string }> = {
+  BUY:     { bg: "bg-emerald-900/50", text: "text-emerald-300", border: "border-emerald-600/40" },
+  ADD:     { bg: "bg-emerald-900/50", text: "text-emerald-300", border: "border-emerald-600/40" },
+  WATCH:   { bg: "bg-amber-900/50",   text: "text-amber-300",   border: "border-amber-600/40" },
+  HOLD:    { bg: "bg-slate-800/50",   text: "text-slate-400",   border: "border-slate-600/40" },
+  TRIM:    { bg: "bg-orange-900/50",  text: "text-orange-300",  border: "border-orange-600/40" },
+  SELL:    { bg: "bg-rose-900/50",    text: "text-rose-300",    border: "border-rose-600/40" },
+  NO_EDGE: { bg: "bg-slate-800/30",   text: "text-slate-500",   border: "border-slate-700/40" },
+  PASS:    { bg: "bg-slate-800/30",   text: "text-slate-500",   border: "border-slate-700/40" },
+};
+
+const ASSET_COLORS: Record<string, string> = {
+  equity: "#6366f1", etf: "#3b82f6", crypto: "#a855f7",
+  bond: "#10b981", commodity: "#f59e0b", cash: "#64748b",
+};
+
+const CHART_PERIODS = ["1mo", "3mo", "6mo", "1y", "2y", "5y"];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtCAD(n: number) {
+  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 2 }).format(n);
+}
+function fmtUSD(n: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(n);
+}
+function fmtPct(n: number, sign = true) {
+  const s = n.toFixed(2) + "%";
+  return sign && n > 0 ? "+" + s : s;
+}
+function fmtNative(n: number, currency: string) {
+  return currency === "USD" ? fmtUSD(n) : fmtCAD(n);
+}
+function fmtQty(n: number) {
+  return n % 1 === 0 ? n.toString() : n.toFixed(4).replace(/\.?0+$/, "");
+}
+function crowdingCls(score: number) {
+  return score <= 30 ? "text-emerald-400" : score <= 60 ? "text-amber-400" : "text-rose-400";
 }
 
-function pct(val: number, showSign = true) {
-  const sign = showSign && val >= 0 ? "+" : "";
-  return `${sign}${val.toFixed(2)}%`;
+// ─── StatCard ─────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, cls }: { label: string; value: string; cls: string }) {
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
+      <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">{label}</div>
+      <div className={`font-mono text-sm font-semibold ${cls}`}>{value}</div>
+    </div>
+  );
 }
 
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+// ─── PriceChart ───────────────────────────────────────────────────────────────
 
-const SKILLS = [
-  { name: "/portfolio-health", desc: "BlackRock health score + rebalance plan", icon: "◈" },
-  { name: "/risk-assessment", desc: "Bridgewater stress test + hedging", icon: "⬡" },
-  { name: "/stock-analysis", desc: "Goldman + Citadel deep dive on a ticker", icon: "◉" },
-  { name: "/macro-impact", desc: "McKinsey macro briefing on your holdings", icon: "◫" },
-  { name: "/dividend-strategy", desc: "Harvard Endowment income blueprint", icon: "◈" },
-  { name: "/earnings-analyzer", desc: "JPMorgan pre-earnings brief", icon: "◆" },
-  { name: "/sector-rotation", desc: "Renaissance rotation signals", icon: "◎" },
-  { name: "/adversarial-research", desc: "Parallel bull/bear agents → verdict", icon: "⬡" },
-  { name: "/tax-loss-review", desc: "Canadian tax-loss harvesting (TFSA/RRSP-aware)", icon: "◈" },
-  { name: "/daily-briefing", desc: "Morning digest: health + alerts + crowding + macro", icon: "◐" },
-  { name: "/cash-deployment", desc: "Add-to-winners cash allocation with crowding guard", icon: "◇" },
-  { name: "/stock-compare", desc: "Head-to-head A vs B matchup", icon: "◇" },
-  { name: "/earnings-postmortem", desc: "Post-report EPS beat/miss breakdown", icon: "◆" },
-];
-
-function useCountUp(target: number, duration = 700): number {
-  const [display, setDisplay] = useState(target);
-  const frameRef = useRef<number | null>(null);
-  const prevRef = useRef<number>(target);
-  useEffect(() => {
-    const from = prevRef.current;
-    prevRef.current = target;
-    if (from === target) return;
-    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / duration, 1);
-      const ease = 1 - (1 - p) ** 3;
-      setDisplay(from + (target - from) * ease);
-      if (p < 1) frameRef.current = requestAnimationFrame(tick);
-      else frameRef.current = null;
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => { if (frameRef.current !== null) cancelAnimationFrame(frameRef.current); };
-  }, [target, duration]);
-  return display;
-}
-
-export default function DashboardPage() {
-  const router = useRouter();
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<string>("");
-
-  const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const [portfolioError, setPortfolioError] = useState<string | null>(null);
-
-  const [healthScore, setHealthScore] = useState<HealthScore | null>(null);
-  const [healthLoading, setHealthLoading] = useState(false);
-
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [alertsLoading, setAlertsLoading] = useState(false);
-
-  const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
-  const [signalChanges, setSignalChanges] = useState<SignalChange[]>([]);
-  const [recsLoading, setRecsLoading] = useState(false);
-
-  const [narratives, setNarratives] = useState<Record<string, string | null>>({});
-  const [narrativesLoading, setNarrativesLoading] = useState(false);
-  const [narrativeProviders, setNarrativeProviders] = useState<string[]>([]);
-
-  const [macro, setMacro] = useState<MacroSnapshot | null>(null);
-  const [macroLoading, setMacroLoading] = useState(false);
-
-  const [benchmark, setBenchmark] = useState<BenchmarkResult | null>(null);
-  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
-
-  const [optimizer, setOptimizer] = useState<OptimizerResult | null>(null);
-  const [optimizerLoading, setOptimizerLoading] = useState(false);
-
-  const [crowding, setCrowding] = useState<CrowdingMap>({});
-  const [crowdingLoading, setCrowdingLoading] = useState(false);
-
-  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
-  const [watchlistRecs, setWatchlistRecs] = useState<WatchlistRecommendation[] | null>(null);
-  const [watchlistLoading, setWatchlistLoading] = useState(false);
-
-  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
-  const [copiedSkill, setCopiedSkill] = useState<string | null>(null);
-  const [skillsOpen, setSkillsOpen] = useState(false);
-  const [streamConnected, setStreamConnected] = useState(false);
-
-  // eslint-disable-next-line react-hooks/purity
-  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
-  // Per-loader AbortController so a new fetch cancels the prior in-flight one.
-  // Prevents stale responses from stomping fresher state (e.g. account-tab race).
-  const abortersRef = useRef<Record<string, AbortController>>({});
-  // Stable refs for values consumed inside loaders but not meant to retrigger
-  // the loader's identity — keeps refreshAll + setInterval from being recreated
-  // on every ticker click / narrative load.
-  const selectedTickerRef = useRef<string | null>(null);
-  const narrativesLoadedRef = useRef<boolean>(false);
-
-  const abortable = useCallback((key: string): AbortSignal => {
-    abortersRef.current[key]?.abort();
-    const ctrl = new AbortController();
-    abortersRef.current[key] = ctrl;
-    return ctrl.signal;
-  }, []);
-
-  useEffect(() => () => {
-    for (const c of Object.values(abortersRef.current)) c.abort();
-  }, []);
+function PriceChart({
+  sessionId, symbol, period, onPeriodChange,
+}: {
+  sessionId: string;
+  symbol: string;
+  period: string;
+  onPeriodChange: (p: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chartRef = useRef<any>(null);
+  const [histData, setHistData] = useState<PriceHistory | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const sid = sessionStorage.getItem("ws_session_id");
-    const prof = sessionStorage.getItem("ws_profile");
-    if (sid) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSessionId(sid);
-      if (prof) setProfile(JSON.parse(prof));
-      return;
-    }
-    // No session in browser — ask backend to restore a persisted one before
-    // bouncing the user to /login. Survives backend restart + tab close.
-    wsRestoreSession()
-      .then((res) => {
-        if (cancelled) return;
-        if (res.restored && res.session_id) {
-          sessionStorage.setItem("ws_session_id", res.session_id);
-          if (res.profile) {
-            sessionStorage.setItem("ws_profile", JSON.stringify(res.profile));
-            setProfile(res.profile);
-          }
-          setSessionId(res.session_id);
-        } else {
-          router.push("/login");
-        }
-      })
-      .catch(() => { if (!cancelled) router.push("/login"); });
+    setLoading(true);
+    wsGetPriceHistory(sessionId, symbol, period)
+      .then((d) => { if (!cancelled) setHistData(d); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [router]);
-
-  const isAbort = (err: unknown) =>
-    err instanceof DOMException && err.name === "AbortError";
-
-  // selectedTicker mirrored into a ref so loadPortfolio's identity doesn't
-  // churn when the user clicks through positions — keeps refreshAll +
-  // setInterval stable across the session.
-  useEffect(() => { selectedTickerRef.current = selectedTicker; }, [selectedTicker]);
-
-  const loadPortfolio = useCallback(async (accountId: string = selectedAccount) => {
-    if (!sessionId) return;
-    const signal = abortable("portfolio");
-    setPortfolioLoading(true);
-    setPortfolioError(null);
-    try {
-      const data = await wsGetPortfolio(sessionId, accountId, signal);
-      setPortfolio(data);
-      if (!selectedTickerRef.current && data.positions.length > 0) {
-        setSelectedTicker(data.positions[0].symbol);
-      }
-    } catch (err: unknown) {
-      if (isAbort(err)) return;
-      const msg = err instanceof Error ? err.message : "Failed to load portfolio";
-      if (msg.includes("expired")) router.push("/login");
-      else setPortfolioError(msg);
-    } finally {
-      if (!signal.aborted) setPortfolioLoading(false);
-    }
-  }, [sessionId, router, selectedAccount, abortable]);
-
-  const loadHealthScore = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("health");
-    if (!healthScore) setHealthLoading(true);
-    try { setHealthScore(await wsGetHealthScore(sessionId, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setHealthLoading(false); }
-  }, [sessionId, abortable, healthScore]);
-
-  const loadAlerts = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("alerts");
-    if (alerts.length === 0) setAlertsLoading(true);
-    try { setAlerts(await wsGetAlerts(sessionId, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setAlertsLoading(false); }
-  }, [sessionId, abortable, alerts.length]);
-
-  const loadNarratives = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("narratives");
-    if (!narrativesLoadedRef.current) setNarrativesLoading(true);
-    try {
-      const res = await wsGetNarratives(sessionId, signal);
-      if (!res.error) {
-        setNarratives(res.narratives);
-        setNarrativeProviders(res.providers ?? []);
-        narrativesLoadedRef.current = true;
-      }
-    } catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setNarrativesLoading(false); }
-  }, [sessionId, abortable]);
-
-  const loadRecommendations = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("recs");
-    if (!recommendations) setRecsLoading(true);
-    try {
-      const res = await wsGetRecommendations(sessionId, signal);
-      setRecommendations(res.recommendations);
-      if (res.signal_changes?.length) setSignalChanges(res.signal_changes);
-      loadNarratives();
-    } catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setRecsLoading(false); }
-  }, [sessionId, loadNarratives, abortable, recommendations]);
-
-  const loadMacro = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("macro");
-    if (!macro) setMacroLoading(true);
-    try { setMacro(await wsGetMacro(sessionId, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setMacroLoading(false); }
-  }, [sessionId, abortable, macro]);
-
-  const loadBenchmark = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("benchmark");
-    if (!benchmark) setBenchmarkLoading(true);
-    try { setBenchmark(await wsGetBenchmark(sessionId, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setBenchmarkLoading(false); }
-  }, [sessionId, abortable, benchmark]);
-
-  const loadOptimizer = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("optimizer");
-    if (!optimizer) setOptimizerLoading(true);
-    try { setOptimizer(await wsGetOptimizer(sessionId, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setOptimizerLoading(false); }
-  }, [sessionId, abortable, optimizer]);
-
-  const loadCrowding = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("crowding");
-    if (Object.keys(crowding).length === 0) setCrowdingLoading(true);
-    try { setCrowding(await wsGetCrowding(sessionId, 15, signal)); }
-    catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setCrowdingLoading(false); }
-  }, [sessionId, abortable, crowding]);
-
-  const loadWatchlist = useCallback(async () => {
-    if (!sessionId) return;
-    const signal = abortable("watchlist");
-    setWatchlistLoading(true);
-    try {
-      const items = await wsGetWatchlist(sessionId, signal);
-      if (signal.aborted) return;
-      setWatchlistItems(items);
-      if (items.length === 0) { setWatchlistRecs([]); return; }
-      try {
-        const recsRes = await wsGetWatchlistRecommendations(sessionId, signal);
-        if (!signal.aborted) setWatchlistRecs(recsRes.recommendations);
-      } catch (recErr) {
-        if (isAbort(recErr)) return;
-      }
-    } catch (err) { if (isAbort(err)) return; }
-    finally { if (!signal.aborted) setWatchlistLoading(false); }
-  }, [sessionId, abortable]);
-
-  const refreshAll = useCallback(() => {
-    setLastRefresh(Date.now());
-    loadPortfolio();
-    loadHealthScore();
-    loadAlerts();
-    loadRecommendations();
-    loadMacro();
-    loadBenchmark();
-    loadOptimizer();
-    loadCrowding();
-    loadWatchlist();
-  }, [loadPortfolio, loadHealthScore, loadAlerts, loadRecommendations, loadMacro, loadBenchmark, loadOptimizer, loadCrowding, loadWatchlist]);
+  }, [sessionId, symbol, period]);
 
   useEffect(() => {
-    if (!sessionId) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadPortfolio();
-    loadHealthScore();
-    loadAlerts();
-    loadRecommendations();
-    loadMacro();
-    loadCrowding();
-    loadWatchlist();
-    const t = setTimeout(() => { loadBenchmark(); loadOptimizer(); }, 1500);
-    return () => clearTimeout(t);
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!containerRef.current || !histData) return;
+    let cancelled = false;
+    let ro: ResizeObserver | null = null;
 
-  useEffect(() => {
-    if (!sessionId) return;
-    const interval = setInterval(refreshAll, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [sessionId, refreshAll]);
+    import("lightweight-charts").then(({ createChart, ColorType, AreaSeries, LineSeries }) => {
+      if (cancelled || !containerRef.current) return;
+      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
 
-  // WebSocket stream: push updates to summary + health score in real-time.
-  // 5-min polling interval remains as fallback for slower data (recs, macro, etc.)
-  usePortfolioStream({
-    sessionId,
-    enabled: !!sessionId,
-    onUpdate: (summary, health) => {
-      setStreamConnected(true);
-      setPortfolio((prev) =>
-        prev ? { ...prev, summary } : prev
-      );
-      setHealthScore(health);
-    },
-    onSessionExpired: () => router.push("/login"),
-  });
+      const chart = createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: 240,
+        layout: {
+          background: { type: ColorType.Solid, color: "#0f172a" },
+          textColor: "#94a3b8",
+        },
+        grid: { vertLines: { color: "#1e293b" }, horzLines: { color: "#1e293b" } },
+        crosshair: { mode: 1 },
+        rightPriceScale: { borderColor: "#334155" },
+        timeScale: { borderColor: "#334155", timeVisible: false },
+        handleScroll: true,
+        handleScale: true,
+      });
+      chartRef.current = chart;
 
-  const copySkill = (name: string) => {
-    navigator.clipboard.writeText(name).catch(() => {});
-    setCopiedSkill(name);
-    setTimeout(() => setCopiedSkill(null), 1500);
-  };
+      const closeData = histData.dates
+        .map((d, i) => ({ time: d, value: histData.close[i] }))
+        .filter((p) => p.value != null && !isNaN(p.value));
 
-  const summary = portfolio?.summary;
-  const totalValue = summary?.total_value ?? 0;
-  const totalReturn = summary?.total_return_pct ?? 0;
-  const cashAvailable = summary?.cash_available ?? 0;
-  const totalCost = summary?.total_cost ?? 0;
-  const dayChangeCad = summary?.day_change_cad ?? 0;
+      if (closeData.length > 0) {
+        const area = chart.addSeries(AreaSeries, {
+          lineColor: "#6366f1",
+          topColor: "rgba(99,102,241,0.3)",
+          bottomColor: "rgba(99,102,241,0.02)",
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        area.setData(closeData as any);
+      }
 
-  const animatedTotalValue = useCountUp(totalValue);
-  const animatedDayChange = useCountUp(dayChangeCad);
+      const addSma = (values: (number | null)[], color: string) => {
+        const d = values
+          .map((v, i) => ({ time: histData.dates[i], value: v }))
+          .filter((p) => p.value != null);
+        if (d.length === 0) return;
+        const s = chart.addSeries(LineSeries, { color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        s.setData(d as any);
+      };
+      addSma(histData.sma_20, "#f59e0b");
+      addSma(histData.sma_50, "#22d3ee");
+      addSma(histData.sma_200, "#f43f5e");
 
-  const summaryCards = [
-    { label: "Portfolio Value", value: currency(animatedTotalValue), color: "text-white" },
-    {
-      label: "Day Change",
-      value: `${dayChangeCad >= 0 ? "+" : ""}${currency(animatedDayChange)}`,
-      color: dayChangeCad >= 0 ? "text-emerald-400" : "text-rose-400",
-    },
-    {
-      label: "Total Return",
-      value: pct(totalReturn),
-      color: totalReturn >= 0 ? "text-emerald-400" : "text-rose-400",
-    },
-    { label: "Book Cost", value: currency(totalCost), color: "text-slate-300" },
-    { label: "Cash Available", value: currency(cashAvailable), color: "text-slate-300" },
-  ];
+      chart.timeScale().fitContent();
+
+      if (!cancelled && containerRef.current) {
+        ro = new ResizeObserver(() => {
+          if (containerRef.current && chartRef.current) {
+            chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+          }
+        });
+        ro.observe(containerRef.current);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      ro?.disconnect();
+      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
+    };
+  }, [histData]);
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* Sticky header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-white text-lg">aifolimizer</span>
-            {selectedAccount && (
-              <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">
-                {selectedAccount}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            {streamConnected && (
-              <span className="flex items-center gap-1 text-[10px] text-emerald-500">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                live
-              </span>
-            )}
-            <CountdownLabel intervalMs={REFRESH_INTERVAL_MS} resetKey={lastRefresh} />
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="font-mono font-semibold text-indigo-300 text-sm">{symbol}</span>
+        <div className="flex gap-1">
+          {CHART_PERIODS.map((p) => (
             <button
-              onClick={refreshAll}
-              disabled={portfolioLoading}
-              className="text-xs text-indigo-400 hover:text-indigo-300 disabled:text-slate-600 transition-colors"
-            >
-              {portfolioLoading ? "Refreshing…" : "Refresh"}
-            </button>
-            <button
-              onClick={() => { sessionStorage.clear(); router.push("/login"); }}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              Disconnect
-            </button>
+              key={p}
+              onClick={() => onPeriodChange(p)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${period === p ? "bg-indigo-600 text-white" : "text-slate-500 hover:text-slate-300"}`}
+            >{p}</button>
+          ))}
+        </div>
+      </div>
+      <div className="flex gap-3 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1"><span className="w-3 border-t-2 border-indigo-400 inline-block" />Price</span>
+        <span className="flex items-center gap-1"><span className="w-3 border-t border-amber-400 inline-block" />SMA20</span>
+        <span className="flex items-center gap-1"><span className="w-3 border-t border-cyan-400 inline-block" />SMA50</span>
+        <span className="flex items-center gap-1"><span className="w-3 border-t border-rose-500 inline-block" />SMA200</span>
+      </div>
+      {loading
+        ? <div className="h-60 flex items-center justify-center text-slate-600 text-xs animate-pulse">Loading chart…</div>
+        : <div ref={containerRef} className="w-full" />}
+    </div>
+  );
+}
+
+// ─── RecDetail ────────────────────────────────────────────────────────────────
+
+function RecDetail({ rec }: { rec: Recommendation | WatchlistRecommendation }) {
+  const cfg = SIGNAL_CFG[rec.action as Action] ?? SIGNAL_CFG.HOLD;
+  const confCls = rec.confidence === "high" ? "text-emerald-400"
+    : rec.confidence === "medium" ? "text-amber-400" : "text-rose-400";
+
+  return (
+    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-3 space-y-2 text-xs`}>
+      <div className="flex items-center justify-between flex-wrap gap-1">
+        <div className="flex items-center gap-2">
+          <span className={`font-bold text-base ${cfg.text}`}>{rec.action}</span>
+          <span className={confCls}>{rec.confidence}</span>
+          <span className="text-slate-500">{rec.score}/100</span>
+        </div>
+        <div className="text-slate-400 font-mono text-[11px]">{rec.symbol}</div>
+      </div>
+
+      <div className="w-full bg-slate-800 rounded-full h-1">
+        <div
+          className={`h-1 rounded-full ${rec.score >= 70 ? "bg-emerald-500" : rec.score >= 50 ? "bg-amber-500" : "bg-rose-500"}`}
+          style={{ width: `${rec.score}%` }}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+        <div>
+          <div className="text-slate-600 text-[10px]">Entry</div>
+          <div className={`font-mono font-semibold text-[11px] ${cfg.text}`}>
+            {rec.current_price != null ? fmtNative(rec.current_price, rec.currency) : "—"}
+            {rec.entry_timing === "wait_pullback" && <span className="text-amber-400 font-normal ml-1">wait dip</span>}
           </div>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-5">
-
-        {/* ── Account tabs ── */}
-        {profile && profile.accounts.length > 0 && (
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => { setSelectedAccount(""); loadPortfolio(""); }}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                selectedAccount === "" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              All Accounts
-            </button>
-            {profile.accounts.map(acc => (
-              <button
-                key={acc.type}
-                onClick={() => { setSelectedAccount(acc.type); loadPortfolio(acc.type); }}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  selectedAccount === acc.type ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400 hover:text-white"
-                }`}
-              >
-                {acc.type}
-                {acc.invested_value > 0 && (
-                  <span className="ml-1.5 text-slate-500">{currency(acc.invested_value)}</span>
-                )}
-              </button>
-            ))}
+        <div>
+          <div className="text-slate-600 text-[10px]">Target</div>
+          <div className="font-mono font-semibold text-[11px] text-emerald-400">
+            {rec.take_profit != null ? fmtNative(rec.take_profit, rec.currency) : "—"}
           </div>
-        )}
+        </div>
+        <div>
+          <div className="text-slate-600 text-[10px]">Stop</div>
+          <div className="font-mono font-semibold text-[11px] text-rose-400">
+            {rec.stop_loss != null ? fmtNative(rec.stop_loss, rec.currency) : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-slate-600 text-[10px]">R:R</div>
+          <div className="font-mono font-semibold text-[11px] text-slate-200">
+            {rec.risk_reward != null ? `1:${rec.risk_reward.toFixed(1)}` : "—"}
+          </div>
+        </div>
+      </div>
 
-        {/* ── Row 1: Summary cards ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {summaryCards.map(card => (
-            <div key={card.label} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-              <p className="text-xs text-slate-500 mb-1">{card.label}</p>
-              {portfolioLoading && !totalValue ? (
-                <div className="h-5 w-24 bg-slate-800 rounded animate-pulse mt-0.5" />
-              ) : (
-                <p className={`text-base font-semibold ${card.color}`}>{card.value}</p>
-              )}
+      {(rec.ev_dollars != null || rec.kelly_pct != null) && (
+        <div className="flex flex-wrap gap-3 text-[10px]">
+          {rec.ev_dollars != null && (
+            <span>EV <span className={`font-mono font-semibold ${rec.ev_dollars >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {rec.ev_dollars >= 0 ? "+" : ""}{fmtCAD(rec.ev_dollars)}
+            </span></span>
+          )}
+          {rec.kelly_pct != null && (
+            <span className="text-slate-500">Kelly <span className="font-mono text-slate-300">{rec.kelly_pct.toFixed(1)}%</span></span>
+          )}
+          {rec.win_prob != null && (
+            <span className="text-slate-500">Win <span className="font-mono text-slate-300">{(rec.win_prob * 100).toFixed(0)}%</span></span>
+          )}
+        </div>
+      )}
+
+      {rec.analyst_target != null && (
+        <div className="text-[10px] text-slate-500">
+          Analyst <span className="text-slate-300 font-mono">{fmtNative(rec.analyst_target, rec.currency)}</span>
+          {rec.analyst_upside_pct != null && (
+            <span className={`ml-1 ${rec.analyst_upside_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              ({fmtPct(rec.analyst_upside_pct)})
+            </span>
+          )}
+        </div>
+      )}
+
+      {rec.hedge_flag && rec.hedge_reason && (
+        <div className="bg-rose-950/50 border border-rose-700/30 rounded px-2 py-1 text-[10px] text-rose-300">
+          ⚠ {rec.hedge_reason}
+        </div>
+      )}
+
+      {rec.days_to_earnings != null && rec.days_to_earnings <= 14 && (
+        <div className="bg-amber-900/30 border border-amber-700/30 rounded px-2 py-1 text-[10px] text-amber-300">
+          Earnings in {rec.days_to_earnings}d
+          {rec.expected_move_pct != null && ` · ±${rec.expected_move_pct.toFixed(1)}%`}
+        </div>
+      )}
+
+      {rec.reasons.length > 0 && (
+        <ul className="space-y-0.5">
+          {rec.reasons.slice(0, 5).map((r, i) => (
+            <li key={i} className="flex gap-1.5 text-slate-400 text-[11px]">
+              <span className="text-slate-600 shrink-0">·</span><span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {rec.flags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {rec.flags.map((f, i) => (
+            <span key={i} className="bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded text-[10px]">{f}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── HealthCompact ────────────────────────────────────────────────────────────
+
+function HealthCompact({ health }: { health: HealthScore }) {
+  const gradeCls = health.grade === "A" ? "text-emerald-400" : health.grade === "B" ? "text-blue-400"
+    : health.grade === "C" ? "text-amber-400" : health.grade === "D" ? "text-orange-400" : "text-rose-400";
+  const dims = [
+    { label: "Diversification", val: health.breakdown.diversification,      max: 30 },
+    { label: "Concentration",   val: health.breakdown.concentration,         max: 30 },
+    { label: "Performance",     val: health.breakdown.performance,           max: 20 },
+    { label: "Cash Efficiency", val: health.breakdown.cash_efficiency,       max: 10 },
+    { label: "Asset Mix",       val: health.breakdown.asset_class_diversity, max: 10 },
+  ];
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-400">Portfolio Health</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className={`text-xl font-black ${gradeCls}`}>{health.grade}</span>
+          <span className="text-slate-500 text-xs">{health.score}/100</span>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {dims.map((d) => {
+          const pct = (d.val / d.max) * 100;
+          const bar = pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-rose-500";
+          return (
+            <div key={d.label}>
+              <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                <span>{d.label}</span><span>{d.val}/{d.max}</span>
+              </div>
+              <div className="h-1 bg-slate-800 rounded-full">
+                <div className={`h-1 rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── AllocationDonut ──────────────────────────────────────────────────────────
+
+function AllocationDonut({ positions, cashCAD }: { positions: Position[]; cashCAD: number }) {
+  const grouped: Record<string, number> = {};
+  for (const p of positions) grouped[p.asset_class] = (grouped[p.asset_class] || 0) + p.market_value_cad;
+  if (cashCAD > 0) grouped["cash"] = (grouped["cash"] || 0) + cashCAD;
+  const total = Object.values(grouped).reduce((s, v) => s + v, 0);
+  const data = Object.entries(grouped)
+    .map(([name, value]) => ({ name, value: parseFloat(((value / total) * 100).toFixed(1)) }))
+    .sort((a, b) => b.value - a.value);
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+      <span className="text-xs font-semibold text-slate-400">Allocation</span>
+      <div className="flex items-center gap-2">
+        <ResponsiveContainer width={90} height={90}>
+          <PieChart>
+            <Pie data={data} cx="50%" cy="50%" innerRadius={22} outerRadius={42} dataKey="value" stroke="none">
+              {data.map((e) => <Cell key={e.name} fill={ASSET_COLORS[e.name] ?? "#475569"} />)}
+            </Pie>
+            <Tooltip
+              formatter={(v) => [`${v}%`, ""]}
+              contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 6, fontSize: 10 }}
+              itemStyle={{ color: "#e2e8f0" }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="space-y-0.5 flex-1 min-w-0">
+          {data.map((d) => (
+            <div key={d.name} className="flex items-center gap-1.5 text-[10px]">
+              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: ASSET_COLORS[d.name] ?? "#475569" }} />
+              <span className="text-slate-400 capitalize truncate">{d.name}</span>
+              <span className="text-slate-300 font-mono ml-auto">{d.value}%</span>
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* ── Row 2: Health + Macro + Allocation ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-1">
-            <HealthScoreWidget data={healthScore} loading={healthLoading} />
+// ─── WatchlistPanel (left sidebar) ────────────────────────────────────────────
+
+function WatchlistPanel({
+  sessionId,
+  watchlist,
+  watchlistRecs,
+  selectedSymbol,
+  onSelect,
+  onRefresh,
+}: {
+  sessionId: string;
+  watchlist: WatchlistItem[];
+  watchlistRecs: Record<string, WatchlistRecommendation>;
+  selectedSymbol: string | null;
+  onSelect: (s: string) => void;
+  onRefresh: () => void;
+}) {
+  const [addInput, setAddInput] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  async function handleAdd() {
+    const sym = addInput.trim().toUpperCase();
+    if (!sym) return;
+    setAdding(true); setAddError(null);
+    try {
+      await wsAddToWatchlist(sessionId, sym, "");
+      setAddInput(""); onRefresh();
+    } catch (e: unknown) {
+      setAddError(e instanceof Error ? e.message : "Failed");
+    } finally { setAdding(false); }
+  }
+
+  async function handleRemove(e: React.MouseEvent, symbol: string) {
+    e.stopPropagation();
+    try {
+      await wsRemoveFromWatchlist(sessionId, symbol);
+      onRefresh();
+    } catch { /* non-fatal */ }
+  }
+
+  // Sort watchlist by rec score desc
+  const sorted = [...watchlist].sort((a, b) => {
+    const sa = watchlistRecs[a.symbol]?.score ?? -1;
+    const sb = watchlistRecs[b.symbol]?.score ?? -1;
+    return sb - sa;
+  });
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+      <div className="px-2.5 py-2 border-b border-slate-800">
+        <div className="text-xs font-semibold text-slate-300 mb-1.5">Watchlist</div>
+        <div className="flex gap-1">
+          <input
+            value={addInput}
+            onChange={(e) => setAddInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            placeholder="Add ticker…"
+            className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={adding || !addInput.trim()}
+            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-2 py-1 rounded text-[11px] font-semibold shrink-0"
+          >{adding ? "…" : "+"}</button>
+        </div>
+        {addError && <p className="text-rose-400 text-[10px] mt-1">{addError}</p>}
+      </div>
+
+      <div className="flex-1 overflow-y-auto divide-y divide-slate-800/50">
+        {sorted.length === 0 && (
+          <div className="px-3 py-6 text-center text-slate-600 text-[11px]">Empty — add tickers above</div>
+        )}
+        {sorted.map((item) => {
+          const rec = watchlistRecs[item.symbol];
+          const cfg = rec ? (SIGNAL_CFG[rec.action as Action] ?? SIGNAL_CFG.HOLD) : null;
+          const isSelected = selectedSymbol === item.symbol;
+          return (
+            <div
+              key={item.symbol}
+              onClick={() => onSelect(item.symbol)}
+              className={`px-2.5 py-2 cursor-pointer hover:bg-slate-800/40 transition-colors ${isSelected ? "bg-slate-800/60 border-l-2 border-indigo-500" : "border-l-2 border-transparent"}`}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-mono font-semibold text-indigo-300 text-xs">{item.symbol}</span>
+                <div className="flex items-center gap-1">
+                  {cfg && rec && (
+                    <span className={`px-1 py-0.5 rounded text-[9px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>{rec.action}</span>
+                  )}
+                  <button
+                    onClick={(e) => handleRemove(e, item.symbol)}
+                    className="text-slate-700 hover:text-rose-400 text-sm leading-none transition-colors"
+                  >×</button>
+                </div>
+              </div>
+              {rec && (
+                <div className="flex items-center justify-between mt-0.5 text-[10px]">
+                  <span className="font-mono text-slate-400">
+                    {rec.current_price != null ? fmtNative(rec.current_price, rec.currency) : "—"}
+                  </span>
+                  <div className="flex gap-2">
+                    {rec.take_profit != null && (
+                      <span className="text-emerald-500 font-mono">{fmtNative(rec.take_profit, rec.currency)}</span>
+                    )}
+                    {rec.stop_loss != null && (
+                      <span className="text-rose-500 font-mono">{fmtNative(rec.stop_loss, rec.currency)}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!rec && <div className="text-[9px] text-slate-700 mt-0.5 animate-pulse">Loading…</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── HoldingsTable ────────────────────────────────────────────────────────────
+
+type SortKey = keyof Position | "crowding" | "signal";
+
+function HoldingsTable({
+  positions, recMap, crowdingMap, recsLoading, selectedSymbol, onSelect,
+}: {
+  positions: Position[];
+  recMap: Record<string, Recommendation>;
+  crowdingMap: CrowdingMap;
+  recsLoading: boolean;
+  selectedSymbol: string | null;
+  onSelect: (s: string) => void;
+}) {
+  const [sortKey, setSortKey] = useState<SortKey>("weight");
+  const [sortDir, setSortDir] = useState<1 | -1>(-1);
+
+  function toggleSort(k: SortKey) {
+    if (sortKey === k) setSortDir((d) => (d === 1 ? -1 : 1));
+    else { setSortKey(k); setSortDir(-1); }
+  }
+
+  const sorted = [...positions].sort((a, b) => {
+    if (sortKey === "crowding") {
+      return ((crowdingMap[a.symbol]?.crowding_score ?? -1) - (crowdingMap[b.symbol]?.crowding_score ?? -1)) * sortDir;
+    }
+    if (sortKey === "signal") {
+      return ((recMap[a.symbol]?.score ?? -1) - (recMap[b.symbol]?.score ?? -1)) * sortDir;
+    }
+    const av = a[sortKey as keyof Position], bv = b[sortKey as keyof Position];
+    if (typeof av !== "number" || typeof bv !== "number") return 0;
+    return (av - bv) * sortDir;
+  });
+
+  function Th({ k, label, right }: { k: SortKey; label: string; right?: boolean }) {
+    const active = sortKey === k;
+    return (
+      <th onClick={() => toggleSort(k)}
+        className={`px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : "text-left"} ${active ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}`}
+      >{label}{active ? (sortDir === -1 ? " ↓" : " ↑") : ""}</th>
+    );
+  }
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="px-3 py-2 border-b border-slate-800 flex items-center gap-2">
+        <span className="text-xs font-semibold text-slate-300">Holdings</span>
+        <span className="text-[10px] text-slate-600">— click row for chart + signal</span>
+        {recsLoading && <span className="ml-auto text-[10px] text-slate-500 animate-pulse">Loading signals…</span>}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead className="bg-slate-950/60">
+            <tr>
+              <Th k="symbol" label="Symbol" />
+              <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Name</th>
+              <Th k="quantity" label="Qty" right />
+              <Th k="book_cost" label="Cost" right />
+              <Th k="market_value" label="Value" right />
+              <Th k="day_change_pct" label="Day%" right />
+              <Th k="total_return_pct" label="Return%" right />
+              <Th k="weight" label="Wt%" right />
+              <Th k="asset_class" label="Class" />
+              <Th k="crowding" label="Crowd" right />
+              <Th k="signal" label="Signal" />
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((pos) => {
+              const rec = recMap[pos.symbol];
+              const cs = crowdingMap[pos.symbol];
+              const cfg = rec ? (SIGNAL_CFG[rec.action as Action] ?? SIGNAL_CFG.HOLD) : null;
+              const isSelected = selectedSymbol === pos.symbol;
+              return (
+                <tr
+                  key={pos.symbol}
+                  onClick={() => onSelect(pos.symbol)}
+                  className={`border-t border-slate-800/50 cursor-pointer hover:bg-slate-800/30 transition-colors ${isSelected ? "bg-slate-800/50 border-l-2 border-indigo-500" : "border-l-2 border-transparent"}`}
+                >
+                  <td className="px-2 py-1.5 font-mono font-semibold text-indigo-300 whitespace-nowrap">{pos.symbol}</td>
+                  <td className="px-2 py-1.5 text-slate-400 max-w-35 truncate">{pos.name}</td>
+                  <td className="px-2 py-1.5 font-mono text-slate-300 text-right whitespace-nowrap">{fmtQty(pos.quantity)}</td>
+                  <td className="px-2 py-1.5 font-mono text-slate-500 text-right whitespace-nowrap">{fmtNative(pos.book_cost, pos.currency)}</td>
+                  <td className="px-2 py-1.5 font-mono text-slate-200 font-medium text-right whitespace-nowrap">{fmtNative(pos.market_value, pos.currency)}</td>
+                  <td className={`px-2 py-1.5 font-mono text-right whitespace-nowrap ${pos.day_change_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {fmtPct(pos.day_change_pct)}
+                  </td>
+                  <td className={`px-2 py-1.5 font-mono text-right whitespace-nowrap ${pos.total_return_pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {fmtPct(pos.total_return_pct)}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-slate-400 text-right whitespace-nowrap">{pos.weight.toFixed(1)}%</td>
+                  <td className="px-2 py-1.5 text-slate-500 capitalize whitespace-nowrap">{pos.asset_class}</td>
+                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    {cs?.crowding_score !== undefined
+                      ? <span className={`font-mono font-semibold ${crowdingCls(cs.crowding_score)}`}>{cs.crowding_score}</span>
+                      : <span className="text-slate-700">—</span>}
+                  </td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    {recsLoading && !rec
+                      ? <span className="text-slate-700 animate-pulse text-[11px]">···</span>
+                      : rec && cfg
+                        ? <div className="flex items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>{rec.action}</span>
+                            <span className="text-slate-600 text-[10px]">{rec.confidence}</span>
+                          </div>
+                        : <span className="text-slate-700">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── LoginForm ────────────────────────────────────────────────────────────────
+
+function LoginForm({ onLogin }: { onLogin: (sid: string, profile: UserProfile) => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [needsOtp, setNeedsOtp] = useState(false);
+  const [pendingSid, setPendingSid] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogin() {
+    setError(null); setLoading(true);
+    try {
+      const res = await wsLogin(email, password);
+      if (res.needs_otp) { setNeedsOtp(true); setPendingSid(res.session_id); }
+      else if (res.profile) onLogin(res.session_id, res.profile);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Login failed"); }
+    finally { setLoading(false); }
+  }
+
+  async function handleOtp() {
+    setError(null); setLoading(true);
+    try {
+      const res = await wsVerifyOtp(pendingSid, otp);
+      onLogin(res.session_id, res.profile);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "OTP failed"); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 w-full max-w-sm space-y-3">
+        <div className="mb-2">
+          <h1 className="text-slate-100 font-bold text-lg">aifolimizer</h1>
+          <p className="text-slate-500 text-xs">Wealthsimple portfolio intelligence</p>
+        </div>
+        {!needsOtp ? (
+          <>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()} placeholder="Password"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+            <button onClick={handleLogin} disabled={loading || !email || !password}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg py-2 text-sm font-semibold">
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-slate-400 text-xs">Enter the OTP sent to your device.</p>
+            <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleOtp()} placeholder="123456"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 tracking-widest text-center font-mono" />
+            <button onClick={handleOtp} disabled={loading || !otp}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-lg py-2 text-sm font-semibold">
+              {loading ? "Verifying…" : "Verify OTP"}
+            </button>
+          </>
+        )}
+        {error && <p className="text-rose-400 text-xs text-center">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── DashboardPage ────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [activeAccount, setActiveAccount] = useState<string>("");
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [summary, setSummary] = useState<PortfolioSummary | null>(null);
+  const [health, setHealth] = useState<HealthScore | null>(null);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+
+  const [recMap, setRecMap] = useState<Record<string, Recommendation>>({});
+  const [crowdingMap, setCrowdingMap] = useState<CrowdingMap>({});
+  const [recsLoading, setRecsLoading] = useState(false);
+
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlistRecs, setWatchlistRecs] = useState<Record<string, WatchlistRecommendation>>({});
+
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [chartPeriod, setChartPeriod] = useState("1y");
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    wsRestoreSession()
+      .then((res) => {
+        if (res.restored && res.session_id && res.profile) {
+          setSessionId(res.session_id);
+          setProfile(res.profile);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  function handleLogin(sid: string, prof: UserProfile) {
+    setSessionId(sid); setProfile(prof); setAuthLoading(false);
+  }
+
+  const loadPortfolio = useCallback(async (sid: string, account: string) => {
+    setPortfolioLoading(true); setPortfolioError(null);
+    try {
+      const [portfolio, hs] = await Promise.all([wsGetPortfolio(sid, account), wsGetHealthScore(sid)]);
+      setPositions(portfolio.positions);
+      setSummary(portfolio.summary);
+      setHealth(hs);
+    } catch (e: unknown) {
+      setPortfolioError(e instanceof Error ? e.message : "Failed to load portfolio");
+    } finally { setPortfolioLoading(false); }
+  }, []);
+
+  const loadRecs = useCallback(async (sid: string) => {
+    setRecsLoading(true);
+    try {
+      const [recsRes, crowding] = await Promise.all([wsGetRecommendations(sid), wsGetCrowding(sid, 25)]);
+      const map: Record<string, Recommendation> = {};
+      for (const r of recsRes.recommendations) map[r.symbol] = r;
+      setRecMap(map); setCrowdingMap(crowding);
+    } catch { /* non-fatal */ } finally { setRecsLoading(false); }
+  }, []);
+
+  const loadWatchlist = useCallback(async (sid: string) => {
+    try {
+      const [items, recsRes] = await Promise.all([wsGetWatchlist(sid), wsGetWatchlistRecommendations(sid)]);
+      setWatchlist(items);
+      const map: Record<string, WatchlistRecommendation> = {};
+      for (const r of recsRes.recommendations) map[r.symbol] = r;
+      setWatchlistRecs(map);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    loadPortfolio(sessionId, activeAccount);
+    loadRecs(sessionId);
+    loadWatchlist(sessionId);
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => loadPortfolio(sessionId, activeAccount), 30_000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [sessionId, activeAccount, loadPortfolio, loadRecs, loadWatchlist]);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <span className="text-slate-500 text-sm animate-pulse">Checking session…</span>
+      </div>
+    );
+  }
+  if (!sessionId || !profile) return <LoginForm onLogin={handleLogin} />;
+
+  const dayPct = summary && summary.total_value > 0 ? (summary.day_change_cad / summary.total_value) * 100 : 0;
+  const selectedRec = selectedSymbol
+    ? (recMap[selectedSymbol] ?? watchlistRecs[selectedSymbol] ?? null)
+    : null;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
+      {/* ── Topbar ── */}
+      <div className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-10 shrink-0">
+        <div className="max-w-screen-2xl mx-auto px-3 h-10 flex items-center gap-3">
+          <span className="font-bold text-sm text-slate-100 shrink-0">aifolimizer</span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setActiveAccount("")}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${activeAccount === "" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>
+              All
+            </button>
+            {profile.account_types.map((t) => (
+              <button key={t} onClick={() => setActiveAccount(t)}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${activeAccount === t ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>
+                {t}
+              </button>
+            ))}
           </div>
-          <div className="lg:col-span-1">
-            <MacroWidget data={macro} loading={macroLoading} />
+          <div className="ml-auto flex items-center gap-3">
+            {portfolioLoading && <span className="text-[10px] text-slate-500 animate-pulse">Refreshing…</span>}
+            <button onClick={() => { loadPortfolio(sessionId, activeAccount); loadRecs(sessionId); }}
+              className="text-slate-500 hover:text-slate-300 text-xs">↻ Refresh</button>
           </div>
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-            <p className="text-xs text-slate-500 mb-2">Allocation</p>
-            {portfolio ? (
-              <AllocationChart
-                positions={portfolio.positions}
-                cashAvailable={cashAvailable}
-                totalValue={totalValue}
+        </div>
+      </div>
+
+      <div className="max-w-screen-2xl mx-auto px-3 py-3 w-full flex flex-col gap-3 flex-1">
+        {portfolioError && (
+          <div className="bg-rose-950/40 border border-rose-700/40 rounded-lg px-3 py-2 text-xs text-rose-300">{portfolioError}</div>
+        )}
+
+        {/* ── Summary strip ── */}
+        {summary && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
+            <StatCard label="Portfolio (CAD)" value={fmtCAD(summary.total_value)} cls="text-slate-100 font-bold" />
+            <StatCard label="Day Change"
+              value={`${summary.day_change_cad >= 0 ? "+" : ""}${fmtCAD(summary.day_change_cad)} (${fmtPct(dayPct)})`}
+              cls={summary.day_change_cad >= 0 ? "text-emerald-400" : "text-rose-400"} />
+            <StatCard label="Total Return" value={fmtPct(summary.total_return_pct)}
+              cls={summary.total_return_pct >= 0 ? "text-emerald-400" : "text-rose-400"} />
+            <StatCard label="Cash (CAD)" value={fmtCAD(summary.cash_available)} cls="text-slate-300" />
+            {summary.cash_available_usd != null && summary.cash_available_usd > 0 && (
+              <StatCard label="Cash (USD)" value={fmtUSD(summary.cash_available_usd)} cls="text-slate-300" />
+            )}
+            {health && (
+              <StatCard label="Health" value={`${health.grade}  ${health.score}/100`}
+                cls={health.grade === "A" ? "text-emerald-400 font-bold" : health.grade === "B" ? "text-blue-400 font-bold" : health.grade === "C" ? "text-amber-400 font-bold" : "text-rose-400 font-bold"} />
+            )}
+          </div>
+        )}
+
+        {/* ── 3-column main ── */}
+        <div className="flex gap-3 flex-1 min-h-0">
+          {/* Left — Watchlist */}
+          <div className="hidden xl:flex flex-col w-60 shrink-0 gap-3">
+            <WatchlistPanel
+              sessionId={sessionId}
+              watchlist={watchlist}
+              watchlistRecs={watchlistRecs}
+              selectedSymbol={selectedSymbol}
+              onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
+              onRefresh={() => loadWatchlist(sessionId)}
+            />
+          </div>
+
+          {/* Center — Holdings + Chart */}
+          <div className="flex-1 min-w-0 flex flex-col gap-3">
+            <HoldingsTable
+              positions={positions}
+              recMap={recMap}
+              crowdingMap={crowdingMap}
+              recsLoading={recsLoading}
+              selectedSymbol={selectedSymbol}
+              onSelect={(s) => { setSelectedSymbol(s === selectedSymbol ? null : s); setChartPeriod("1y"); }}
+            />
+            {selectedSymbol && (
+              <PriceChart
+                sessionId={sessionId}
+                symbol={selectedSymbol}
+                period={chartPeriod}
+                onPeriodChange={setChartPeriod}
               />
+            )}
+            {/* Watchlist visible below chart on smaller screens */}
+            <div className="xl:hidden">
+              <WatchlistPanel
+                sessionId={sessionId}
+                watchlist={watchlist}
+                watchlistRecs={watchlistRecs}
+                selectedSymbol={selectedSymbol}
+                onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
+                onRefresh={() => loadWatchlist(sessionId)}
+              />
+            </div>
+          </div>
+
+          {/* Right — Health + Alloc + RecDetail */}
+          <div className="hidden lg:flex flex-col w-72 shrink-0 gap-3">
+            {health && <HealthCompact health={health} />}
+            {positions.length > 0 && summary && (
+              <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
+            )}
+            {selectedRec ? (
+              <RecDetail rec={selectedRec} />
             ) : (
-              <div className="h-48 flex items-center justify-center text-slate-600 text-sm">
-                {portfolioLoading ? "Loading…" : "No data"}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-6 text-center text-slate-600 text-xs">
+                Click any holding or watchlist item to see the AI signal analysis
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Portfolio defensive signal — fires when macro risks align ── */}
-        {macro?.portfolio_signal && macro.portfolio_signal !== "stay_invested" && (
-          <div className={`rounded-xl p-4 border ${
-            macro.portfolio_signal === "raise_cash"
-              ? "bg-rose-500/10 border-rose-500/40"
-              : "bg-amber-500/10 border-amber-500/30"
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className={`text-sm font-bold ${macro.portfolio_signal === "raise_cash" ? "text-rose-400" : "text-amber-400"}`}>
-                  {macro.portfolio_signal === "raise_cash" ? "🚨 RAISE CASH" : "⚠ REDUCE RISK"}
-                  {macro.portfolio_target_cash_pct && (
-                    <span className="ml-2 text-xs font-normal text-slate-400">
-                      target {macro.portfolio_target_cash_pct}% cash
-                    </span>
-                  )}
-                </p>
-                <ul className="mt-1.5 space-y-0.5">
-                  {macro.portfolio_signal_reasons?.map((r, i) => (
-                    <li key={i} className="text-xs text-slate-300">· {r}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Signal changes banner — fires when actions flip since last load ── */}
-        {signalChanges.length > 0 && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-amber-400">⚡ Signal Changes Detected</p>
-              <button onClick={() => setSignalChanges([])} className="text-xs text-slate-500 hover:text-slate-300">dismiss</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {signalChanges.map(sc => (
-                <div key={sc.symbol} className="flex items-start gap-3 bg-slate-900/60 rounded-lg p-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-semibold text-white">{sc.symbol}</span>
-                      <span className="text-xs text-slate-500">{sc.from_action}</span>
-                      <span className="text-xs text-slate-600">→</span>
-                      <span className={`text-xs font-bold ${
-                        sc.to_action === "BUY" ? "text-emerald-400" :
-                        sc.to_action === "SELL" ? "text-rose-400" :
-                        "text-amber-400"
-                      }`}>{sc.to_action}</span>
-                      {sc.confidence && (
-                        <span className={`text-[10px] px-1 rounded ${sc.confidence === "high" ? "text-emerald-400 bg-emerald-500/10" : "text-slate-500 bg-slate-800"}`}>
-                          {sc.confidence}
-                        </span>
-                      )}
-                    </div>
-                    {sc.top_reason && <p className="text-xs text-slate-400 mt-0.5 truncate">{sc.top_reason}</p>}
-                    {sc.ev_dollars != null && (
-                      <p className={`text-xs font-medium mt-0.5 ${sc.ev_dollars >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                        EV {sc.ev_dollars >= 0 ? "+" : ""}${sc.ev_dollars.toFixed(0)} if Kelly-sized
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Row 3: Recommendations ── */}
-        <RecommendationsPanel
-          data={recommendations}
-          loading={recsLoading}
-          narratives={narratives}
-          narrativesLoading={narrativesLoading}
-          narrativeProviders={narrativeProviders}
-        />
-
-        {/* ── Codified skill snapshots (background-computed) ── */}
-        <SkillSnapshotsPanel />
-
-        {/* ── Trust dashboard: empirical signal accuracy evidence ── */}
-        <TrustDashboardPanel />
-
-        {/* ── Row 4: Watchlist ── */}
-        {sessionId && (
-          <WatchlistPanel
-            sessionId={sessionId}
-            items={watchlistItems}
-            recommendations={watchlistRecs}
-            loading={watchlistLoading}
-            onItemsChange={(updated) => {
-              setWatchlistItems(updated);
-              loadWatchlist();
-            }}
-          />
-        )}
-
-        {/* ── Row 5: Benchmark comparison ── */}
-        <BenchmarkWidget data={benchmark} loading={benchmarkLoading} />
-
-        {/* ── Row 5: Efficient Frontier optimizer ── */}
-        <OptimizerWidget data={optimizer} loading={optimizerLoading} />
-
-        {/* ── Row 6: Alerts ── */}
-        <AlertsPanel alerts={alerts} loading={alertsLoading} />
-
-        {portfolioError && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
-            {portfolioError}
-          </div>
-        )}
-
-        {/* ── Row 5: Holdings ── */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-white">
-              Holdings
-              {portfolio && (
-                <span className="text-slate-600 font-normal ml-2">
-                  {portfolio.positions.length} positions
-                </span>
-              )}
-            </h2>
-          </div>
-          <PortfolioTable
-            positions={portfolio?.positions || []}
-            crowding={crowding}
-            onSelectTicker={setSelectedTicker}
-            selectedTicker={selectedTicker}
-          />
-          {crowdingLoading && Object.keys(crowding).length === 0 && (
-            <p className="text-[10px] text-slate-600 mt-2">Loading crowding signals…</p>
+        {/* Health + Alloc visible on smaller screens (below the main grid) */}
+        <div className="lg:hidden flex flex-col gap-3">
+          {health && <HealthCompact health={health} />}
+          {positions.length > 0 && summary && (
+            <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
           )}
+          {selectedRec && <RecDetail rec={selectedRec} />}
         </div>
-
-        {/* ── Row 6: Price chart ── */}
-        {sessionId && selectedTicker && (
-          <PriceChart
-            symbol={selectedTicker}
-            sessionId={sessionId}
-            currency={portfolio?.positions.find(p => p.symbol === selectedTicker)?.currency}
-          />
-        )}
-
-        {/* ── Screener ── */}
-        {sessionId && (
-          <ScreenerPanel
-            sessionId={sessionId}
-            onSelectTicker={setSelectedTicker}
-          />
-        )}
-
-        {/* ── Row 7: Skills (collapsible) ── */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setSkillsOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800/40 transition-colors"
-          >
-            <span>Analysis Skills</span>
-            <span className="text-slate-500 text-xs">
-              {skillsOpen ? "▲ collapse" : "▼ expand"} · run in Claude Code or Claude Desktop
-            </span>
-          </button>
-          {skillsOpen && (
-            <div className="px-4 pb-4 pt-1">
-              <p className="text-xs text-slate-500 mb-3">
-                Click to copy command, paste in Claude Code for deep AI analysis.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {SKILLS.map(s => (
-                  <button
-                    key={s.name}
-                    onClick={() => copySkill(s.name)}
-                    className="text-left border border-slate-700 bg-slate-800/40 hover:bg-slate-800 rounded-lg p-3 transition-colors group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-sm text-indigo-400">{s.name}</span>
-                      <span className="text-xs text-slate-600 group-hover:text-slate-400 transition-colors">
-                        {copiedSkill === s.name ? "✓ copied" : "copy"}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 mt-0.5">{s.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-      </main>
+      </div>
     </div>
   );
 }

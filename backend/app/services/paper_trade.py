@@ -33,7 +33,43 @@ _VALID_CONV = {"HIGH", "MED", "LOW"}
 _VALID_CONF_SRC = {"backtested", "live_validated", "experimental"}
 
 DEFAULT_BENCHMARKS = ("SPY", "QQQ", "XEQT.TO")
+DEFAULT_PRIMARY_BENCHMARK = "XEQT.TO"
 MODEL_VERSION = "2026.05-v1"
+
+# Per-process dedupe of already-logged rec IDs for today.
+# Prevents duplicate writes when scheduler re-runs a skill within the day.
+_TODAY_IDS: set[str] = set()
+_TODAY_DATE: str | None = None
+
+
+def _seen_today(rec_id: str) -> bool:
+    """Return True if rec_id already written today (in this process or on disk).
+
+    Lazy-loads today's IDs from disk on first call per UTC date, then tracks
+    additions in-memory for the rest of the process lifetime.
+    """
+    global _TODAY_DATE
+    today = date.today().isoformat()
+    if _TODAY_DATE != today:
+        _TODAY_DATE = today
+        _TODAY_IDS.clear()
+        if _REC_FILE.exists():
+            try:
+                with _REC_FILE.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        try:
+                            row = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if row.get("date") == today and row.get("id"):
+                            _TODAY_IDS.add(row["id"])
+            except OSError:
+                pass
+    return rec_id in _TODAY_IDS
+
+
+def _mark_logged(rec_id: str) -> None:
+    _TODAY_IDS.add(rec_id)
 
 
 def _safe_quote(ticker: str) -> tuple[float, str]:
@@ -68,6 +104,7 @@ def log_recommendation(
     expected_downside_pct: float | None = None,
     confidence_source: str = "experimental",
     sector_etf: str | None = None,
+    benchmark_symbol: str | None = None,
     features: dict | None = None,
     model_version: str | None = None,
 ) -> dict:
@@ -76,6 +113,11 @@ def log_recommendation(
     Benchmark prices (SPY/QQQ/XEQT.TO + optional sector_etf) are captured at
     entry so forward alpha is computable later. entry_price comes from
     data_router so it reflects the actual price at recommendation time.
+
+    `benchmark_symbol` pins the PRIMARY benchmark used for alpha attribution
+    on this rec. Defaults to sector_etf when supplied, else DEFAULT_PRIMARY_BENCHMARK.
+    Returns the rec dict; if a same-day duplicate (skill+ticker+action) is detected
+    the existing rec is returned with status='duplicate_skipped' and not appended.
     """
     action = action.upper()
     conviction = conviction.upper()
@@ -86,13 +128,25 @@ def log_recommendation(
     if confidence_source not in _VALID_CONF_SRC:
         raise ValueError(f"confidence_source must be one of {_VALID_CONF_SRC}")
 
+    rec_id = _make_id(skill, ticker, action)
+    if _seen_today(rec_id):
+        return {"id": rec_id, "status": "duplicate_skipped"}
+
     entry_price, source = _safe_quote(ticker)
 
-    bench_symbols = DEFAULT_BENCHMARKS + ((sector_etf.upper(),) if sector_etf else ())
+    sector_upper = sector_etf.upper() if sector_etf else None
+    primary_bench = (
+        benchmark_symbol.upper() if benchmark_symbol
+        else (sector_upper or DEFAULT_PRIMARY_BENCHMARK)
+    )
+
+    bench_symbols = DEFAULT_BENCHMARKS + ((sector_upper,) if sector_upper else ())
+    if primary_bench not in bench_symbols:
+        bench_symbols = bench_symbols + (primary_bench,)
     benchmarks_entry = _capture_benchmark_prices(bench_symbols)
 
     rec = {
-        "id": _make_id(skill, ticker, action),
+        "id": rec_id,
         "date": date.today().isoformat(),
         "ts": time.time(),
         "skill": skill,
@@ -111,7 +165,8 @@ def log_recommendation(
         "expected_upside_pct": expected_upside_pct,
         "expected_downside_pct": expected_downside_pct,
         "account": account,
-        "sector_etf": sector_etf.upper() if sector_etf else None,
+        "sector_etf": sector_upper,
+        "benchmark_symbol": primary_bench,
         "benchmarks_entry": benchmarks_entry,
         "features": features or {},
         "rationale_hash": hashlib.sha256((rationale or "").encode()).hexdigest()[:16],
@@ -124,6 +179,7 @@ def log_recommendation(
     _CTX.mkdir(parents=True, exist_ok=True)
     with _REC_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
+    _mark_logged(rec_id)
     return rec
 
 
@@ -209,12 +265,17 @@ def score_recommendations(max_age_days: int = 180) -> dict:
         elif horizon is not None and age_days >= horizon:
             status = "horizon_closed"
 
+        primary_bench = rec.get("benchmark_symbol") or DEFAULT_PRIMARY_BENCHMARK
+        primary_alpha = alpha.get(primary_bench)
+
         scored_rec = dict(rec)
         scored_rec.update({
             "current_price": round(current, 4),
             "unrealized_pct": round(ret_pct, 2),
             "benchmark_returns_pct": {k: round(v, 2) for k, v in bench_rets.items()},
             "alpha_pct": alpha,
+            "primary_benchmark_alpha_pct": primary_alpha,
+            "beat_primary_benchmark": primary_alpha > 0 if primary_alpha is not None else None,
             "win": ret_pct > 0,
             "beat_spy": alpha.get("SPY", 0) > 0 if "SPY" in alpha else None,
             "beat_xeqt": alpha.get("XEQT.TO", 0) > 0 if "XEQT.TO" in alpha else None,
@@ -339,6 +400,7 @@ def batch_log_recommendations(
     *,
     confidence_source: str = "experimental",
     sector_etf_by_symbol: dict[str, str] | None = None,
+    benchmark_by_symbol: dict[str, str] | None = None,
     model_version: str | None = None,
 ) -> dict:
     """Bulk-log recommendations with one shared benchmark price fetch.
@@ -350,17 +412,24 @@ def batch_log_recommendations(
 
     Skips actions in {HOLD, WATCH, NO_EDGE} unless explicitly opted in
     (these don't represent trade decisions worth tracking forward).
+    Skips per-day duplicates by (skill, ticker, action) id to keep scheduler
+    re-runs idempotent. Each logged rec carries an explicit benchmark_symbol
+    for downstream alpha attribution; precedence is benchmark_by_symbol >
+    sector_etf > DEFAULT_PRIMARY_BENCHMARK.
+
     Returns count summary so the caller can audit the cycle.
     """
     if not recs:
-        return {"logged": 0, "skipped": 0}
+        return {"logged": 0, "skipped": 0, "duplicates": 0}
 
     sector_etf_by_symbol = sector_etf_by_symbol or {}
+    benchmark_by_symbol = benchmark_by_symbol or {}
     benchmarks_entry = _capture_benchmark_prices(DEFAULT_BENCHMARKS)
-    sector_cache: dict[str, dict] = {}
+    aux_cache: dict[str, dict] = {}
 
     logged = 0
     skipped = 0
+    duplicates = 0
     failed: list[dict] = []
 
     _CTX.mkdir(parents=True, exist_ok=True)
@@ -380,6 +449,11 @@ def batch_log_recommendations(
                 failed.append({"reason": "missing symbol", "rec": r})
                 continue
 
+            rec_id = _make_id(skill, ticker, action)
+            if _seen_today(rec_id):
+                duplicates += 1
+                continue
+
             conviction = (r.get("conviction") or r.get("confidence") or "MED").upper()
             if conviction in ("HIGH", "MEDIUM", "MED", "LOW"):
                 conviction = "MED" if conviction == "MEDIUM" else conviction
@@ -390,16 +464,24 @@ def batch_log_recommendations(
             price_source = r.get("price_source") or "rec_cycle"
 
             sector_etf = sector_etf_by_symbol.get(ticker)
-            if sector_etf and sector_etf not in sector_cache:
-                sector_cache[sector_etf] = _capture_benchmark_prices((sector_etf,))[sector_etf]
+            primary_bench = (
+                benchmark_by_symbol.get(ticker)
+                or sector_etf
+                or DEFAULT_PRIMARY_BENCHMARK
+            )
+
             bench_entry = dict(benchmarks_entry)
-            if sector_etf:
-                bench_entry[sector_etf] = sector_cache[sector_etf]
+            for aux in {sector_etf, primary_bench}:
+                if not aux or aux in bench_entry:
+                    continue
+                if aux not in aux_cache:
+                    aux_cache[aux] = _capture_benchmark_prices((aux,))[aux]
+                bench_entry[aux] = aux_cache[aux]
 
             rationale = r.get("thesis") or " ".join(r.get("reasons") or []) or ""
 
             rec = {
-                "id": _make_id(skill, ticker, action),
+                "id": rec_id,
                 "date": date.today().isoformat(),
                 "ts": time.time(),
                 "skill": skill,
@@ -419,6 +501,7 @@ def batch_log_recommendations(
                 "expected_downside_pct": r.get("expected_downside_pct"),
                 "account": r.get("account"),
                 "sector_etf": sector_etf,
+                "benchmark_symbol": primary_bench,
                 "benchmarks_entry": bench_entry,
                 "features": r.get("features") or {},
                 "rationale_hash": hashlib.sha256(rationale.encode()).hexdigest()[:16],
@@ -429,6 +512,7 @@ def batch_log_recommendations(
                 "win": None,
             }
             f.write(json.dumps(rec) + "\n")
+            _mark_logged(rec_id)
             logged += 1
 
-    return {"logged": logged, "skipped": skipped, "failed": failed}
+    return {"logged": logged, "skipped": skipped, "duplicates": duplicates, "failed": failed}

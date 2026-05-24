@@ -1,0 +1,75 @@
+"""Baked-in discovery universe (Phase 13).
+
+Static lists for S&P 500 + TSX 60 + ETF sector layer. Refreshed
+quarterly by hand (or via backend/scripts/build_universe.py when written).
+Lists below are the highest-weight constituents per index — enough surface
+area for nightly discovery scans without needing a live index pull.
+
+Keep this list short. Free yfinance can handle 200-300 names in batch
+without throttling; 1000+ degrades. Quality > coverage.
+"""
+
+# Top S&P 500 by weight (≈ top 200 by market cap; trimmed for free yfinance).
+SP500_TOP = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "GOOG", "BRK-B",
+    "TSLA", "AVGO", "JPM", "V", "LLY", "UNH", "MA", "XOM", "JNJ", "WMT",
+    "PG", "HD", "ORCL", "COST", "ABBV", "BAC", "NFLX", "KO", "CRM", "MRK",
+    "CVX", "AMD", "TMO", "PEP", "CSCO", "MCD", "ADBE", "ACN", "TMUS",
+    "ABT", "DHR", "WFC", "LIN", "DIS", "INTU", "QCOM", "VZ", "AMGN",
+    "PM", "AMAT", "TXN", "BX", "CMCSA", "RTX", "T", "SPGI", "MS", "GS",
+    "C", "PFE", "INTC", "LOW", "BLK", "ELV", "ISRG", "HON", "BMY",
+    "CAT", "DE", "BKNG", "AXP", "PLD", "GE", "VRTX", "SBUX", "PANW",
+    "GILD", "TJX", "MMC", "ADP", "MDLZ", "SCHW", "SYK", "ETN", "ZTS",
+    "REGN", "CB", "ANET", "MU", "BSX", "FI", "CI", "TMUS", "LRCX",
+    "KLAC", "SO", "ICE", "PGR", "EOG", "SHW", "SLB", "ABNB", "EQIX",
+    "DUK", "NKE", "BDX", "USB", "BA", "MO", "MMM", "FDX", "GD", "WM",
+    "EMR", "AON", "FCX", "PSX", "MET", "ITW", "GM", "F", "CSX", "MAR",
+    "ROP", "NOC", "PNC", "AIG", "HCA", "FIS", "ECL", "MCK", "TFC",
+    "APD", "MNST", "PYPL", "EW", "ALL", "MCO", "AEP", "HUM", "OXY",
+    "WBA", "ORLY", "PAYX", "PSA", "AZO", "BIIB", "TGT", "KMB", "SRE",
+    "WMB", "EQR", "AFL", "DLR", "STZ", "EXC", "MPC", "DXCM", "ROST",
+    "EBAY", "CTAS", "KMI", "DOW", "VLO", "GIS", "TRV", "FTNT",
+    "KHC", "HPQ", "IDXX", "WELL", "HSY", "VRSK", "NEM", "AVB", "FAST",
+    "ED", "MTB", "GLW", "DD", "ON", "NUE", "AME", "DLTR", "PRU",
+    "NSC", "UNP", "CMG", "ADI", "BK",
+]
+
+# TSX 60 (top Canadian equities).
+TSX_60 = [
+    "RY.TO", "TD.TO", "ENB.TO", "BNS.TO", "CNR.TO", "BMO.TO", "BN.TO",
+    "ATD.TO", "CSU.TO", "CNQ.TO", "CP.TO", "CM.TO", "MFC.TO", "SU.TO",
+    "TRI.TO", "BCE.TO", "T.TO", "NA.TO", "CCO.TO", "AEM.TO", "QSR.TO",
+    "FFH.TO", "MG.TO", "TRP.TO", "POW.TO", "L.TO", "FTS.TO", "WCN.TO",
+    "FNV.TO", "ABX.TO", "GIB-A.TO", "WPM.TO", "K.TO", "OTEX.TO",
+    "SHOP.TO", "CTC-A.TO", "IMO.TO", "WSP.TO", "DOL.TO", "GIL.TO",
+    "STN.TO", "RCI-B.TO", "PPL.TO", "IFC.TO", "MRU.TO", "SLF.TO",
+    "EMA.TO", "X.TO", "H.TO", "BIP-UN.TO", "BEP-UN.TO", "TECK-B.TO",
+    "RBA.TO", "AC.TO", "CCL-B.TO", "OVV.TO", "AGI.TO", "FM.TO", "DOO.TO",
+    "TOU.TO",
+]
+
+# Optional sector ETF layer (lighter scans first).
+SECTOR_ETFS = [
+    "XLK", "XLF", "XLV", "XLE", "XLI", "XLP", "XLY", "XLU", "XLB", "XLRE",
+    "XLC", "XEQT.TO", "VFV.TO", "ZSP.TO", "XIU.TO", "XIC.TO",
+]
+
+
+def full_universe() -> list[str]:
+    """De-duplicated SP500 + TSX60 + sector ETFs."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for tier in (SP500_TOP, TSX_60, SECTOR_ETFS):
+        for s in tier:
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+    return out
+
+
+def is_us(symbol: str) -> bool:
+    return "." not in symbol
+
+
+def is_canadian(symbol: str) -> bool:
+    return symbol.endswith(".TO")

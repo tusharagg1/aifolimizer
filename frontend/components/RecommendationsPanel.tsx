@@ -154,7 +154,7 @@ function RecommendationsPanel({
         </div>
       </div>
 
-      {(["SELL", "BUY", "WATCH", "HOLD"] as Action[]).map(action =>
+      {(["SELL", "TRIM", "BUY", "ADD", "WATCH", "HOLD", "NO_EDGE"] as Action[]).map(action =>
         groups[action].length > 0 ? (
           <RecommendationGroup
             key={action}
@@ -268,13 +268,31 @@ function RecCard({
       <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${
-            rec.action === "BUY"   ? "bg-emerald-500" :
-            rec.action === "SELL"  ? "bg-rose-500" :
-            rec.action === "WATCH" ? "bg-amber-500" : "bg-slate-500"
+            rec.action === "BUY" || rec.action === "ADD" ? "bg-emerald-500" :
+            rec.action === "SELL"   ? "bg-rose-500" :
+            rec.action === "TRIM"   ? "bg-orange-500" :
+            rec.action === "WATCH"  ? "bg-amber-500" :
+            rec.action === "NO_EDGE"? "bg-slate-600" : "bg-slate-500"
           }`}
           style={{ width: `${scoreBar}%` }}
         />
       </div>
+
+      {/* Entry price — always shown when available */}
+      {rec.current_price && rec.action !== "HOLD" && (
+        <div className="flex items-center justify-between text-[10px] pt-0.5">
+          <span className="text-slate-500">
+            {rec.action === "SELL" ? "Sell at" : "Buy at"}
+          </span>
+          <span className={`font-mono font-semibold ${cfg.text}`}>
+            {rec.currency || (rec.symbol.endsWith(".TO") || rec.symbol.endsWith(".V") ? "CAD" : "USD")}{" "}
+            {rec.current_price.toFixed(2)}
+            {rec.entry_timing === "wait_pullback" && (
+              <span className="text-amber-400 font-normal ml-1">· wait for dip</span>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* AI narrative */}
       {narrativeLoading ? (
@@ -329,14 +347,10 @@ function RecCard({
                 </span>
               )}
             </div>
-            {cp && rec.action !== "HOLD" && (
-              <p className="text-[10px] text-slate-400">
-                {isSell
-                  ? `Current ${cur} ${cp.toFixed(2)} — sell here, cover at target, stop if reclaims ${rec.stop_type ?? "stop"}`
-                  : rec.entry_timing === "wait_pullback"
-                    ? `Current ${cur} ${cp.toFixed(2)} — RSI extended, wait for dip toward stop zone before entry`
-                    : `Current ${cur} ${cp.toFixed(2)} — entry zone acceptable, size via Kelly, stop at ${rec.stop_type ?? "stop"}`
-                }
+            {rec.stop_type && cp && (
+              <p className="text-[10px] text-slate-500">
+                Stop type: {rec.stop_type}
+                {isSell ? " — cover at target, stop if price reclaims stop" : " — size via Kelly"}
               </p>
             )}
           </div>

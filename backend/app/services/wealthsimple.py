@@ -26,6 +26,10 @@ from typing import Optional, Any
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
 
 from app.models.portfolio import Account, UserContext
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.wealthsimple")
+
 
 _TOKEN_TTL_HOURS = 8
 _PENDING_TTL_SECONDS = 300  # OTP must be entered within 5 minutes of starting login
@@ -68,7 +72,7 @@ def _persist_session(session: WSAPISession, email: Optional[str] = None) -> None
         except OSError:
             pass  # chmod is a no-op on Windows but try-anyway is harmless
     except Exception as e:
-        print(f"[WS] persist failed: {type(e).__name__}", flush=True)
+        _LOG.warning(f"[WS] persist failed: {type(e).__name__}")
 
 
 def _clear_persisted_session() -> None:
@@ -95,13 +99,13 @@ def restore_session() -> Optional[str]:
         email = payload["email"]
         session = WSAPISession.from_json(payload["session_json"])
     except Exception as e:
-        print(f"[WS] restore parse failed: {type(e).__name__}", flush=True)
+        _LOG.warning(f"[WS] restore parse failed: {type(e).__name__}")
         _clear_persisted_session()
         return None
     try:
         return _finalize_session(session, email)["session_id"]
     except Exception as e:
-        print(f"[WS] restore validate failed: {type(e).__name__}", flush=True)
+        _LOG.warning(f"[WS] restore validate failed: {type(e).__name__}")
         _clear_persisted_session()
         return None
 
@@ -324,7 +328,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
     try:
         accounts_raw = ws.get_accounts()
         if not isinstance(accounts_raw, list):
-            print(f"[WS] get_accounts() returned non-list: {type(accounts_raw).__name__}", flush=True)
+            _LOG.warning(f"[WS] get_accounts() returned non-list: {type(accounts_raw).__name__}")
             _debug(f"[WS] payload: {json.dumps(accounts_raw, default=str)[:500]}")
             accounts_raw = []
     except Exception as e:
@@ -343,17 +347,18 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
             continue
         acc_type = _detect_account_type(acc)
         acc_pnl = 0.0
+        usd_cash_balance = 0.0
         if not acc.get("cash") and not acc.get("available_to_trade"):
             try:
                 balances = ws.get_account_balances(acc_id)
                 _debug(f"[WS] balances({acc_type}): {balances}")
                 if isinstance(balances, dict):
                     cad_cash = float(balances.get("sec-c-cad") or 0)
-                    usd_cash = float(balances.get("sec-c-usd") or 0)
-                    if usd_cash > 0:
+                    usd_cash_balance = float(balances.get("sec-c-usd") or 0)
+                    if usd_cash_balance > 0:
                         from app.services.market_data import _get_cad_per_usd
                         total_cash_cad = round(
-                            cad_cash + usd_cash * _get_cad_per_usd(), 2
+                            cad_cash + usd_cash_balance * _get_cad_per_usd(), 2
                         )
                     else:
                         total_cash_cad = cad_cash
@@ -363,7 +368,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                         f" (cad+usd_converted={total_cash_cad})"
                     )
             except Exception as e:
-                print(f"[WS] balances failed {acc_type}: {type(e).__name__}", flush=True)
+                _LOG.warning(f"[WS] balances failed {acc_type}: {type(e).__name__}")
         try:
             pnl = ws.get_account_unrealized_pnl(acc_id, "CAD")
             _debug(f"[WS] pnl({acc_type}): {pnl}")
@@ -372,7 +377,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                 total_unrealized_pnl_cad += acc_pnl
                 _debug(f"[WS] pnl_amt for {acc_type}: {acc_pnl}")
         except Exception as e:
-            print(f"[WS] pnl failed {acc_type}: {type(e).__name__}", flush=True)
+            _LOG.warning(f"[WS] pnl failed {acc_type}: {type(e).__name__}")
 
         nlv = _money(
             _nested(acc, "financials", "currentCombined", "netLiquidationValue")
@@ -380,6 +385,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         )
         per_account[acc_type] = {
             "cash_balance": float(acc.get("cash") or 0),
+            "usd_cash_balance": usd_cash_balance,
             "invested_value": nlv,
             "unrealized_pnl_cad": acc_pnl,
         }
@@ -426,7 +432,7 @@ def _fetch_identity_positions(ws, currency: str = "CAD") -> list[dict]:
         if isinstance(result, list):
             return [_normalize_node(r) for r in result]
     except Exception as e:
-        print(f"[WS] FetchIdentityPositions error: {e}")
+        _LOG.warning(f"[WS] FetchIdentityPositions error: {e}")
     return []
 
 

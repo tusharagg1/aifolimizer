@@ -27,6 +27,10 @@ from pathlib import Path
 import yfinance as yf
 
 from app.services import cache_layer
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.positioning")
+
 
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 6 * 3600
@@ -133,7 +137,7 @@ def _news_velocity(symbol: str) -> tuple[float | None, int, int]:
         ratio = per_day_7 / per_day_30 if per_day_30 > 0 else None
         return ratio, c7, c30
     except Exception as e:
-        print(f"[positioning] news velocity {symbol}: {type(e).__name__}: {e}")
+        _LOG.warning(f"[positioning] news velocity {symbol}: {type(e).__name__}: {e}")
         return None, 0, 0
 
 
@@ -180,7 +184,7 @@ def _fetch_one(symbol: str) -> dict:
             "consensus_flag": score >= 70,
         }
     except Exception as e:
-        print(f"[positioning] {symbol}: {type(e).__name__}: {e}")
+        _LOG.warning(f"[positioning] {symbol}: {type(e).__name__}: {e}")
         return {}
 
 
@@ -277,7 +281,7 @@ def _load_today_symbols(today: str) -> set[str]:
                     if sym:
                         syms.add(sym)
     except Exception as e:
-        print(f"[positioning] history read failed: {e}")
+        _LOG.warning(f"[positioning] history read failed: {e}")
     return syms
 
 
@@ -323,7 +327,7 @@ def detect_regime_shifts(
                     continue
                 series.setdefault(sym, []).append((d, float(score), str(label or "")))
     except Exception as e:
-        print(f"[positioning] regime-shift read failed: {e}")
+        _LOG.warning(f"[positioning] regime-shift read failed: {e}")
         return []
 
     shifts: list[dict] = []

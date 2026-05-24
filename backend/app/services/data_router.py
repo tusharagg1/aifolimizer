@@ -7,9 +7,11 @@ Public API:
   get_source_reliability(since_s=86400*7)        -> list[dict]
 
 Order of providers per call type:
-  Quote          : yfinance -> finnhub -> tiingo -> stooq
-  History        : yfinance -> tiingo  -> stooq
-  Fundamentals   : yfinance -> finnhub -> alpha_vantage
+  Quote (US)     : massive -> yfinance -> finnhub -> tiingo -> stooq
+  Quote (TSX)    : yfinance -> finnhub -> tiingo -> stooq
+  History (US)   : massive -> yfinance -> tiingo -> stooq
+  History (TSX)  : yfinance -> tiingo -> stooq
+  Fundamentals   : yfinance -> finnhub -> alpha_vantage  (best for P/E/div/beta)
 
 Each provider call is wrapped with:
   - disk cache hit/miss (skips network if fresh)
@@ -36,6 +38,7 @@ from app.services.data_sources.base import (
 )
 from app.services.data_sources.alphavantage_src import AlphaVantageSource
 from app.services.data_sources.finnhub_src import FinnhubSource
+from app.services.data_sources.massive_src import MassiveSource, is_tsx
 from app.services.data_sources.stooq_src import StooqSource
 from app.services.data_sources.tiingo_src import TiingoSource
 from app.services.data_sources.yfinance_src import YFinanceSource
@@ -50,17 +53,22 @@ _finnhub = FinnhubSource()
 _alpha = AlphaVantageSource()
 _tiingo = TiingoSource()
 _stooq = StooqSource()
+_massive = MassiveSource()
 
 
-def _quote_chain() -> list[DataSource]:
-    return [_yf, _finnhub, _tiingo, _stooq]
+def _quote_chain(symbol: str) -> list[DataSource]:
+    if is_tsx(symbol):
+        return [_yf, _finnhub, _tiingo, _stooq]
+    return [_massive, _yf, _finnhub, _tiingo, _stooq]
 
 
-def _history_chain() -> list[DataSource]:
-    return [_yf, _tiingo, _stooq]
+def _history_chain(symbol: str) -> list[DataSource]:
+    if is_tsx(symbol):
+        return [_yf, _tiingo, _stooq]
+    return [_massive, _yf, _tiingo, _stooq]
 
 
-def _fundamentals_chain() -> list[DataSource]:
+def _fundamentals_chain(symbol: str) -> list[DataSource]:
     return [_yf, _finnhub, _alpha]
 
 
@@ -87,12 +95,12 @@ def _try_source(
 
 
 def get_quote(symbol: str, max_age_s: float = 300) -> dict:
-    for src in _quote_chain():
+    for src in _quote_chain(symbol):
         cached = cache.get_quote(symbol, src.name, max_age_s)
         if cached:
             return cached
     errors: list[str] = []
-    for src in _quote_chain():
+    for src in _quote_chain(symbol):
         ok, payload, err, _ = _try_source(src, lambda s: s.get_quote(symbol))
         if ok and isinstance(payload, Quote):
             d = payload.to_dict()
@@ -111,14 +119,14 @@ def get_history(
     interval: str = "1d",
     max_age_s: float = 86400,
 ) -> list[dict]:
-    for src in _history_chain():
+    for src in _history_chain(symbol):
         cached = cache.get_history(
             symbol, src.name, period, interval, max_age_s
         )
         if cached:
             return cached
     errors: list[str] = []
-    for src in _history_chain():
+    for src in _history_chain(symbol):
         ok, payload, err, _ = _try_source(
             src,
             lambda s: s.get_history(symbol, period=period, interval=interval),
@@ -138,12 +146,12 @@ def get_history(
 
 
 def get_fundamentals(symbol: str, max_age_s: float = 21600) -> dict:
-    for src in _fundamentals_chain():
+    for src in _fundamentals_chain(symbol):
         cached = cache.get_fundamentals(symbol, src.name, max_age_s)
         if cached:
             return cached
     errors: list[str] = []
-    for src in _fundamentals_chain():
+    for src in _fundamentals_chain(symbol):
         ok, payload, err, _ = _try_source(
             src, lambda s: s.get_fundamentals(symbol)
         )
@@ -283,6 +291,7 @@ def prewarm(symbols: list[str]) -> dict[str, str]:
 def configured_sources() -> dict[str, bool]:
     """Snapshot of which sources have credentials at startup."""
     return {
+        "massive": _massive.is_configured(),
         "yfinance": _yf.is_configured(),
         "stooq": _stooq.is_configured(),
         "finnhub": _finnhub.is_configured(),

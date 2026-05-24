@@ -8,6 +8,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.services.technicals import get_technicals
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.screener")
+
 
 _cache: dict[str, tuple[list, float]] = {}
 _CACHE_TTL = 1800  # 30 min — screener is expensive
@@ -77,7 +81,7 @@ def run_screener(
             try:
                 all_technicals.update(fut.result())
             except Exception as e:
-                print(f"[screener] chunk error: {e}")
+                _LOG.warning(f"[screener] chunk error: {e}")
 
     results = []
     for sym, t in all_technicals.items():

@@ -14,6 +14,10 @@ from typing import Any
 
 import pandas as pd
 import yfinance as yf
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.portfolio_optimizer")
+
 
 _CACHE: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600  # 1h — same as technicals
@@ -35,7 +39,7 @@ def _fetch_price_history(symbols: list[str], period: str = "2y") -> pd.DataFrame
         close = close.ffill().dropna()
         return close
     except Exception as e:
-        print(f"[optimizer] price history error: {e}")
+        _LOG.warning(f"[optimizer] price history error: {e}")
         return pd.DataFrame()
 
 

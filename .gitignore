@@ -53,3 +53,7 @@ backend/.claude/
 
 # Runtime watchlist (user-specific, mutated by API)
 backend/watchlist.json
+
+# Local TimescaleDB + Redis data volumes (Phase 0)
+.data/
+.secrets/

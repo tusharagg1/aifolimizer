@@ -4,6 +4,10 @@ import math
 import time
 import yfinance as yf
 from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.market_data")
+
 
 _FX_CACHE: tuple[float, float] | None = None  # (timestamp, cad_per_usd)
 _FX_TTL = 300  # 5 min — forex moves during market hours
@@ -117,6 +121,7 @@ def enrich(
     cash_balance: float,
     ws_account_total: float = 0.0,
     unrealized_pnl_cad: float = 0.0,
+    usd_cash_balance: float = 0.0,
 ) -> PortfolioResponse:
     """
     market_value / book_cost: native currency (USD or CAD) for per-position display.
@@ -204,9 +209,10 @@ def enrich(
     reported_total = ws_account_total if ws_account_total > 0 else total_market_value_cad
 
     # Prefer WS unrealized P&L for total return — covers all assets incl. crypto.
-    # book_cost = NLV - unrealized_pnl (both in CAD from WS).
+    # NLV includes cash; subtract it to get equity-only book cost.
     if unrealized_pnl_cad and ws_account_total > 0:
-        total_cost_cad = round(ws_account_total - unrealized_pnl_cad, 2)
+        equity_nlv = ws_account_total - cash_balance
+        total_cost_cad = round(equity_nlv - unrealized_pnl_cad, 2)
         total_return_pct = round(
             (unrealized_pnl_cad / total_cost_cad) * 100, 2
         ) if total_cost_cad > 0 else 0.0
@@ -227,6 +233,7 @@ def enrich(
             total_cost=round(total_cost_cad, 2),
             total_return_pct=total_return_pct,
             cash_available=round(cash_balance, 2),
+            cash_available_usd=round(usd_cash_balance, 2),
             day_change_cad=day_change_cad,
         ),
     )
@@ -248,7 +255,7 @@ def fetch_returns(symbols: list[str], period: str = "1y") -> dict[str, list[floa
     try:
         data = yf.download(symbols, period=period, progress=False, auto_adjust=True, group_by="ticker")
     except Exception as e:
-        print(f"[market_data] yfinance download error: {e}")
+        _LOG.warning(f"[market_data] yfinance download error: {e}")
         return {}
 
     out: dict[str, list[float]] = {}

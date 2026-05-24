@@ -23,11 +23,14 @@ from typing import Any
 import httpx
 
 from app.models.portfolio import PortfolioResponse
+from app.security import get_logger
 from app.services import (
     fundamentals as fundamentals_svc,
     portfolio_analytics,
     technicals as technicals_svc,
 )
+
+_LOG = get_logger("aifolimizer.services.alerts")
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CTX_DIR = _REPO_ROOT / ".claude" / "context"
@@ -82,7 +85,7 @@ def _push_ntfy(
             timeout=5.0,
         )
     except Exception as e:
-        print(f"[alerts] ntfy push failed: {e}", flush=True)
+        _LOG.warning(f"[alerts] ntfy push failed: {e}")
 
 
 def evaluate(
@@ -151,7 +154,7 @@ def evaluate(
         try:
             tech = technicals_svc.get_technicals(tech_symbols)
         except Exception as e:
-            print(f"[alerts] technicals fetch failed: {e}", flush=True)
+            _LOG.warning(f"[alerts] technicals fetch failed: {e}")
             tech = {}
         for sym, data in tech.items():
             rsi = data.get("rsi_14")
@@ -190,7 +193,7 @@ def evaluate(
             if fund_syms else {}
         )
     except Exception as e:
-        print(f"[alerts] fundamentals fetch failed: {e}", flush=True)
+        _LOG.warning(f"[alerts] fundamentals fetch failed: {e}")
         fund_data = {}
     today = date.today()
     cutoff = today + timedelta(days=earnings_within_days)
@@ -307,7 +310,7 @@ def read_recent_history(
                 if rec_dt >= cutoff:
                     out.append(rec)
     except Exception as e:
-        print(f"[alerts] history read failed: {e}", flush=True)
+        _LOG.warning(f"[alerts] history read failed: {e}")
         return []
     out.sort(key=lambda r: r.get("ts", ""), reverse=True)
     return out[:limit]

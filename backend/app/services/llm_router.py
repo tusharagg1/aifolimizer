@@ -22,6 +22,10 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.security import get_logger
+
+_LOG = get_logger("aifolimizer.services.llm_router")
+
 
 # ── Provider registry ──────────────────────────────────────────────────────────
 
@@ -273,6 +277,76 @@ async def generate_narrative(rec: dict) -> str | None:
     return None
 
 
+_PORTFOLIO_COMMENTARY_SYSTEM = (
+    "You are a concise portfolio advisor for a 32-year-old Canadian growth investor using Wealthsimple. "
+    "Reply with a JSON object with two keys: "
+    "\"commentary\" (2-3 sentences of plain-English portfolio assessment) and "
+    "\"actions\" (array of 2-4 specific actionable bullet strings, each under 15 words). "
+    "Be specific — cite symbols and numbers. No disclaimers, no markdown outside the JSON."
+)
+
+
+def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
+    sells = [r for r in top_recs if r.get("action") in ("SELL", "TRIM")]
+    buys  = [r for r in top_recs if r.get("action") in ("BUY", "ADD")]
+    watch = [r for r in top_recs if r.get("action") == "WATCH"]
+    lines = [
+        f"Portfolio: ${summary.get('total_value', 0):,.0f} CAD | "
+        f"Return: {summary.get('total_return_pct', 0):.1f}% | "
+        f"Cash: ${summary.get('cash_available', 0):,.0f}",
+        f"Health: {summary.get('grade', '?')} ({summary.get('score', '?')}/100)",
+        f"Top BUYs: {', '.join(r['symbol'] + ' score ' + str(r['score']) for r in buys[:3]) or 'none'}",
+        f"Top SELLs/TRIMs: {', '.join(r['symbol'] for r in sells[:3]) or 'none'}",
+        f"Watch: {', '.join(r['symbol'] for r in watch[:3]) or 'none'}",
+        f"Regime: {top_recs[0].get('market_regime', 'unknown') if top_recs else 'unknown'}",
+    ]
+    return "\n".join(lines) + "\n\nProvide portfolio commentary and specific action items."
+
+
+_PORTFOLIO_COMMENTARY_CACHE: dict[str, tuple[dict, float]] = {}
+_PORTFOLIO_COMMENTARY_TTL = 900  # 15 min
+
+
+async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict | None:
+    """Generate 2-3 sentence portfolio assessment + 2-4 action items. 15-min cache."""
+    import json
+
+    cache_key = f"portfolio_{round(summary.get('total_value', 0), -2)}"
+    entry = _PORTFOLIO_COMMENTARY_CACHE.get(cache_key)
+    if entry and time.time() - entry[1] < _PORTFOLIO_COMMENTARY_TTL:
+        return entry[0]
+
+    providers = _available_providers()
+    if not providers:
+        return None
+
+    prompt = _build_portfolio_prompt(summary, recs)
+
+    for provider in providers:
+        try:
+            text = await _call_provider(
+                provider, prompt,
+                system=_PORTFOLIO_COMMENTARY_SYSTEM,
+                max_tokens=300,
+                temperature=0.4,
+            )
+            if text:
+                data = json.loads(text.strip())
+                result = {
+                    "commentary": data.get("commentary", ""),
+                    "actions": data.get("actions", []),
+                    "provider": provider["name"],
+                }
+                _record_success(provider["name"])
+                _PORTFOLIO_COMMENTARY_CACHE[cache_key] = (result, time.time())
+                return result
+        except Exception as e:
+            _LOG.warning(f"[llm_router] portfolio_commentary via {provider['name']}: {e}")
+            _record_error(provider["name"])
+
+    return None
+
+
 async def generate_narratives_batch(
     recommendations: list[dict],
     max_count: int = 15,
@@ -333,7 +407,7 @@ async def verify_sell_signal(rec: dict) -> bool:
             _record_success(provider["name"])
             return verdict == "SELL"
         except Exception as e:
-            print(f"[llm_router] verify_sell {rec['symbol']} via {provider['name']}: {e}")
+            _LOG.warning(f"[llm_router] verify_sell {rec['symbol']} via {provider['name']}: {e}")
             _record_error(provider["name"])
 
     return True  # all providers failed — keep SELL
@@ -391,7 +465,7 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
             _SENT_LLM_CACHE[hkey] = (score, time.time())
             return score
         except Exception as e:
-            print(f"[llm_router] sentiment {symbol} via {provider['name']}: {e}")
+            _LOG.warning(f"[llm_router] sentiment {symbol} via {provider['name']}: {e}")
             _record_error(provider["name"])
 
     return None

@@ -13,3 +13,7 @@ ws-api>=0.33.0
 keyring>=25.0.0
 pytest>=9.0.0  # dev-only — tests/test_pii_filter.py
 diskcache>=5.6.0  # L2 persistent cache shared between FastAPI + MCP processes
+asyncpg>=0.29.0  # TimescaleDB async driver (Phase 0)
+redis>=5.0.0  # Async Redis client (Phase 0)
+rq>=2.0.0  # Redis-backed task queue (Phase 14)
+sentry-sdk[fastapi]>=2.0.0  # Optional error tracking (Phase 15)

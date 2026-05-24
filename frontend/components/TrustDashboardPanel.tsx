@@ -80,9 +80,9 @@ function TrustDashboardPanel() {
     <div className="border border-slate-800/60 bg-slate-900/20 rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-200">Trust Dashboard</h3>
+          <h3 className="text-sm font-semibold text-slate-200">Signal Accuracy</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Signal accuracy evidence — empirical, derived from logged decisions.
+            Did the AI recommendations actually make money? This panel tracks forward-scored signals — real outcomes, not backtests.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -107,9 +107,10 @@ function TrustDashboardPanel() {
 
       {/* Track record */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-          Forward-Scored Track Record
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
+          Past Recommendation Performance
         </div>
+        <p className="text-[10px] text-slate-600 mb-1">Win rate and average return across all logged BUY/SELL/TRIM signals, marked to market.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {track?.windows && Object.entries(track.windows).map(([win, w]) => (
             <div key={win} className="border border-slate-800/60 rounded p-2">
@@ -137,12 +138,13 @@ function TrustDashboardPanel() {
 
       {/* Calibration */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-          Confidence Calibration ({horizon}d)
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
+          Does &quot;High Confidence&quot; Actually Win More? ({horizon}d)
         </div>
+        <p className="text-[10px] text-slate-600 mb-1">Checks whether signals labelled &quot;high confidence&quot; actually have a higher win rate than &quot;low confidence&quot; ones.</p>
         {calibInsufficient ? (
           <div className="text-xs text-slate-500 px-2 py-3 bg-slate-900/40 rounded border border-slate-800/60">
-            Not enough scored signals to calibrate. Confidence label is unproven — treat as experimental.
+            Not enough data yet — run skills regularly for a few weeks to see if confidence labels are meaningful.
           </div>
         ) : (
           <div className="flex items-center gap-3">
@@ -176,12 +178,13 @@ function TrustDashboardPanel() {
 
       {/* Decay curve */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-          Signal Decay Curve
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
+          Best Holding Period
         </div>
+        <p className="text-[10px] text-slate-600 mb-1">Shows average return at each holding horizon (1d, 3d, 5d…). The green cell = when signals historically peaked — that&apos;s your ideal hold window.</p>
         {decayInsufficient ? (
           <div className="text-xs text-slate-500 px-2 py-3 bg-slate-900/40 rounded border border-slate-800/60">
-            Insufficient horizon data. Best holding period unknown until ~5+ scored signals per horizon.
+            Not enough data yet — needs ~5 scored signals per horizon. Keep logging recommendations via skills.
           </div>
         ) : (
           <>
@@ -212,13 +215,13 @@ function TrustDashboardPanel() {
 
       {/* Per-source attribution */}
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
-          Per-Source Alpha Attribution ({horizon}d)
+        <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">
+          Which Analysis Type Drives Returns? ({horizon}d)
         </div>
+        <p className="text-[10px] text-slate-600 mb-1">Breaks down returns by what drove each signal: technical, fundamental, macro, or sentiment. Tells you which type of analysis is actually worth trusting.</p>
         {attrInsufficient ? (
           <div className="text-xs text-slate-500 px-2 py-3 bg-slate-900/40 rounded border border-slate-800/60">
-            Not enough single-source-dominant signals. Run for multiple weeks to surface which sub-signals
-            carry stand-alone alpha.
+            Not enough data yet — needs a few weeks of regular skill usage to identify which signal type carries alpha.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

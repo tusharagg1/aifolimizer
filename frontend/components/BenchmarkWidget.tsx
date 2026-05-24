@@ -46,7 +46,10 @@ function BenchmarkWidget({ data, loading }: Props) {
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-      <h2 className="text-sm font-semibold text-white">Portfolio vs Benchmarks</h2>
+      <div>
+        <h2 className="text-sm font-semibold text-white">Are You Beating the Market?</h2>
+        <p className="text-[10px] text-slate-500 mt-0.5">Compares your portfolio return against index funds. If alpha is consistently negative, a simple XEQT or SPY ETF would have outperformed you with less effort.</p>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -86,7 +89,7 @@ function BenchmarkWidget({ data, loading }: Props) {
       </div>
 
       <p className="text-[10px] text-slate-600">
-        α = your portfolio return minus benchmark. Green = outperforming.
+        α = your return minus the benchmark. Green = you beat it. Red = the index beat you.
       </p>
     </div>
   );
