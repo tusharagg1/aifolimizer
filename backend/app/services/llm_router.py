@@ -27,6 +27,32 @@ from app.security import get_logger
 _LOG = get_logger("aifolimizer.services.llm_router")
 
 
+# ── Per-task model routing ─────────────────────────────────────────────────────
+# GitHub Models exposes many model IDs free w/ Pro subscription. Map tasks to
+# the model best suited (cheap for batch narratives, reasoning models for
+# bull/bear and sell-verify). Other providers expose one model — task is
+# ignored there and provider default is used.
+
+_GH_MODEL_BY_TASK: dict[str, str] = {
+    "narrative":         "gpt-4o-mini",
+    "sell_verify":       "o1-mini",
+    "adversarial":       "o1-mini",
+    "earnings_pm":       "gpt-4o",
+    "risk_assess":       "gpt-4o",
+    "macro_impact":      "gpt-4o",
+    "stock_compare":     "gpt-4o-mini",
+    "portfolio_health":  "gpt-4o-mini",
+    "daily_briefing":    "gpt-4o-mini",
+    "portfolio_advice":  "gpt-4o-mini",
+}
+
+
+def _model_for(provider: dict, task: str | None) -> str:
+    if task and provider["name"] == "github":
+        return _GH_MODEL_BY_TASK.get(task, provider["model"])
+    return provider["model"]
+
+
 # ── Provider registry ──────────────────────────────────────────────────────────
 
 _PROVIDERS: list[dict[str, Any]] = [
@@ -173,6 +199,7 @@ async def _call_openai_compat(
     system: str = _SYSTEM_PROMPT,
     max_tokens: int = 120,
     temperature: float = 0.3,
+    model: str | None = None,
 ) -> str:
     url = f"{provider['base_url']}/chat/completions"
     headers = {
@@ -184,7 +211,7 @@ async def _call_openai_compat(
         headers["X-Title"] = "aifolimizer"
 
     body = {
-        "model": provider["model"],
+        "model": model or provider["model"],
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
@@ -241,11 +268,15 @@ async def _call_provider(
     system: str = _SYSTEM_PROMPT,
     max_tokens: int = 120,
     temperature: float = 0.3,
+    task: str | None = None,
 ) -> str:
     api_key = provider["key_getter"]()
+    model = _model_for(provider, task)
     if provider["type"] == "gemini":
-        return await _call_gemini(api_key, provider["model"], prompt, system, max_tokens, temperature)
-    return await _call_openai_compat(provider, api_key, prompt, system, max_tokens, temperature)
+        return await _call_gemini(api_key, model, prompt, system, max_tokens, temperature)
+    return await _call_openai_compat(
+        provider, api_key, prompt, system, max_tokens, temperature, model=model,
+    )
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -262,7 +293,7 @@ async def generate_narrative(rec: dict) -> str | None:
 
     for provider in _available_providers():
         try:
-            text = await _call_provider(provider, prompt)
+            text = await _call_provider(provider, prompt, task="narrative")
             if text:
                 _record_success(provider["name"])
                 _store_narrative(ck, text)
@@ -329,6 +360,7 @@ async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict
                 system=_PORTFOLIO_COMMENTARY_SYSTEM,
                 max_tokens=300,
                 temperature=0.4,
+                task="portfolio_advice",
             )
             if text:
                 data = json.loads(text.strip())
@@ -393,15 +425,17 @@ async def verify_sell_signal(rec: dict) -> bool:
 
     for provider in providers:
         try:
+            sv_model = _model_for(provider, "sell_verify")
             if provider["type"] == "gemini":
                 text = await _call_gemini(
                     provider["key_getter"](),
-                    provider["model"],
+                    sv_model,
                     f"{_SELL_VERIFY_SYSTEM}\n\n{prompt}",
                 )
             else:
                 text = await _call_openai_compat_with_system(
-                    provider, provider["key_getter"](), prompt, _SELL_VERIFY_SYSTEM
+                    provider, provider["key_getter"](), prompt,
+                    _SELL_VERIFY_SYSTEM, model=sv_model,
                 )
             verdict = text.strip().upper().split()[0] if text.strip() else "SELL"
             _record_success(provider["name"])
@@ -472,7 +506,8 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
 
 
 async def _call_openai_compat_with_system(
-    provider: dict, api_key: str, prompt: str, system: str
+    provider: dict, api_key: str, prompt: str, system: str,
+    model: str | None = None,
 ) -> str:
     url = f"{provider['base_url']}/chat/completions"
     headers = {
@@ -483,7 +518,7 @@ async def _call_openai_compat_with_system(
         headers["HTTP-Referer"] = "https://aifolimizer.local"
         headers["X-Title"] = "aifolimizer"
     body = {
-        "model": provider["model"],
+        "model": model or provider["model"],
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
