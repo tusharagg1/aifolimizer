@@ -41,8 +41,8 @@ _LOG = get_logger("aifolimizer.services.llm_router")
 
 _GH_MODEL_BY_TASK: dict[str, str] = {
     "narrative":         "openai/gpt-4o-mini",
-    "sell_verify":       "openai/gpt-4o",          # was o1-mini; needs scope
-    "adversarial":       "openai/gpt-4o",          # was o1-mini; needs scope
+    "sell_verify":       "deepseek/deepseek-r1",   # chain-of-thought reasoning
+    "adversarial":       "deepseek/deepseek-r1",   # bull/bear debate w/ reasoning
     "earnings_pm":       "openai/gpt-4o",
     "risk_assess":       "openai/gpt-4o",
     "macro_impact":      "openai/gpt-4o",
