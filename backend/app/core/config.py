@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     # Error tracking (Phase 15 — opt-in, empty = disabled)
     sentry_dsn: str = ""
+    sentry_auth_token: str = ""
+    sentry_org: str = ""
+    sentry_project: str = ""
     environment: str = "dev"
     app_version: str = "v4.3"
 

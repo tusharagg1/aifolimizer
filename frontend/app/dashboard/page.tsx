@@ -101,6 +101,7 @@ function PriceChart({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     wsGetPriceHistory(sessionId, symbol, period)
       .then((d) => { if (!cancelled) setHistData(d); })
@@ -529,6 +530,24 @@ function WatchlistPanel({
 
 type SortKey = keyof Position | "crowding" | "signal";
 
+function SortTh({
+  k, label, right, sortKey, sortDir, onToggle,
+}: {
+  k: SortKey;
+  label: string;
+  right?: boolean;
+  sortKey: SortKey;
+  sortDir: 1 | -1;
+  onToggle: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th onClick={() => onToggle(k)}
+      className={`px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : "text-left"} ${active ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}`}
+    >{label}{active ? (sortDir === -1 ? " ↓" : " ↑") : ""}</th>
+  );
+}
+
 function HoldingsTable({
   positions, recMap, crowdingMap, recsLoading, selectedSymbol, onSelect,
 }: {
@@ -559,15 +578,6 @@ function HoldingsTable({
     return (av - bv) * sortDir;
   });
 
-  function Th({ k, label, right }: { k: SortKey; label: string; right?: boolean }) {
-    const active = sortKey === k;
-    return (
-      <th onClick={() => toggleSort(k)}
-        className={`px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide cursor-pointer select-none whitespace-nowrap ${right ? "text-right" : "text-left"} ${active ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}`}
-      >{label}{active ? (sortDir === -1 ? " ↓" : " ↑") : ""}</th>
-    );
-  }
-
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-3 py-2 border-b border-slate-800 flex items-center gap-2">
@@ -579,17 +589,17 @@ function HoldingsTable({
         <table className="w-full text-xs border-collapse">
           <thead className="bg-slate-950/60">
             <tr>
-              <Th k="symbol" label="Symbol" />
+              <SortTh k="symbol" label="Symbol" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
               <th className="px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">Name</th>
-              <Th k="quantity" label="Qty" right />
-              <Th k="book_cost" label="Cost" right />
-              <Th k="market_value" label="Value" right />
-              <Th k="day_change_pct" label="Day%" right />
-              <Th k="total_return_pct" label="Return%" right />
-              <Th k="weight" label="Wt%" right />
-              <Th k="asset_class" label="Class" />
-              <Th k="crowding" label="Crowd" right />
-              <Th k="signal" label="Signal" />
+              <SortTh k="quantity" label="Qty" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="book_cost" label="Cost" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="market_value" label="Value" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="day_change_pct" label="Day%" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="total_return_pct" label="Return%" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="weight" label="Wt%" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="asset_class" label="Class" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="crowding" label="Crowd" right sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
+              <SortTh k="signal" label="Signal" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
             </tr>
           </thead>
           <tbody>
@@ -736,9 +746,22 @@ export default function DashboardPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    const storedSid = sessionStorage.getItem("ws_session_id");
+    const storedProfile = sessionStorage.getItem("ws_profile");
+    if (storedSid && storedProfile) {
+      try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setSessionId(storedSid);
+        setProfile(JSON.parse(storedProfile));
+        setAuthLoading(false);
+        return;
+      } catch { /* fall through to backend restore */ }
+    }
     wsRestoreSession()
       .then((res) => {
         if (res.restored && res.session_id && res.profile) {
+          sessionStorage.setItem("ws_session_id", res.session_id);
+          sessionStorage.setItem("ws_profile", JSON.stringify(res.profile));
           setSessionId(res.session_id);
           setProfile(res.profile);
         }
@@ -748,7 +771,13 @@ export default function DashboardPage() {
   }, []);
 
   function handleLogin(sid: string, prof: UserProfile) {
+    sessionStorage.setItem("ws_session_id", sid);
+    sessionStorage.setItem("ws_profile", JSON.stringify(prof));
     setSessionId(sid); setProfile(prof); setAuthLoading(false);
+  }
+
+  function handleExpiredSession() {
+    setSessionId(null); setProfile(null);
   }
 
   const loadPortfolio = useCallback(async (sid: string, account: string) => {
@@ -759,7 +788,9 @@ export default function DashboardPage() {
       setSummary(portfolio.summary);
       setHealth(hs);
     } catch (e: unknown) {
-      setPortfolioError(e instanceof Error ? e.message : "Failed to load portfolio");
+      const msg = e instanceof Error ? e.message : "Failed to load portfolio";
+      if (!sessionStorage.getItem("ws_session_id")) { handleExpiredSession(); return; }
+      setPortfolioError(msg);
     } finally { setPortfolioLoading(false); }
   }, []);
 
@@ -785,6 +816,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!sessionId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPortfolio(sessionId, activeAccount);
     loadRecs(sessionId);
     loadWatchlist(sessionId);

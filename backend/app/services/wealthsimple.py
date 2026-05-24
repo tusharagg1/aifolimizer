@@ -298,8 +298,11 @@ def verify_otp(session_id: str, otp: str) -> dict:
         _sessions.pop(session_id, None)
         raise ValueError("OTP timed out — start login again")
 
-    email = pending["email"]
-    password = pending["password"]
+    email = pending.get("email")
+    password = pending.get("password")
+    if not email or not password:
+        _sessions.pop(session_id, None)
+        raise ValueError("Session state lost — start login again")
 
     try:
         session: WSAPISession = WealthsimpleAPI.login(
@@ -311,6 +314,7 @@ def verify_otp(session_id: str, otp: str) -> dict:
     except OTPRequiredException:
         raise ValueError("OTP code rejected — try again")
     except LoginFailedException as e:
+        _sessions.pop(session_id, None)
         raise ValueError(f"Login failed: {e}")
     finally:
         # Drop plaintext password from RAM regardless of outcome.

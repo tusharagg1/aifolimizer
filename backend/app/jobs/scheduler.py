@@ -31,11 +31,17 @@ _LOG = logging.getLogger("aifolimizer.scheduler")
 
 _TASK: asyncio.Task | None = None
 _SCORE_TASK: asyncio.Task | None = None
+_SENTRY_TASK: asyncio.Task | None = None
 _STOP_EVENT: asyncio.Event | None = None
 _LAST_RUN_TS: float | None = None
 _LAST_RUN_RESULT: dict | None = None
 _LAST_SCORE_DATE: str | None = None
 _LAST_SCORE_RESULT: dict | None = None
+_LAST_SENTRY_TS: float | None = None
+_LAST_SENTRY_DIGEST: dict | None = None
+
+# Sentry digest — hourly poll for live errors.
+_SENTRY_LOOP_INTERVAL_S = 60 * 60
 
 # Per-tenant scheduling: max parallel tenants per tick to bound load.
 _MAX_TENANT_FANOUT = 5
@@ -597,15 +603,55 @@ async def _score_loop():
             continue
 
 
+async def _sentry_digest_once() -> dict | None:
+    """Pull latest Sentry digest; log high-severity issues."""
+    global _LAST_SENTRY_TS, _LAST_SENTRY_DIGEST
+    from app.core.config import settings
+    if not settings.sentry_auth_token or not settings.sentry_org:
+        return None
+    try:
+        from app.services import sentry_monitor
+        digest = await asyncio.to_thread(sentry_monitor.build_digest, 10)
+        _LAST_SENTRY_TS = time.time()
+        _LAST_SENTRY_DIGEST = digest
+        if digest.get("count", 0) > 0:
+            _LOG.warning(
+                "scheduler: sentry digest — %s unresolved issues (top: %s)",
+                digest["count"],
+                digest["issues"][0].get("short_id"),
+            )
+        return digest
+    except Exception:
+        _LOG.exception("scheduler: sentry digest failed")
+        return None
+
+
+async def _sentry_loop():
+    assert _STOP_EVENT is not None
+    while not _STOP_EVENT.is_set():
+        await _sentry_digest_once()
+        try:
+            await asyncio.wait_for(
+                _STOP_EVENT.wait(), timeout=_SENTRY_LOOP_INTERVAL_S,
+            )
+        except asyncio.TimeoutError:
+            continue
+
+
+def get_last_sentry_digest() -> dict | None:
+    return _LAST_SENTRY_DIGEST
+
+
 def start_scheduler() -> None:
     """Spawn scheduler tasks. Idempotent — safe to call multiple times."""
-    global _TASK, _SCORE_TASK, _STOP_EVENT
+    global _TASK, _SCORE_TASK, _SENTRY_TASK, _STOP_EVENT
     if _TASK and not _TASK.done():
         return
     _STOP_EVENT = asyncio.Event()
     _TASK = asyncio.create_task(_loop(), name="skill-scheduler")
     _SCORE_TASK = asyncio.create_task(_score_loop(), name="rec-scorer")
-    _LOG.info("scheduler: started (skill loop + nightly scorer)")
+    _SENTRY_TASK = asyncio.create_task(_sentry_loop(), name="sentry-digest")
+    _LOG.info("scheduler: started (skill loop + nightly scorer + sentry digest)")
 
 
 def stop_scheduler() -> None:
@@ -615,6 +661,8 @@ def stop_scheduler() -> None:
         _TASK.cancel()
     if _SCORE_TASK:
         _SCORE_TASK.cancel()
+    if _SENTRY_TASK:
+        _SENTRY_TASK.cancel()
     _LOG.info("scheduler: stopped")
 
 
