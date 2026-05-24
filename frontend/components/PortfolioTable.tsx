@@ -70,6 +70,11 @@ const TableRow = memo(function TableRow({
       <td className="px-4 py-3 font-semibold text-white">{position.symbol}</td>
       <td className="px-4 py-3 text-slate-300 max-w-[160px] truncate">{position.name}</td>
       <td className="px-4 py-3 text-right text-slate-300">{position.quantity}</td>
+      <td className="px-4 py-3 text-right text-slate-300 tabular-nums">
+        {position.current_price
+          ? formatMoney(position.current_price, position.currency)
+          : "—"}
+      </td>
       <td className="px-4 py-3 text-right text-slate-300">
         {formatMoney(position.book_cost_cad)}
       </td>
@@ -113,6 +118,7 @@ function PortfolioTable({ positions, crowding, onSelectTicker, selectedTicker }:
               <th className="px-4 py-3 font-medium">Symbol</th>
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium text-right">Qty</th>
+              <th className="px-4 py-3 font-medium text-right" title="Live per-share price in native currency">Price</th>
               <th className="px-4 py-3 font-medium text-right">Book Cost (CAD)</th>
               <th className="px-4 py-3 font-medium text-right">Mkt Value (CAD)</th>
               <th className="px-4 py-3 font-medium text-right">Day %</th>

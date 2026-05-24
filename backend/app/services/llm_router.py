@@ -29,21 +29,27 @@ _LOG = get_logger("aifolimizer.services.llm_router")
 
 # ── Per-task model routing ─────────────────────────────────────────────────────
 # GitHub Models exposes many model IDs free w/ Pro subscription. Map tasks to
-# the model best suited (cheap for batch narratives, reasoning models for
-# bull/bear and sell-verify). Other providers expose one model — task is
-# ignored there and provider default is used.
+# the model best suited (cheap for batch narratives, gpt-4o for synthesis).
+#
+# Reasoning models (openai/o1, openai/o3, openai/o4-mini, deepseek/deepseek-r1)
+# require a PAT with `models:read` scope on the new endpoint. If user upgrades
+# scope, swap reasoning tasks to "openai/o4-mini" (cheaper) or "openai/o3-mini".
+#
+# Model IDs are namespaced (provider/model) — the new endpoint
+# `models.github.ai/inference` requires this format. The legacy Azure-fronted
+# endpoint only exposes a tiny subset (gpt-4o, gpt-4o-mini, Llama-3.1).
 
 _GH_MODEL_BY_TASK: dict[str, str] = {
-    "narrative":         "gpt-4o-mini",
-    "sell_verify":       "o1-mini",
-    "adversarial":       "o1-mini",
-    "earnings_pm":       "gpt-4o",
-    "risk_assess":       "gpt-4o",
-    "macro_impact":      "gpt-4o",
-    "stock_compare":     "gpt-4o-mini",
-    "portfolio_health":  "gpt-4o-mini",
-    "daily_briefing":    "gpt-4o-mini",
-    "portfolio_advice":  "gpt-4o-mini",
+    "narrative":         "openai/gpt-4o-mini",
+    "sell_verify":       "openai/gpt-4o",          # was o1-mini; needs scope
+    "adversarial":       "openai/gpt-4o",          # was o1-mini; needs scope
+    "earnings_pm":       "openai/gpt-4o",
+    "risk_assess":       "openai/gpt-4o",
+    "macro_impact":      "openai/gpt-4o",
+    "stock_compare":     "openai/gpt-4o-mini",
+    "portfolio_health":  "openai/gpt-4o-mini",
+    "daily_briefing":    "openai/gpt-4o-mini",
+    "portfolio_advice":  "openai/gpt-4o-mini",
 }
 
 
@@ -60,8 +66,11 @@ _PROVIDERS: list[dict[str, Any]] = [
         "name": "github",
         "key_getter": lambda: settings.github_token,
         "type": "openai_compat",
-        "base_url": "https://models.inference.ai.azure.com",
-        "model": "gpt-4o-mini",
+        # New GitHub Models endpoint — supports namespaced model IDs and the
+        # full catalog (gated by PAT scope). Legacy Azure-fronted URL only
+        # exposed gpt-4o + gpt-4o-mini.
+        "base_url": "https://models.github.ai/inference",
+        "model": "openai/gpt-4o-mini",
     },
     {
         "name": "gemini",
@@ -192,6 +201,13 @@ def _build_user_prompt(rec: dict) -> str:
     )
 
 
+def _is_reasoning_model(model: str) -> bool:
+    """OpenAI o-series reasoning models reject temperature, system role, and
+    use max_completion_tokens instead of max_tokens. Detect by name prefix."""
+    m = (model or "").lower()
+    return m.startswith("o1") or m.startswith("o3") or m.startswith("o4")
+
+
 async def _call_openai_compat(
     provider: dict,
     api_key: str,
@@ -210,16 +226,29 @@ async def _call_openai_compat(
         headers["HTTP-Referer"] = "https://aifolimizer.local"
         headers["X-Title"] = "aifolimizer"
 
-    body = {
-        "model": model or provider["model"],
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    actual_model = model or provider["model"]
+    if _is_reasoning_model(actual_model):
+        # o-series: fold system into user msg, use max_completion_tokens,
+        # drop temperature. Reasoning models also need larger budget since
+        # internal reasoning tokens count against the cap.
+        body = {
+            "model": actual_model,
+            "messages": [
+                {"role": "user", "content": f"{system}\n\n{prompt}"},
+            ],
+            "max_completion_tokens": max(max_tokens * 8, 1000),
+        }
+    else:
+        body = {
+            "model": actual_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+    async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, headers=headers, json=body)
         resp.raise_for_status()
         data = resp.json()
@@ -517,15 +546,25 @@ async def _call_openai_compat_with_system(
     if provider.get("name") == "openrouter":
         headers["HTTP-Referer"] = "https://aifolimizer.local"
         headers["X-Title"] = "aifolimizer"
-    body = {
-        "model": model or provider["model"],
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 10,
-        "temperature": 0.0,
-    }
+    actual_model = model or provider["model"]
+    if _is_reasoning_model(actual_model):
+        body = {
+            "model": actual_model,
+            "messages": [
+                {"role": "user", "content": f"{system}\n\n{prompt}"},
+            ],
+            "max_completion_tokens": 1000,
+        }
+    else:
+        body = {
+            "model": actual_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": 10,
+            "temperature": 0.0,
+        }
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(url, headers=headers, json=body)
         resp.raise_for_status()

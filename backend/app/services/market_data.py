@@ -179,6 +179,16 @@ def enrich(
         total_return_pct = round(((market_value - book_cost) / book_cost) * 100, 2) if book_cost else 0.0
         total_market_value_cad += market_value_cad
 
+        # Live per-share price: prefer yfinance quote (fresher than WS),
+        # fall back to derived (market_value / quantity).
+        if yf_price and yf_price > 0:
+            current_price = round(float(yf_price), 4)
+        elif quantity:
+            current_price = round(market_value / quantity, 4)
+        else:
+            current_price = 0.0
+        current_price_cad = round(current_price * fx, 4)
+
         positions.append({
             "symbol": symbol,
             "name": security.get("name", symbol),
@@ -188,6 +198,8 @@ def enrich(
             "book_cost_cad": round(book_cost * fx, 2),
             "market_value": market_value,
             "market_value_cad": market_value_cad,
+            "current_price": current_price,
+            "current_price_cad": current_price_cad,
             "day_change_pct": day_change_pct,
             "total_return_pct": total_return_pct,
             "asset_class": _classify_asset(security_type, symbol),

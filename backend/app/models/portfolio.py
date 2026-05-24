@@ -25,6 +25,8 @@ class Position(BaseModel):
     book_cost_cad: float    # CAD equivalent
     market_value: float     # native currency
     market_value_cad: float # CAD equivalent
+    current_price: float = 0.0       # native currency, per share
+    current_price_cad: float = 0.0   # CAD equivalent per share
     day_change_pct: float
     total_return_pct: float     # (market_value - book_cost) / book_cost in native currency
     weight: float               # % of total portfolio (CAD-based)

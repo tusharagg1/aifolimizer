@@ -217,6 +217,92 @@ async def get_portfolio(
         raise HTTPException(status_code=502, detail=f"Wealthsimple error: {e}") from e
 
 
+@router.get("/portfolio/debug-pnl")
+async def debug_pnl(
+    session_id: str = Query(...),
+    account_id: str = Query("", description="Empty = aggregate"),
+):
+    """TEMPORARY diagnostic — dumps raw WS inputs and derived totals so we can
+    pinpoint why total_return_pct is off. Remove once root cause confirmed."""
+    session = wealthsimple.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired")
+
+    profile = session.get("profile")
+    per_account = session.get("per_account", {})
+
+    if account_id and account_id in per_account:
+        acc = per_account[account_id]
+        cash = float(acc.get("cash_balance") or 0.0)
+        usd_cash = float(acc.get("usd_cash_balance") or 0.0)
+        ws_total = float(acc.get("invested_value") or 0.0)
+        pnl = float(acc.get("unrealized_pnl_cad") or 0.0)
+        per_acc_breakdown = [{
+            "type": account_id,
+            "cash": cash, "usd_cash": usd_cash,
+            "nlv": ws_total, "pnl_cad": pnl,
+        }]
+    else:
+        cash = sum(a.cash_balance for a in profile.accounts) if profile else 0.0
+        usd_cash = sum(
+            float(per_account.get(a.type, {}).get("usd_cash_balance") or 0.0)
+            for a in profile.accounts
+        ) if profile else 0.0
+        ws_total = sum(
+            a.invested_value for a in profile.accounts
+        ) if profile else 0.0
+        pnl = float(session.get("unrealized_pnl_cad") or 0.0)
+        per_acc_breakdown = [
+            {
+                "type": a.type,
+                "cash": a.cash_balance,
+                "usd_cash": float(
+                    per_account.get(a.type, {}).get("usd_cash_balance") or 0.0
+                ),
+                "nlv": a.invested_value,
+                "pnl_cad": float(
+                    per_account.get(a.type, {}).get("unrealized_pnl_cad") or 0.0
+                ),
+            }
+            for a in profile.accounts
+        ] if profile else []
+
+    equity_nlv = ws_total - cash
+    total_cost_cad = equity_nlv - pnl if pnl and ws_total > 0 else None
+    total_return_pct = (
+        round((pnl / total_cost_cad) * 100, 2)
+        if total_cost_cad and total_cost_cad > 0
+        else None
+    )
+
+    return {
+        "inputs": {
+            "ws_account_total_nlv": ws_total,
+            "cad_cash": cash,
+            "usd_cash_balance": usd_cash,
+            "unrealized_pnl_cad": pnl,
+        },
+        "derived": {
+            "equity_nlv": equity_nlv,
+            "total_cost_cad": total_cost_cad,
+            "total_return_pct": total_return_pct,
+            "formula": (
+                "total_cost = (NLV - cad_cash) - PnL; "
+                "return_pct = PnL / total_cost"
+            ),
+        },
+        "per_account": per_acc_breakdown,
+        "notes": [
+            "If `unrealized_pnl_cad` looks wrong, WS API is returning a "
+            "different metric. Compare with WS app totals.",
+            "If `usd_cash_balance` > 0, equity_nlv still contains USD cash "
+            "(only CAD cash subtracted) — minor inflation of book cost.",
+            "If `pnl_cad` per-account has mixed signs from positions you no "
+            "longer hold, WS history baseline differs from your mental model.",
+        ],
+    }
+
+
 @router.get("/profile")
 async def get_profile(session_id: str = Query(...)):
     session = wealthsimple.get_session(session_id)
