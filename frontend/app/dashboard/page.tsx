@@ -26,6 +26,7 @@ import type {
   WatchlistItem,
   WatchlistRecommendation,
   PriceHistory,
+  SignalChange,
 } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -719,6 +720,85 @@ function LoginForm({ onLogin }: { onLogin: (sid: string, profile: UserProfile) =
   );
 }
 
+// ─── TopMovers ────────────────────────────────────────────────────────────────
+
+function TopMovers({
+  positions, onSelect,
+}: { positions: Position[]; onSelect: (s: string) => void }) {
+  if (positions.length === 0) return null;
+  const movers = [...positions]
+    .filter((p) => typeof p.day_change_pct === "number")
+    .sort((a, b) => Math.abs(b.day_change_pct) - Math.abs(a.day_change_pct))
+    .slice(0, 8);
+  if (movers.length === 0) return null;
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="px-2.5 py-2 border-b border-slate-800">
+        <div className="text-xs font-semibold text-slate-300">Top Movers (Day)</div>
+      </div>
+      <div className="divide-y divide-slate-800/50">
+        {movers.map((p) => {
+          const up = p.day_change_pct >= 0;
+          return (
+            <div
+              key={p.symbol}
+              onClick={() => onSelect(p.symbol)}
+              className="px-2.5 py-1.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-slate-800/40 transition-colors"
+            >
+              <span className="font-mono text-xs text-indigo-300 truncate">{p.symbol}</span>
+              <span className={`font-mono text-[11px] ${up ? "text-emerald-400" : "text-rose-400"}`}>
+                {fmtPct(p.day_change_pct)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── SignalChangesList ────────────────────────────────────────────────────────
+
+function SignalChangesList({
+  changes, onSelect,
+}: { changes: SignalChange[]; onSelect: (s: string) => void }) {
+  if (changes.length === 0) return null;
+  const shown = changes.slice(0, 6);
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="px-2.5 py-2 border-b border-slate-800">
+        <div className="text-xs font-semibold text-slate-300">Signal Changes</div>
+      </div>
+      <div className="divide-y divide-slate-800/50">
+        {shown.map((c) => {
+          const toCfg = SIGNAL_CFG[c.to_action as Action] ?? SIGNAL_CFG.HOLD;
+          return (
+            <div
+              key={c.symbol}
+              onClick={() => onSelect(c.symbol)}
+              className="px-2.5 py-1.5 cursor-pointer hover:bg-slate-800/40 transition-colors"
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-mono text-xs text-indigo-300">{c.symbol}</span>
+                <div className="flex items-center gap-1 text-[10px]">
+                  <span className="text-slate-600">{c.from_action}</span>
+                  <span className="text-slate-700">→</span>
+                  <span className={`px-1 py-0.5 rounded font-bold border ${toCfg.bg} ${toCfg.text} ${toCfg.border}`}>
+                    {c.to_action}
+                  </span>
+                </div>
+              </div>
+              {c.top_reason && (
+                <div className="text-[10px] text-slate-500 mt-0.5 truncate">{c.top_reason}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── DashboardPage ────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -736,6 +816,7 @@ export default function DashboardPage() {
   const [recMap, setRecMap] = useState<Record<string, Recommendation>>({});
   const [crowdingMap, setCrowdingMap] = useState<CrowdingMap>({});
   const [recsLoading, setRecsLoading] = useState(false);
+  const [signalChanges, setSignalChanges] = useState<SignalChange[]>([]);
 
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistRecs, setWatchlistRecs] = useState<Record<string, WatchlistRecommendation>>({});
@@ -801,6 +882,7 @@ export default function DashboardPage() {
       const map: Record<string, Recommendation> = {};
       for (const r of recsRes.recommendations) map[r.symbol] = r;
       setRecMap(map); setCrowdingMap(crowding);
+      setSignalChanges(recsRes.signal_changes ?? []);
     } catch { /* non-fatal */ } finally { setRecsLoading(false); }
   }, []);
 
@@ -865,7 +947,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="max-w-screen-2xl mx-auto px-3 py-3 w-full flex flex-col gap-3 flex-1">
+      <div className="max-w-[1920px] 2xl:max-w-none mx-auto px-3 py-3 w-full flex flex-col gap-3 flex-1">
         {portfolioError && (
           <div className="bg-rose-950/40 border border-rose-700/40 rounded-lg px-3 py-2 text-xs text-rose-300">{portfolioError}</div>
         )}
@@ -892,15 +974,21 @@ export default function DashboardPage() {
 
         {/* ── 3-column main ── */}
         <div className="flex gap-3 flex-1 min-h-0">
-          {/* Left — Watchlist */}
-          <div className="hidden xl:flex flex-col w-60 shrink-0 gap-3">
-            <WatchlistPanel
-              sessionId={sessionId}
-              watchlist={watchlist}
-              watchlistRecs={watchlistRecs}
-              selectedSymbol={selectedSymbol}
+          {/* Left — Watchlist + Top Movers (capped heights, no empty stretch) */}
+          <div className="hidden xl:flex flex-col w-64 2xl:w-80 shrink-0 gap-3 overflow-y-auto">
+            <div className="flex flex-col max-h-[55vh]">
+              <WatchlistPanel
+                sessionId={sessionId}
+                watchlist={watchlist}
+                watchlistRecs={watchlistRecs}
+                selectedSymbol={selectedSymbol}
+                onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
+                onRefresh={() => loadWatchlist(sessionId)}
+              />
+            </div>
+            <TopMovers
+              positions={positions}
               onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
-              onRefresh={() => loadWatchlist(sessionId)}
             />
           </div>
 
@@ -935,8 +1023,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Right — Health + Alloc + RecDetail */}
-          <div className="hidden lg:flex flex-col w-72 shrink-0 gap-3">
+          {/* Right — Health + Alloc + RecDetail + SignalChanges */}
+          <div className="hidden lg:flex flex-col w-72 2xl:w-96 shrink-0 gap-3 overflow-y-auto">
             {health && <HealthCompact health={health} />}
             {positions.length > 0 && summary && (
               <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
@@ -948,6 +1036,10 @@ export default function DashboardPage() {
                 Click any holding or watchlist item to see the AI signal analysis
               </div>
             )}
+            <SignalChangesList
+              changes={signalChanges}
+              onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
+            />
           </div>
         </div>
 
@@ -958,6 +1050,10 @@ export default function DashboardPage() {
             <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
           )}
           {selectedRec && <RecDetail rec={selectedRec} />}
+          <SignalChangesList
+            changes={signalChanges}
+            onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
+          />
         </div>
       </div>
     </div>
