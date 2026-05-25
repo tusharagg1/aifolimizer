@@ -338,29 +338,77 @@ async def generate_narrative(rec: dict) -> str | None:
 
 
 _PORTFOLIO_COMMENTARY_SYSTEM = (
-    "You are a concise portfolio advisor for a 32-year-old Canadian growth investor using Wealthsimple. "
-    "Reply with a JSON object with two keys: "
-    "\"commentary\" (2-3 sentences of plain-English portfolio assessment) and "
-    "\"actions\" (array of 2-4 specific actionable bullet strings, each under 15 words). "
-    "Be specific — cite symbols and numbers. No disclaimers, no markdown outside the JSON."
+    "You are a concise portfolio advisor for a 32-year-old Canadian growth "
+    "investor using Wealthsimple. Reply with a JSON object: "
+    "\"commentary\" (2-3 sentences) and \"actions\" (2-4 actionable bullets).\n"
+    "STRICT RULES — violating any is a hallucination:\n"
+    "1. TRIM/SELL actions must reference a symbol ONLY from the HOLDINGS list. "
+    "   NEVER propose trimming a symbol not in HOLDINGS.\n"
+    "2. TRIM dollar amounts must be <= the position's current market_value_cad. "
+    "   Prefer percentage trims (e.g. 'Trim 25%') over fixed dollars when "
+    "   uncertain.\n"
+    "3. BUY actions must fit within Cash Available. Sum of BUY $ amounts <= "
+    "   cash. Round to nearest $100.\n"
+    "4. Distinguish Account Return (overall NLV vs deposits, includes cash "
+    "   interest) from Equity Return (PnL on equity sleeve only). High-cash "
+    "   accounts often have positive Account Return + negative Equity Return.\n"
+    "5. Reference NUMBERS from the data given — do not invent.\n"
+    "6. No disclaimers, no markdown outside JSON. Each action under 15 words."
 )
 
 
 def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
-    sells = [r for r in top_recs if r.get("action") in ("SELL", "TRIM")]
-    buys  = [r for r in top_recs if r.get("action") in ("BUY", "ADD")]
-    watch = [r for r in top_recs if r.get("action") == "WATCH"]
-    lines = [
-        f"Portfolio: ${summary.get('total_value', 0):,.0f} CAD | "
-        f"Return: {summary.get('total_return_pct', 0):.1f}% | "
-        f"Cash: ${summary.get('cash_available', 0):,.0f}",
-        f"Health: {summary.get('grade', '?')} ({summary.get('score', '?')}/100)",
-        f"Top BUYs: {', '.join(r['symbol'] + ' score ' + str(r['score']) for r in buys[:3]) or 'none'}",
-        f"Top SELLs/TRIMs: {', '.join(r['symbol'] for r in sells[:3]) or 'none'}",
-        f"Watch: {', '.join(r['symbol'] for r in watch[:3]) or 'none'}",
-        f"Regime: {top_recs[0].get('market_regime', 'unknown') if top_recs else 'unknown'}",
+    cash_cad = summary.get("cash_available", 0)
+    cash_usd = summary.get("cash_available_usd", 0)
+    nlv = summary.get("total_value", 0)
+    eq_ret = summary.get("total_return_pct", 0)
+    acc_ret = summary.get("account_return_pct")
+    net_dep = summary.get("net_deposits_cad")
+
+    # Holdings table: every actual position, sorted by weight desc
+    holdings_with_val = sorted(
+        [r for r in top_recs if (r.get("market_value_cad") or 0) > 0],
+        key=lambda r: -(r.get("market_value_cad") or 0),
+    )
+    if not holdings_with_val:
+        # Watchlist-only context — no held positions
+        holdings_block = "(no held positions — cash + watchlist only)"
+    else:
+        rows = ["sym  |  val_cad  |  ret%  |  action  |  score"]
+        for r in holdings_with_val[:12]:
+            rows.append(
+                f"{r['symbol']:<6} | "
+                f"${r.get('market_value_cad', 0):,.0f} | "
+                f"{r.get('total_return_pct', 0):+.1f}% | "
+                f"{r.get('action', 'HOLD')} | "
+                f"{r.get('score', 0)}"
+            )
+        holdings_block = "\n".join(rows)
+
+    buys = [
+        r for r in top_recs
+        if r.get("action") in ("BUY", "ADD")
+        and not (r.get("market_value_cad") or 0)
     ]
-    return "\n".join(lines) + "\n\nProvide portfolio commentary and specific action items."
+    buy_block = (
+        ", ".join(f"{r['symbol']} (score {r['score']})" for r in buys[:5])
+        or "none"
+    )
+
+    return (
+        f"PORTFOLIO\n"
+        f"  NLV: ${nlv:,.0f} CAD\n"
+        f"  Net deposits: ${net_dep:,.0f} CAD\n"
+        f"  Account Return: {acc_ret:+.2f}% (NLV vs deposits)\n"
+        f"  Equity Return: {eq_ret:+.2f}% (PnL on equity sleeve)\n"
+        f"  Cash CAD: ${cash_cad:,.0f} | Cash USD: ${cash_usd:,.0f} CAD\n"
+        f"  Health: {summary.get('grade', '?')} ({summary.get('score', '?')}/100)\n"
+        f"  Regime: {top_recs[0].get('market_regime', 'unknown') if top_recs else 'unknown'}\n\n"
+        f"HOLDINGS (only these may be TRIMmed/SOLD)\n{holdings_block}\n\n"
+        f"BUY CANDIDATES (not yet held): {buy_block}\n\n"
+        f"Produce JSON. Actions must reference specific symbols from "
+        f"HOLDINGS or BUY CANDIDATES with realistic $ sizes."
+    )
 
 
 _PORTFOLIO_COMMENTARY_CACHE: dict[str, tuple[dict, float]] = {}
