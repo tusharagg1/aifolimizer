@@ -37,10 +37,13 @@ class Position(BaseModel):
 class PortfolioSummary(BaseModel):
     total_value: float
     total_cost: float
-    total_return_pct: float
+    total_return_pct: float          # equity-only return (PnL / book_cost)
     cash_available: float
     cash_available_usd: float = 0.0
     day_change_cad: float = 0.0
+    net_deposits_cad: float = 0.0    # lifetime contributions (WS net deposits)
+    account_return_pct: float = 0.0  # (NLV - net_deposits) / net_deposits
+    simple_return_pct: float | None = None  # WS-reported account-wide return
 
 
 class PortfolioResponse(BaseModel):

@@ -248,10 +248,13 @@ export interface Position {
 export interface PortfolioSummary {
   total_value: number;
   total_cost: number;
-  total_return_pct: number;
+  total_return_pct: number;          // equity-only return (PnL / book_cost)
   cash_available: number;
   cash_available_usd?: number;
   day_change_cad: number;
+  net_deposits_cad?: number;
+  account_return_pct?: number;       // (NLV - deposits) / deposits
+  simple_return_pct?: number | null; // WS-reported account-wide return
 }
 
 export interface PortfolioResponse {

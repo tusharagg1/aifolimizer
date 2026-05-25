@@ -122,6 +122,8 @@ def enrich(
     ws_account_total: float = 0.0,
     unrealized_pnl_cad: float = 0.0,
     usd_cash_balance: float = 0.0,
+    net_deposits_cad: float = 0.0,
+    simple_return_pct: float | None = None,
 ) -> PortfolioResponse:
     """
     market_value / book_cost: native currency (USD or CAD) for per-position display.
@@ -220,20 +222,32 @@ def enrich(
     # NLV already includes all cash — do not add cash_balance again.
     reported_total = ws_account_total if ws_account_total > 0 else total_market_value_cad
 
-    # Prefer WS unrealized P&L for total return — covers all assets incl. crypto.
-    # NLV includes cash; subtract it to get equity-only book cost.
+    # Prefer WS unrealized P&L for equity-only return — covers all positions
+    # incl. crypto. NLV includes both CAD + USD cash; subtract both to get
+    # true equity-only book cost.
+    total_cash_cad = cash_balance + usd_cash_balance
     if unrealized_pnl_cad and ws_account_total > 0:
-        equity_nlv = ws_account_total - cash_balance
+        equity_nlv = ws_account_total - total_cash_cad
         total_cost_cad = round(equity_nlv - unrealized_pnl_cad, 2)
         total_return_pct = round(
             (unrealized_pnl_cad / total_cost_cad) * 100, 2
         ) if total_cost_cad > 0 else 0.0
     else:
         total_cost_cad = equity_cost_cad
-        equity_invested = total_market_value_cad - cash_balance
+        equity_invested = total_market_value_cad - total_cash_cad
         total_return_pct = round(
             ((equity_invested - total_cost_cad) / total_cost_cad) * 100, 2
         ) if total_cost_cad else 0.0
+
+    # Account-wide return: (NLV - lifetime deposits) / deposits. Includes cash
+    # interest + realized gains + dividends, not just unrealized PnL. Matches
+    # what users see in the WS app top-line return.
+    account_return_pct = 0.0
+    if net_deposits_cad and ws_account_total > 0:
+        account_return_pct = round(
+            ((ws_account_total - net_deposits_cad) / net_deposits_cad) * 100, 2
+        )
+
     day_change_cad = round(
         sum(p.market_value_cad * p.day_change_pct / 100 for p in enriched), 2
     )
@@ -247,6 +261,12 @@ def enrich(
             cash_available=round(cash_balance, 2),
             cash_available_usd=round(usd_cash_balance, 2),
             day_change_cad=day_change_cad,
+            net_deposits_cad=round(net_deposits_cad, 2),
+            account_return_pct=account_return_pct,
+            simple_return_pct=(
+                round(simple_return_pct, 2)
+                if simple_return_pct is not None else None
+            ),
         ),
     )
 

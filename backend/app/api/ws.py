@@ -94,6 +94,12 @@ async def _get_portfolio(
             usd_cash = float(acc.get("usd_cash_balance") or 0.0)
             ws_total = float(acc.get("invested_value") or 0.0)
             pnl = float(acc.get("unrealized_pnl_cad") or 0.0)
+            # Per-account: WS doesn't expose per-account net deposits easily;
+            # fall back to identity-wide (slightly inaccurate when viewing one
+            # account, but better than 0). Account-return is hidden in UI for
+            # single-account views.
+            net_deposits = float(session.get("net_deposits_cad") or 0.0)
+            simple_return = session.get("simple_return_pct")
             raw = await asyncio.to_thread(
                 wealthsimple.get_positions, session_id, account_id
             )
@@ -107,11 +113,17 @@ async def _get_portfolio(
                 a.invested_value for a in profile.accounts
             ) if profile else 0.0
             pnl = float(session.get("unrealized_pnl_cad") or 0.0)
+            net_deposits = float(session.get("net_deposits_cad") or 0.0)
+            simple_return = session.get("simple_return_pct")
             raw = await asyncio.to_thread(
                 wealthsimple.get_all_positions, session_id
             )
 
-        portfolio = market_data.enrich(raw, cash, ws_total, pnl, usd_cash)
+        portfolio = market_data.enrich(
+            raw, cash, ws_total, pnl, usd_cash,
+            net_deposits_cad=net_deposits,
+            simple_return_pct=simple_return,
+        )
         _PORTFOLIO_CACHE[key] = (portfolio, time.time())
         return portfolio
 
