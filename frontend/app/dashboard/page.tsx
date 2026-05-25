@@ -16,6 +16,7 @@ import {
   wsGetWatchlistRecommendations,
   wsGetPriceHistory,
   wsGetPortfolioCommentary,
+  wsGetNarratives,
 } from "@/lib/api";
 import type {
   UserProfile,
@@ -221,7 +222,12 @@ function PriceChart({
 
 // ─── RecDetail ────────────────────────────────────────────────────────────────
 
-function RecDetail({ rec }: { rec: Recommendation | WatchlistRecommendation }) {
+function RecDetail({
+  rec, narrative,
+}: {
+  rec: Recommendation | WatchlistRecommendation;
+  narrative?: string | null;
+}) {
   const cfg = SIGNAL_CFG[rec.action as Action] ?? SIGNAL_CFG.HOLD;
   const confCls = rec.confidence === "high" ? "text-emerald-400"
     : rec.confidence === "medium" ? "text-amber-400" : "text-rose-400";
@@ -236,6 +242,12 @@ function RecDetail({ rec }: { rec: Recommendation | WatchlistRecommendation }) {
         </div>
         <div className="text-slate-400 font-mono text-[11px]">{rec.symbol}</div>
       </div>
+
+      {narrative && (
+        <p className="text-[11px] text-slate-300 italic leading-relaxed pb-1 border-b border-slate-700/50">
+          {narrative}
+        </p>
+      )}
 
       <div className="w-full bg-slate-800 rounded-full h-1">
         <div
@@ -879,6 +891,7 @@ export default function DashboardPage() {
 
   const [commentary, setCommentary] = useState<PortfolioCommentary | null>(null);
   const [commentaryLoading, setCommentaryLoading] = useState(false);
+  const [narrativeMap, setNarrativeMap] = useState<Record<string, string | null>>({});
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [chartPeriod, setChartPeriod] = useState("1y");
@@ -963,6 +976,13 @@ export default function DashboardPage() {
     } catch { /* non-fatal */ } finally { setCommentaryLoading(false); }
   }, []);
 
+  const loadNarratives = useCallback(async (sid: string) => {
+    try {
+      const res = await wsGetNarratives(sid);
+      setNarrativeMap(res.narratives || {});
+    } catch { /* non-fatal */ }
+  }, []);
+
   useEffect(() => {
     if (!sessionId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -970,10 +990,11 @@ export default function DashboardPage() {
     loadRecs(sessionId);
     loadWatchlist(sessionId);
     loadCommentary(sessionId);
+    loadNarratives(sessionId);
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => loadPortfolio(sessionId, activeAccount), 30_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [sessionId, activeAccount, loadPortfolio, loadRecs, loadWatchlist, loadCommentary]);
+  }, [sessionId, activeAccount, loadPortfolio, loadRecs, loadWatchlist, loadCommentary, loadNarratives]);
 
   if (authLoading) {
     return (
@@ -1116,7 +1137,10 @@ export default function DashboardPage() {
               <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
             )}
             {selectedRec ? (
-              <RecDetail rec={selectedRec} />
+              <RecDetail
+                rec={selectedRec}
+                narrative={selectedSymbol ? narrativeMap[selectedSymbol] : null}
+              />
             ) : (
               <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-6 text-center text-slate-600 text-xs">
                 Click any holding or watchlist item to see the AI signal analysis
@@ -1136,7 +1160,12 @@ export default function DashboardPage() {
           {positions.length > 0 && summary && (
             <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
           )}
-          {selectedRec && <RecDetail rec={selectedRec} />}
+          {selectedRec && (
+            <RecDetail
+              rec={selectedRec}
+              narrative={selectedSymbol ? narrativeMap[selectedSymbol] : null}
+            />
+          )}
           <SignalChangesList
             changes={signalChanges}
             onSelect={(s) => { setSelectedSymbol(s); setChartPeriod("1y"); }}
