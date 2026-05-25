@@ -367,10 +367,33 @@ _PORTFOLIO_COMMENTARY_CACHE: dict[str, tuple[dict, float]] = {}
 _PORTFOLIO_COMMENTARY_TTL = 900  # 15 min
 
 
+def _parse_json_tolerant(text: str | None) -> dict | None:
+    """Strict json.loads but tolerant: strips ``` fences, <think> blocks,
+    and falls back to first {..} substring if model wraps JSON in prose."""
+    import json
+    import re
+    if not text:
+        return None
+    t = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    t = t.strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        if t.lower().startswith("json"):
+            t = t[4:].lstrip()
+    try:
+        return json.loads(t)
+    except json.JSONDecodeError:
+        start, end = t.find("{"), t.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(t[start:end + 1])
+            except json.JSONDecodeError:
+                return None
+        return None
+
+
 async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict | None:
     """Generate 2-3 sentence portfolio assessment + 2-4 action items. 15-min cache."""
-    import json
-
     cache_key = f"portfolio_{round(summary.get('total_value', 0), -2)}"
     entry = _PORTFOLIO_COMMENTARY_CACHE.get(cache_key)
     if entry and time.time() - entry[1] < _PORTFOLIO_COMMENTARY_TTL:
@@ -392,7 +415,14 @@ async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict
                 task="portfolio_advice",
             )
             if text:
-                data = json.loads(text.strip())
+                data = _parse_json_tolerant(text)
+                if data is None:
+                    _LOG.warning(
+                        "[llm_router] commentary unparseable from %s: %r",
+                        provider["name"], text[:200],
+                    )
+                    _record_error(provider["name"])
+                    continue
                 result = {
                     "commentary": data.get("commentary", ""),
                     "actions": data.get("actions", []),
