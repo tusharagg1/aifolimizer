@@ -414,6 +414,10 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
 _PORTFOLIO_COMMENTARY_CACHE: dict[str, tuple[dict, float]] = {}
 _PORTFOLIO_COMMENTARY_TTL = 900  # 15 min
 
+# Bump when system prompt or _build_portfolio_prompt change so stale cached
+# responses don't survive across deploys.
+_PORTFOLIO_PROMPT_VERSION = "v2-grounded-holdings"
+
 
 def _parse_json_tolerant(text: str | None) -> dict | None:
     """Strict json.loads but tolerant: strips ``` fences, <think> blocks,
@@ -442,7 +446,10 @@ def _parse_json_tolerant(text: str | None) -> dict | None:
 
 async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict | None:
     """Generate 2-3 sentence portfolio assessment + 2-4 action items. 15-min cache."""
-    cache_key = f"portfolio_{round(summary.get('total_value', 0), -2)}"
+    cache_key = (
+        f"{_PORTFOLIO_PROMPT_VERSION}_"
+        f"{round(summary.get('total_value', 0), -2)}"
+    )
     entry = _PORTFOLIO_COMMENTARY_CACHE.get(cache_key)
     if entry and time.time() - entry[1] < _PORTFOLIO_COMMENTARY_TTL:
         return entry[0]
