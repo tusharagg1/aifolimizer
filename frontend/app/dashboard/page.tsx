@@ -15,6 +15,7 @@ import {
   wsRemoveFromWatchlist,
   wsGetWatchlistRecommendations,
   wsGetPriceHistory,
+  wsGetPortfolioCommentary,
 } from "@/lib/api";
 import type {
   UserProfile,
@@ -27,6 +28,7 @@ import type {
   WatchlistRecommendation,
   PriceHistory,
   SignalChange,
+  PortfolioCommentary,
 } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -75,9 +77,14 @@ function crowdingCls(score: number) {
 
 // ─── StatCard ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, cls }: { label: string; value: string; cls: string }) {
+function StatCard({ label, value, cls, title }: {
+  label: string; value: string; cls: string; title?: string;
+}) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
+    <div
+      className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5"
+      title={title}
+    >
       <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">{label}</div>
       <div className={`font-mono text-sm font-semibold ${cls}`}>{value}</div>
     </div>
@@ -325,6 +332,55 @@ function RecDetail({ rec }: { rec: Recommendation | WatchlistRecommendation }) {
     </div>
   );
 }
+
+// ─── CommentaryPanel ─────────────────────────────────────────────────────────
+
+function CommentaryPanel({ data, loading }: {
+  data: PortfolioCommentary | null;
+  loading: boolean;
+}) {
+  if (loading && !data) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+        <span className="text-xs font-semibold text-slate-400">AI Commentary</span>
+        <div className="text-xs text-slate-500 italic">Generating…</div>
+      </div>
+    );
+  }
+  if (!data || data.error || !data.commentary) {
+    const reason =
+      data?.error === "no_llm_keys" ? "No LLM provider configured"
+      : data?.error ? `Error: ${data.error}` : "Awaiting portfolio data";
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+        <span className="text-xs font-semibold text-slate-400">AI Commentary</span>
+        <div className="text-xs text-slate-600 italic">{reason}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-400">AI Commentary</span>
+        {data.provider && (
+          <span className="text-[10px] text-slate-600">{data.provider}</span>
+        )}
+      </div>
+      <p className="text-xs text-slate-300 leading-relaxed">{data.commentary}</p>
+      {data.actions.length > 0 && (
+        <ul className="space-y-1 mt-2 pt-2 border-t border-slate-800">
+          {data.actions.map((a, i) => (
+            <li key={i} className="text-[11px] text-slate-400 flex gap-1.5">
+              <span className="text-indigo-400">▸</span>
+              <span>{a}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 
 // ─── HealthCompact ────────────────────────────────────────────────────────────
 
@@ -821,6 +877,9 @@ export default function DashboardPage() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistRecs, setWatchlistRecs] = useState<Record<string, WatchlistRecommendation>>({});
 
+  const [commentary, setCommentary] = useState<PortfolioCommentary | null>(null);
+  const [commentaryLoading, setCommentaryLoading] = useState(false);
+
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [chartPeriod, setChartPeriod] = useState("1y");
 
@@ -896,16 +955,25 @@ export default function DashboardPage() {
     } catch { /* non-fatal */ }
   }, []);
 
+  const loadCommentary = useCallback(async (sid: string) => {
+    setCommentaryLoading(true);
+    try {
+      const data = await wsGetPortfolioCommentary(sid);
+      setCommentary(data);
+    } catch { /* non-fatal */ } finally { setCommentaryLoading(false); }
+  }, []);
+
   useEffect(() => {
     if (!sessionId) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPortfolio(sessionId, activeAccount);
     loadRecs(sessionId);
     loadWatchlist(sessionId);
+    loadCommentary(sessionId);
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(() => loadPortfolio(sessionId, activeAccount), 30_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [sessionId, activeAccount, loadPortfolio, loadRecs, loadWatchlist]);
+  }, [sessionId, activeAccount, loadPortfolio, loadRecs, loadWatchlist, loadCommentary]);
 
   if (authLoading) {
     return (
@@ -954,13 +1022,30 @@ export default function DashboardPage() {
 
         {/* ── Summary strip ── */}
         {summary && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 shrink-0">
             <StatCard label="Portfolio (CAD)" value={fmtCAD(summary.total_value)} cls="text-slate-100 font-bold" />
             <StatCard label="Day Change"
               value={`${summary.day_change_cad >= 0 ? "+" : ""}${fmtCAD(summary.day_change_cad)} (${fmtPct(dayPct)})`}
               cls={summary.day_change_cad >= 0 ? "text-emerald-400" : "text-rose-400"} />
-            <StatCard label="Total Return" value={fmtPct(summary.total_return_pct)}
-              cls={summary.total_return_pct >= 0 ? "text-emerald-400" : "text-rose-400"} />
+            <StatCard
+              label="Account Return"
+              title="(Current NLV − lifetime net deposits) ÷ deposits. Includes cash interest + realized gains + dividends. Matches WS app top-line return."
+              value={
+                summary.account_return_pct != null && summary.net_deposits_cad
+                  ? fmtPct(summary.account_return_pct)
+                  : "—"
+              }
+              cls={
+                (summary.account_return_pct ?? 0) >= 0
+                  ? "text-emerald-400" : "text-rose-400"
+              }
+            />
+            <StatCard
+              label="Equity Return"
+              title="Unrealized PnL on held positions ÷ equity book cost. Excludes cash interest. Negative is normal in high-cash accounts where equity sleeve is small."
+              value={fmtPct(summary.total_return_pct)}
+              cls={summary.total_return_pct >= 0 ? "text-emerald-400" : "text-rose-400"}
+            />
             <StatCard label="Cash (CAD)" value={fmtCAD(summary.cash_available)} cls="text-slate-300" />
             {summary.cash_available_usd != null && summary.cash_available_usd > 0 && (
               <StatCard label="Cash (USD)" value={fmtUSD(summary.cash_available_usd)} cls="text-slate-300" />
@@ -1026,6 +1111,7 @@ export default function DashboardPage() {
           {/* Right — Health + Alloc + RecDetail + SignalChanges */}
           <div className="hidden lg:flex flex-col w-72 2xl:w-96 shrink-0 gap-3 overflow-y-auto">
             {health && <HealthCompact health={health} />}
+            <CommentaryPanel data={commentary} loading={commentaryLoading} />
             {positions.length > 0 && summary && (
               <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
             )}
@@ -1046,6 +1132,7 @@ export default function DashboardPage() {
         {/* Health + Alloc visible on smaller screens (below the main grid) */}
         <div className="lg:hidden flex flex-col gap-3">
           {health && <HealthCompact health={health} />}
+          <CommentaryPanel data={commentary} loading={commentaryLoading} />
           {positions.length > 0 && summary && (
             <AllocationDonut positions={positions} cashCAD={summary.cash_available} />
           )}

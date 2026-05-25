@@ -395,6 +395,29 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         }
 
     _debug(f"[WS] total_unrealized_pnl_cad={total_unrealized_pnl_cad}")
+
+    # Identity-level lifetime net deposits + simple return (account-wide P&L
+    # incl. cash interest, dividends, realized gains — NOT just unrealized).
+    net_deposits_cad = 0.0
+    simple_return_pct = None
+    try:
+        fin = ws.get_identity_current_financials("CAD")
+        if isinstance(fin, dict):
+            nd = fin.get("netDeposits") or {}
+            if isinstance(nd, dict):
+                net_deposits_cad = _money(nd.get("amount") or 0)
+            sr = fin.get("simpleReturns") or fin.get("simpleReturn")
+            if isinstance(sr, dict):
+                rate = sr.get("rate")
+                if rate is not None:
+                    simple_return_pct = float(rate) * 100
+        _debug(
+            f"[WS] net_deposits_cad={net_deposits_cad} "
+            f"simple_return_pct={simple_return_pct}"
+        )
+    except Exception as e:
+        _LOG.warning(f"[WS] identity financials failed: {type(e).__name__}: {e}")
+
     profile = _build_profile(accounts_raw)
     _debug(
         f"[WS] profile cash/invested:"
@@ -408,6 +431,8 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         "profile": profile,
         "accounts_raw": accounts_raw,
         "unrealized_pnl_cad": total_unrealized_pnl_cad,
+        "net_deposits_cad": net_deposits_cad,
+        "simple_return_pct": simple_return_pct,
         "per_account": per_account,
         "expires_at": datetime.utcnow() + timedelta(hours=_TOKEN_TTL_HOURS),
     }
