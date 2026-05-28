@@ -28,27 +28,31 @@ MCP Server  (backend/mcp_server.py — FastMCP, stdio transport)
     ├─ get_triggered_alerts()     → alerts.py read_recent_history (JSONL log)
     ├─ run_alerts_now()           → alerts.py evaluate + dispatch (live WS + yfinance)
     ├─ backtest_portfolio()       → backtest.py run buy_hold / rsi_swing / sma_cross
-    └─ list_analysis_modes()      → static list (18 tools)
+    ├─ get_positioning_signals()   → positioning.py (crowding, inst%, short%, 6h)
+    ├─ snapshot_positioning_history()→ positioning.py → JSONL append (idempotent/day)
+    ├─ get_crowding_shifts()       → positioning.py reads history JSONL
+    ├─ get_quote_with_source()     → data_router.py fallback chain (yfinance→finnhub→tiingo→stooq)
+    ├─ get_quotes_batch()          → data_router.py batch (13x faster than serial)
+    ├─ get_data_source_reliability()→ data_router.py success/latency stats
+    ├─ log_recommendation()        → paper_trade.py JSONL append
+    ├─ score_recommendations()     → paper_trade.py mark-to-market
+    ├─ get_live_track_record()     → paper_trade.py rolling win-rate + P&L
+    ├─ snapshot_portfolio_equity() → paper_trade.py NAV history (idempotent/day)
+    ├─ get_alpha_attribution()     → alpha_attribution.py vs SPY/XEQT/TSX/QQQ
+    ├─ get_skill_track_record()    → skill_backtest.py 3-5yr rule replay
+    ├─ generate_trust_report()     → trust_report.py → TRACK_RECORD.md + JSONL
+    └─ list_analysis_modes()       → static list (16 skills)
 
-FastAPI REST API  (backend/main.py + app/api/ws.py — port 8000)
-    │   ← used by Next.js dashboard only (not by Claude)
-    ├─ POST /ws/login             → wealthsimple.py
-    ├─ POST /ws/verify-otp        → wealthsimple.py
-    ├─ GET  /ws/portfolio         → same pipeline as MCP get_portfolio
-    ├─ GET  /ws/profile           → same pipeline as MCP get_profile
-    ├─ GET  /ws/fundamentals      → fundamentals.py
-    ├─ GET  /ws/technicals        → technicals.py
-    ├─ GET  /ws/earnings-calendar → fundamentals.py earnings dates
-    ├─ GET  /ws/price-history     → market_data.py yfinance OHLCV
-    ├─ GET  /ws/health-score      → health_score.py (rule-based, no external calls)
-    ├─ GET  /ws/alerts            → portfolio_analytics + fundamentals
-    ├─ GET  /ws/market-breadth    → macro.py market_breadth() (VIX+SPY, 1h cache)
-    └─ GET  /ws/crypto            → crypto_data.py (CoinGecko)
+FastAPI REST API  (backend/main.py — port 8000)
+    ├─ app/api/ws.py              → portfolio, profile, fundamentals, technicals, alerts, crypto
+    ├─ app/api/agents.py          → agent execution endpoints
+    └─ app/api/ops.py             → ops / health / metrics endpoints
 
-Next.js 16 Frontend  (frontend/ — port 3000)
-    ├─ /login      → WS email + password + MFA → POST /ws/login, /ws/verify-otp
-    └─ /dashboard  → GET /ws/portfolio + /ws/health-score + /ws/alerts in parallel
-                     → portfolio table + allocation chart + price chart + health widget + alerts
+Postgres (TimescaleDB)  +  Redis  (docker-compose.yml — local Docker)
+    ├─ app/db/pool.py             → asyncpg connection pool
+    ├─ app/db/repositories/       → alerts, changes, crowding, equity, recommendations, signals, snapshots, weights
+    ├─ app/cache/redis_client.py  → L2 cross-process cache (shared by MCP + FastAPI)
+    └─ app/jobs/                  → scheduler.py + tasks.py + queues.py (RQ worker)
 ```
 
 ## External Data Sources
@@ -174,17 +178,24 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/scripts/schedule_alerts.ps1` | Register Windows Task Scheduler job |
 | `backend/app/models/portfolio.py` | Pydantic data models |
 | `backend/app/core/config.py` | Env var loading |
-| `frontend/app/dashboard/page.tsx` | Main dashboard |
-| `frontend/app/login/page.tsx` | MFA login form |
-| `frontend/components/PortfolioTable.tsx` | Holdings table + crowding badges |
-| `frontend/components/AllocationChart.tsx` | Pie chart |
-| `frontend/components/PriceChart.tsx` | OHLCV + SMA50 chart |
-| `frontend/components/HealthScoreWidget.tsx` | Health grade badge + breakdown |
-| `frontend/components/AlertsPanel.tsx` | Dismissable alert cards |
-| `frontend/components/RecommendationsPanel.tsx` | BUY/SELL/HOLD cards + AI narratives |
-| `frontend/components/MacroWidget.tsx` | Regime badge + FRED rates |
-| `frontend/lib/api.ts` | Typed fetch helpers |
-| `.claude/skills/*/SKILL.md` | 13 skills |
+| `backend/app/api/agents.py` | Agent execution endpoints |
+| `backend/app/api/ops.py` | Ops / health / metrics endpoints |
+| `backend/app/db/pool.py` | asyncpg connection pool |
+| `backend/app/db/repositories/` | 8 repos: alerts, changes, crowding, equity, recommendations, signals, snapshots, weights |
+| `backend/app/cache/redis_client.py` | Redis L2 cache client |
+| `backend/app/jobs/scheduler.py` | APScheduler background jobs |
+| `backend/app/jobs/tasks.py` | RQ task definitions |
+| `backend/app/jobs/queues.py` | RQ queue setup |
+| `backend/app/services/agent_registry.py` | Agent registration + runner wiring |
+| `backend/app/services/event_dispatcher.py` | Event bus for async signal dispatch |
+| `backend/app/services/market_regime.py` | Bull/bear/sideways regime classifier |
+| `backend/app/services/risk_gate.py` | Pre-trade risk gate checks |
+| `backend/app/services/discovery.py` | Stock discovery / screener |
+| `backend/app/services/signal_change_detector.py` | Detects regime/signal transitions |
+| `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
+| `backend/app/services/skill_llm_runner.py` | Runs skills via LLM router |
+| `docker-compose.yml` | Postgres (TimescaleDB pg16) + Redis 7 |
+| `.claude/skills/*/SKILL.md` | 16 skills |
 | `.claude/context/changes.md` | Change log |
 | `.claude/context/architecture.md` | This file |
 | `supabase_schema.sql` | Optional snapshot history schema |

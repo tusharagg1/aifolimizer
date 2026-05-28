@@ -17,7 +17,6 @@ frontend_run.log
 # Env (credentials)
 .env
 backend/.env
-frontend/.env.local
 
 # OS
 .DS_Store
@@ -26,11 +25,6 @@ Thumbs.db
 # Editor
 .vscode/
 *.orig
-
-# Next.js (covered by frontend/.gitignore — listed here for root-level awareness)
-frontend/.next/
-frontend/out/
-frontend/node_modules/
 
 # Local runtime caches + logs (per-machine, not portable)
 .claude/context/.diskcache/
