@@ -889,3 +889,112 @@ export async function removeWatchlistV2(
     { method: "DELETE" },
   );
 }
+
+// ─── Agents (autonomous skill runtime) ──────────────────────────────────────
+
+export interface AgentSnapshot {
+  computed_at?: string;
+  status?: string;
+  summary?: Record<string, unknown>;
+}
+
+export interface AgentInfo {
+  name: string;
+  description: string;
+  trigger: "cron" | "event" | "manual";
+  schedule: string | null;
+  event_types: string[];
+  model_pref: "fast" | "reasoning" | "auto";
+  auto_execute: boolean;
+  category: string;
+  horizon_days: number | null;
+  enabled: boolean;
+  snoozed_until_ts: number | null;
+  last_run_ts: number | null;
+  last_run_status: string | null;
+  manual_runs_count: number;
+  last_snapshot?: AgentSnapshot;
+}
+
+export interface AgentDetail extends Omit<AgentInfo, "last_snapshot"> {
+  runner_available: boolean;
+  state: Record<string, unknown>;
+  last_snapshot?: Record<string, unknown> | null;
+}
+
+export interface AgentEvent {
+  ts: number;
+  event_type: string;
+  ticker?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface AgentsSummary {
+  total: number;
+  enabled: number;
+  snoozed: number;
+  ran_last_24h: number;
+  by_trigger: Record<string, number>;
+  by_category: Record<string, number>;
+}
+
+export async function agentsWhoami() {
+  return apiFetch<{ authenticated: boolean; session_id: string | null }>(
+    `/agents/whoami`,
+  );
+}
+
+export async function getAgentsSummary(sessionId?: string) {
+  const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return apiFetch<AgentsSummary>(`/agents/${qs}`);
+}
+
+export async function listAgents(sessionId?: string) {
+  const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return apiFetch<{ agents: AgentInfo[]; count: number }>(`/agents/list${qs}`);
+}
+
+export async function getAgentDetail(name: string, sessionId?: string) {
+  const qs = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return apiFetch<AgentDetail>(
+    `/agents/${encodeURIComponent(name)}${qs}`,
+  );
+}
+
+export async function runAgent(
+  name: string,
+  sessionId: string,
+  context?: Record<string, unknown>,
+) {
+  return apiFetch<Record<string, unknown>>(
+    `/agents/${encodeURIComponent(name)}/run?session_id=${encodeURIComponent(sessionId)}`,
+    { method: "POST", body: JSON.stringify(context ?? {}) },
+  );
+}
+
+export async function setAgentEnabled(name: string, enabled: boolean) {
+  return apiFetch<{ name: string; enabled: boolean }>(
+    `/agents/${encodeURIComponent(name)}/enable?enabled=${enabled}`,
+    { method: "POST" },
+  );
+}
+
+export async function snoozeAgent(name: string, minutes: number) {
+  return apiFetch<{ name: string; snoozed_until_ts: number; minutes: number }>(
+    `/agents/${encodeURIComponent(name)}/snooze?minutes=${minutes}`,
+    { method: "POST" },
+  );
+}
+
+export async function unsnoozeAgent(name: string) {
+  return apiFetch<{ name: string; snoozed_until_ts: null }>(
+    `/agents/${encodeURIComponent(name)}/unsnooze`,
+    { method: "POST" },
+  );
+}
+
+export async function getAgentEvents(limit = 20) {
+  return apiFetch<{ events: AgentEvent[] }>(
+    `/agents/events/recent?limit=${limit}`,
+  );
+}

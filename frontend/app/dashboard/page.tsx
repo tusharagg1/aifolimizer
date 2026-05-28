@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   wsLogin,
   wsVerifyOtp,
@@ -446,22 +445,31 @@ function AllocationDonut({ positions, cashCAD }: { positions: Position[]; cashCA
     .map(([name, value]) => ({ name, value: parseFloat(((value / total) * 100).toFixed(1)) }))
     .sort((a, b) => b.value - a.value);
 
+  const R = 42; const r = 22; const cx = 45; const cy = 45;
+  let angle = -Math.PI / 2;
+  const slices = data.map((d) => {
+    const sweep = (d.value / 100) * 2 * Math.PI;
+    const x1 = cx + R * Math.cos(angle); const y1 = cy + R * Math.sin(angle);
+    const x2 = cx + R * Math.cos(angle + sweep); const y2 = cy + R * Math.sin(angle + sweep);
+    const ix1 = cx + r * Math.cos(angle); const iy1 = cy + r * Math.sin(angle);
+    const ix2 = cx + r * Math.cos(angle + sweep); const iy2 = cy + r * Math.sin(angle + sweep);
+    const large = sweep > Math.PI ? 1 : 0;
+    const path = `M${x1},${y1} A${R},${R} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${r},${r} 0 ${large},0 ${ix1},${iy1} Z`;
+    angle += sweep;
+    return { ...d, path };
+  });
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
       <span className="text-xs font-semibold text-slate-400">Allocation</span>
       <div className="flex items-center gap-2">
-        <ResponsiveContainer width={90} height={90}>
-          <PieChart>
-            <Pie data={data} cx="50%" cy="50%" innerRadius={22} outerRadius={42} dataKey="value" stroke="none">
-              {data.map((e) => <Cell key={e.name} fill={ASSET_COLORS[e.name] ?? "#475569"} />)}
-            </Pie>
-            <Tooltip
-              formatter={(v) => [`${v}%`, ""]}
-              contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 6, fontSize: 10 }}
-              itemStyle={{ color: "#e2e8f0" }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+        <svg width={90} height={90} viewBox="0 0 90 90" className="shrink-0">
+          {slices.map((s) => (
+            <path key={s.name} d={s.path} fill={ASSET_COLORS[s.name] ?? "#475569"}>
+              <title>{s.name}: {s.value}%</title>
+            </path>
+          ))}
+        </svg>
         <div className="space-y-0.5 flex-1 min-w-0">
           {data.map((d) => (
             <div key={d.name} className="flex items-center gap-1.5 text-[10px]">
@@ -1030,6 +1038,7 @@ export default function DashboardPage() {
           </div>
           <div className="ml-auto flex items-center gap-3">
             {portfolioLoading && <span className="text-[10px] text-slate-500 animate-pulse">Refreshing…</span>}
+            <a href="/agents" className="text-slate-400 hover:text-slate-200 text-xs">Agents →</a>
             <button onClick={() => { loadPortfolio(sessionId, activeAccount); loadRecs(sessionId); }}
               className="text-slate-500 hover:text-slate-300 text-xs">↻ Refresh</button>
           </div>
