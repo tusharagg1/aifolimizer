@@ -2,7 +2,7 @@
 
 Compares this tick's integrated signals against the previous tick's snapshot
 stored in Redis. Material flips/score-moves are persisted to Postgres
-signal_changes and pushed via ntfy.sh.
+signal_changes and pushed via Telegram.
 
 Material change rules:
   - action flipped (HOLD → BUY, BUY → SELL, etc.) — always material
@@ -23,7 +23,7 @@ from typing import Iterable
 log = logging.getLogger(__name__)
 
 
-# Action pairs we ignore as noise — keep ntfy clean.
+# Action pairs we ignore as noise — keep alerts clean.
 _NOISE_PAIRS: frozenset[frozenset[str]] = frozenset({
     frozenset({"HOLD", "WATCH"}),
     frozenset({"NO_EDGE", "HOLD"}),
@@ -55,7 +55,7 @@ class SignalChange:
     def dedup_key(self) -> str:
         return f"{self.symbol}:{self.new_action}:{date.today().isoformat()}"
 
-    def ntfy_title(self) -> str:
+    def alert_title(self) -> str:
         prev = self.prev_action or "?"
         conv = (
             f" ({self.new_conviction.upper()})"
@@ -63,7 +63,7 @@ class SignalChange:
         )
         return f"{self.symbol}: {prev} → {self.new_action}{conv}"
 
-    def ntfy_body(self) -> str:
+    def alert_body(self) -> str:
         ps = self.prev_score if self.prev_score is not None else "?"
         ps_str = f"{ps:.1f}" if isinstance(ps, (int, float)) else str(ps)
         reasons = " · ".join(self.reasons[:3])
@@ -75,15 +75,15 @@ class SignalChange:
             base += sizing
         return base
 
-    def ntfy_priority(self) -> str:
-        # 1 = lowest, 5 = highest. ntfy uses string names too.
+    def alert_priority(self) -> str:
+        # 1 = lowest, 5 = highest.
         if self.new_action == "BUY" and self.new_conviction == "high":
             return "high"
         if self.new_action == "SELL":
             return "high"
         return "default"
 
-    def ntfy_tags(self) -> str:
+    def alert_tags(self) -> str:
         if self.new_action in ("BUY", "ADD"):
             return "chart_with_upwards_trend"
         if self.new_action in ("SELL", "TRIM"):
@@ -237,8 +237,8 @@ async def detect_and_dispatch(
                 _push_telegram(
                     telegram_bot_token,
                     telegram_chat_id,
-                    title=ch.ntfy_title(),
-                    body=ch.ntfy_body(),
+                    title=ch.alert_title(),
+                    body=ch.alert_body(),
                     severity="medium",
                 )
                 pushed += 1

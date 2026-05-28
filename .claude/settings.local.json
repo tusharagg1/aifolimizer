@@ -342,7 +342,13 @@
       "Bash(npm uninstall *)",
       "Bash(git rm *)",
       "Bash(Remove-Item -Recurse -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\")",
-      "PowerShell(Remove-Item -Recurse -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\" -Confirm:$false)"
+      "PowerShell(Remove-Item -Recurse -Force \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\" -Confirm:$false)",
+      "Bash(Get-ChildItem -Name -Depth 0)",
+      "Bash(Get-ChildItem backend *)",
+      "PowerShell(try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing -TimeoutSec 3\\).StatusCode } catch { \"not running\" })",
+      "PowerShell(Start-Process -FilePath \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" -ArgumentList \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\run.py\" -WorkingDirectory \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\" -WindowStyle Minimized)",
+      "PowerShell(Start-Sleep -Seconds 4; try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"not up yet\" })",
+      "PowerShell($script = \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\scripts\\\\schedule_alerts.ps1\"; & $script)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",

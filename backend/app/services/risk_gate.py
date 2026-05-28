@@ -13,7 +13,7 @@ Triggers (any one → reduce_size; combinations escalate to halt):
 
 Effects (consumed by callers — Phase 12 only computes/persists the gate):
   - status='trade'         → size_multiplier 1.0, no effect
-  - status='reduce_size'   → size_multiplier 0.5; BUY ntfys soften, sizing cut
+  - status='reduce_size'   → size_multiplier 0.5; BUY alerts soften, sizing cut
   - status='halt'          → size_multiplier 0.0; BUY/ADD recs suppressed
 
 State is persisted to `risk_gate_events` hypertable and cached in Redis at

@@ -57,7 +57,7 @@ def run_nightly_scorer() -> dict:
 
 
 def run_alerts_for_tenant(sid: str) -> dict:
-    """Evaluate alerts.py rules for one tenant + push via ntfy if triggered."""
+    """Evaluate alerts.py rules for one tenant + push via Telegram if triggered."""
     try:
         from app.services import alerts
         return alerts.run_for_session(sid) if hasattr(alerts, "run_for_session") \

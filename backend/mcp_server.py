@@ -649,8 +649,8 @@ async def run_alerts_now(
 ) -> dict:
     """
     Evaluate alert rules against live portfolio and append triggers to history.
-    dry_run=True (default): log + dedup but do NOT push to ntfy.
-    dry_run=False: also push to ntfy.sh/<NTFY_TOPIC> if env var is set.
+    dry_run=True (default): log + dedup but do NOT push to Telegram.
+    dry_run=False: also push via Telegram bot if credentials are set.
     Returns counts: {triggered, pushed, deduped}.
     Use sparingly — this fetches live WS + yfinance data.
     """

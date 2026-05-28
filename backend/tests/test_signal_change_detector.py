@@ -81,31 +81,31 @@ def test_dedup_key_format():
     assert "X:BUY:" in key  # symbol:action:date
 
 
-def test_ntfy_priority_strong_buy_is_high():
+def test_alert_priority_strong_buy_is_high():
     out = scd.detect_changes(
         {"X": {"action": "HOLD", "score": 5.0, "conviction": "medium"}},
         [_sig("X", "BUY", 8.5, "high")],
         _TS,
     )
-    assert out[0].ntfy_priority() == "high"
+    assert out[0].alert_priority() == "high"
 
 
-def test_ntfy_priority_sell_is_high():
+def test_alert_priority_sell_is_high():
     out = scd.detect_changes(
         {"X": {"action": "BUY", "score": 7.0, "conviction": "high"}},
         [_sig("X", "SELL", 3.0, "high")],
         _TS,
     )
-    assert out[0].ntfy_priority() == "high"
+    assert out[0].alert_priority() == "high"
 
 
-def test_ntfy_body_includes_score():
+def test_alert_body_includes_score():
     out = scd.detect_changes(
         {"X": {"action": "HOLD", "score": 4.5, "conviction": "medium"}},
         [_sig("X", "BUY", 8.1, "high")],
         _TS,
     )
-    body = out[0].ntfy_body()
+    body = out[0].alert_body()
     assert "4.5" in body
     assert "8.1" in body
 
