@@ -67,7 +67,7 @@ def _stub_skill_runners(monkeypatch):
     async def _persist_stub(thash, snapshot):
         calls.append(("__persist__", (thash, snapshot["skill"]), {}))
     monkeypatch.setattr(ed, "_persist", _persist_stub)
-    monkeypatch.setattr(ed, "_push_ntfy", lambda *a, **k: None)
+    monkeypatch.setattr(ed, "_push_telegram", lambda *a, **k: None)
     return calls
 
 

@@ -658,11 +658,14 @@ async def run_alerts_now(
     triggered = await asyncio.to_thread(
         alerts_svc.evaluate, portfolio, price_drop_pct=price_drop_pct
     )
-    topic = None if dry_run else os.getenv("NTFY_TOPIC")
+    from app.core.config import settings as _cfg
+    tg_token = None if dry_run else _cfg.telegram_bot_token
+    tg_chat = None if dry_run else _cfg.telegram_chat_id
     counts = await asyncio.to_thread(
-        alerts_svc.dispatch, triggered, ntfy_topic=topic
+        alerts_svc.dispatch, triggered,
+        telegram_bot_token=tg_token, telegram_chat_id=tg_chat,
     )
-    return {"account": account_id or "all", "ntfy": "off" if not topic else "on", **counts}
+    return {"account": account_id or "all", "telegram": "off" if not tg_token else "on", **counts}
 
 
 @mcp.tool()

@@ -1,4 +1,4 @@
-"""Portfolio alerts: evaluate rules, push to ntfy.sh, persist history.
+"""Portfolio alerts: evaluate rules, push via Telegram, persist history.
 
 Rules:
 - price_drop_intraday   day_change_pct <= -threshold
@@ -10,7 +10,7 @@ Rules:
 
 Dedup: same (rule, symbol, day) only fires once.
 History: JSONL at .claude/context/alerts.jsonl for MCP read.
-Push: POST to https://ntfy.sh/<NTFY_TOPIC> if NTFY_TOPIC set.
+Push: Telegram bot if TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set.
 """
 
 from __future__ import annotations
@@ -37,7 +37,39 @@ _CTX_DIR = _REPO_ROOT / ".claude" / "context"
 _STATE_FILE = _CTX_DIR / "alerts_state.json"
 _HISTORY_FILE = _CTX_DIR / "alerts.jsonl"
 
-_NTFY_BASE = "https://ntfy.sh"
+_TELEGRAM_API = "https://api.telegram.org"
+
+
+_EMOJI_MAP = {
+    "price_drop_intraday": "📉",
+    "rsi_oversold": "⬇️",
+    "rsi_overbought": "⬆️",
+    "earnings_imminent": "📅",
+    "concentration_single": "⚠️",
+    "concentration_sector": "⚠️",
+}
+
+
+def _push_telegram(
+    bot_token: str,
+    chat_id: str,
+    title: str,
+    body: str,
+    severity: str = "medium",
+    rule: str = "",
+) -> None:
+    """Send alert via Telegram bot. Swallows errors so one bad alert doesn't block."""
+    try:
+        emoji = _EMOJI_MAP.get(rule, "🔔")
+        severity_tag = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity, "🔵")
+        text = f"{severity_tag} <b>{emoji} {title}</b>\n{body}"
+        httpx.post(
+            f"{_TELEGRAM_API}/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
+            timeout=5.0,
+        )
+    except Exception as e:
+        _LOG.warning(f"[alerts] telegram push failed: {e}")
 
 
 def _load_state() -> dict[str, str]:
@@ -65,27 +97,6 @@ def _append_history(alert: dict) -> None:
     with _HISTORY_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(alert) + "\n")
 
-
-def _push_ntfy(
-    topic: str,
-    title: str,
-    body: str,
-    priority: str = "default",
-    tags: str = "",
-) -> None:
-    """POST to ntfy.sh. Swallow errors so one bad alert doesn't block."""
-    try:
-        headers = {"Title": title, "Priority": priority}
-        if tags:
-            headers["Tags"] = tags
-        httpx.post(
-            f"{_NTFY_BASE}/{topic}",
-            data=body.encode("utf-8"),
-            headers=headers,
-            timeout=5.0,
-        )
-    except Exception as e:
-        _LOG.warning(f"[alerts] ntfy push failed: {e}")
 
 
 def evaluate(
@@ -239,21 +250,20 @@ _TAG_MAP = {
 def dispatch(
     triggered: list[dict[str, Any]],
     *,
-    ntfy_topic: str | None = None,
+    ntfy_topic: str | None = None,  # kept for backwards compat — unused
     write_history: bool = True,
+    telegram_bot_token: str | None = None,
+    telegram_chat_id: str | None = None,
 ) -> dict[str, int]:
-    """Dedup, append to history, push to ntfy. Returns counts."""
+    """Dedup, append to history, push via Telegram. Returns counts."""
     state = _load_state()
     today = date.today()
     pushed = 0
     skipped = 0
     new_state = dict(state)
 
-    # Trim state to last 7 days so file doesn't grow unbounded
     keep_cutoff = (today - timedelta(days=7)).isoformat()
-    new_state = {
-        k: v for k, v in new_state.items() if v >= keep_cutoff
-    }
+    new_state = {k: v for k, v in new_state.items() if v >= keep_cutoff}
 
     for alert in triggered:
         key = _dedup_key(alert["rule"], alert["symbol"], today)
@@ -263,17 +273,14 @@ def dispatch(
         new_state[key] = today.isoformat()
         if write_history:
             _append_history(alert)
-        if ntfy_topic:
-            priority = _PRIORITY_MAP.get(
-                alert.get("severity", ""), "default"
-            )
-            tags = _TAG_MAP.get(alert["rule"], "")
-            _push_ntfy(
-                ntfy_topic,
+        if telegram_bot_token and telegram_chat_id:
+            _push_telegram(
+                telegram_bot_token,
+                telegram_chat_id,
                 alert["title"],
                 alert["body"],
-                priority=priority,
-                tags=tags,
+                severity=alert.get("severity", "medium"),
+                rule=alert.get("rule", ""),
             )
         pushed += 1
 

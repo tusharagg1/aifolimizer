@@ -1,4 +1,4 @@
-"""Run portfolio alert rules once, push to ntfy.sh, log to history.
+"""Run portfolio alert rules once, push via Telegram, log to history.
 
 Usage:
   cd backend && .venv/Scripts/python scripts/run_alerts.py
@@ -6,7 +6,7 @@ Usage:
   cd backend && .venv/Scripts/python scripts/run_alerts.py --dry-run
 
 Schedule via cron / Task Scheduler / GitHub Actions for periodic checks.
-Reads NTFY_TOPIC from env. If unset, alerts only logged (no push).
+Reads TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID from env. If unset, alerts only logged (no push).
 
 Windows quick start (PowerShell, from backend/):
   ./scripts/schedule_alerts.ps1          # register every-30-min Mon-Fri task
@@ -94,8 +94,10 @@ def main() -> int:
     triggered = alerts_svc.evaluate(
         portfolio, price_drop_pct=args.price_drop_pct
     )
-    ntfy_topic = None if args.dry_run else os.getenv("NTFY_TOPIC")
-    counts = alerts_svc.dispatch(triggered, ntfy_topic=ntfy_topic)
+    from app.core.config import settings as _cfg
+    tg_token = None if args.dry_run else _cfg.telegram_bot_token
+    tg_chat = None if args.dry_run else _cfg.telegram_chat_id
+    counts = alerts_svc.dispatch(triggered, telegram_bot_token=tg_token, telegram_chat_id=tg_chat)
 
     # Piggyback: snapshot crowding scores for top 15 holdings (idempotent per day)
     top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
@@ -106,7 +108,7 @@ def main() -> int:
 
     print(json.dumps({
         "account": args.account or "all",
-        "ntfy": "off" if not ntfy_topic else "on",
+        "telegram": "off" if not tg_token else "on",
         **counts,
         "crowding_snapshot": crowding_counts,
     }, indent=2))
