@@ -82,7 +82,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--dry-run", action="store_true",
-        help="Evaluate + log to history but skip ntfy push.",
+        help="Evaluate + log to history but skip Telegram push.",
     )
     ap.add_argument(
         "--price-drop-pct", type=float, default=5.0,

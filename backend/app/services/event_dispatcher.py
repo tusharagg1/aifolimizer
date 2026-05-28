@@ -6,7 +6,7 @@ and runs targeted LLM skills out-of-band from the fixed scheduler cadence.
 Events:
   - regime_flip(prev, new):    risk-assessment + portfolio-health + macro-impact
   - earnings_surprise(t, pct): earnings-postmortem for ticker
-  - drawdown_breach(prev, new): risk-assessment + ntfy push
+  - drawdown_breach(prev, new): risk-assessment + Telegram push
   - crowding_flip(t, prev, new): adversarial-research for ticker
 
 Dedup: per (event_key, date) via Redis SETNX with 24h TTL. Inline fallback
@@ -188,7 +188,7 @@ async def on_drawdown_breach(
     *,
     context: dict | None = None,
 ) -> dict[str, Any]:
-    """Risk gate flipped to reduce_size/halt → risk-assessment LLM + ntfy."""
+    """Risk gate flipped to reduce_size/halt → risk-assessment LLM + Telegram."""
     if new_status not in _DRAWDOWN_TRIGGER_STATUSES:
         return {"status": "skip", "reason": "non_trigger_status"}
     if prev_status == new_status:

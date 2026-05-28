@@ -1,7 +1,7 @@
 """Discovery layer (Phase 13).
 
 Nightly: scan (S&P500 ∪ TSX60 ∪ user_watchlist) − already_held → rank by
-integrated 5-signal score → surface top N picks to dashboard + ntfy for
+integrated 5-signal score → surface top N picks to dashboard + Telegram for
 score ≥ 8.
 
 Implementation notes:
@@ -268,7 +268,7 @@ def _push_strong_picks(picks: list[dict[str, Any]]) -> int:
             pushed += 1
         except Exception as e:
             log.warning(
-                "discovery ntfy push failed for %s: %s", p["symbol"], e,
+                "discovery telegram push failed for %s: %s", p["symbol"], e,
             )
     return pushed
 

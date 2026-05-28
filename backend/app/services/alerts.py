@@ -250,7 +250,6 @@ _TAG_MAP = {
 def dispatch(
     triggered: list[dict[str, Any]],
     *,
-    ntfy_topic: str | None = None,  # kept for backwards compat — unused
     write_history: bool = True,
     telegram_bot_token: str | None = None,
     telegram_chat_id: str | None = None,

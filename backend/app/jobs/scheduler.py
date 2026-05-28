@@ -49,7 +49,7 @@ _SENTRY_LOOP_INTERVAL_S = 60 * 60
 # Per-tenant scheduling: max parallel tenants per tick to bound load.
 _MAX_TENANT_FANOUT = 5
 
-# Phase 6: dedup ntfy session-expired pushes per (tenant_hash, date).
+# Phase 6: dedup Telegram session-expired pushes per (tenant_hash, date).
 # In-process — fine because the scheduler is a single process.
 _SESSION_EXPIRED_PUSHED: set[tuple[str, str]] = set()
 
@@ -204,7 +204,7 @@ async def _persist_snapshots(tenant_hash: str, snapshots: dict[str, dict]) -> No
 
 async def _handle_session_expired(sid: str) -> None:
     """Phase 6: when scheduler discovers a dead WS session:
-      - push one ntfy per tenant per day ("Wealthsimple session expired")
+      - push one Telegram message per tenant per day ("Wealthsimple session expired")
       - write a session_expired snapshot row per portfolio-dependent skill so
         the dashboard banner has something to read.
     """
@@ -243,7 +243,7 @@ async def _handle_session_expired(sid: str) -> None:
                 skill_name, e,
             )
 
-    # 2. ntfy push (deduped per day per tenant).
+    # 2. Telegram push (deduped per day per tenant).
     try:
         from app.core.config import settings as _cfg
         if _cfg.telegram_bot_token and _cfg.telegram_chat_id:
@@ -282,7 +282,7 @@ async def _run_for_session(sid: str) -> dict:
 
     portfolio = await _fetch_portfolio_for(sid)
     if portfolio is None:
-        # Phase 6: ntfy + snapshot tagging.
+        # Phase 6: Telegram push + snapshot tagging.
         try:
             await _handle_session_expired(sid)
         except Exception as e:
@@ -362,7 +362,7 @@ async def _run_for_session(sid: str) -> dict:
         except Exception as e:
             _LOG.warning("risk_gate evaluate failed: %s", e)
 
-        # 6. Phase 4: detect material flips vs last tick → ntfy + Postgres log.
+        # 6. Phase 4: detect material flips vs last tick → Telegram + Postgres log.
         change_stats = {"detected": 0, "pushed": 0, "deduped": 0}
         try:
             from app.services import signal_change_detector

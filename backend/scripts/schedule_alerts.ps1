@@ -70,5 +70,5 @@ Write-Host "  Python:  $PythonExe"
 Write-Host "  Script:  $Script"
 Write-Host "  Dry run: $($DryRun.IsPresent)"
 Write-Host ""
-Write-Host "Verify in Task Scheduler GUI or via: Get-ScheduledTask -TaskName $TaskName"
-Write-Host "Remove with: .\schedule_alerts.ps1 -Unregister"
+Write-Host ("Verify in Task Scheduler GUI or via: Get-ScheduledTask -TaskName " + $TaskName)
+Write-Host ('Remove with: schedule_alerts.ps1 -Unregister')
