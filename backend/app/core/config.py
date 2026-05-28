@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     )
     redis_url: str = "redis://localhost:6379/0"
 
-    # Push notifications (Phase 4)
-    ntfy_topic: str = ""
+    # Push notifications — Telegram bot
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     # Error tracking (Phase 15 — opt-in, empty = disabled)
     sentry_dsn: str = ""

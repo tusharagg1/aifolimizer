@@ -246,20 +246,17 @@ async def _handle_session_expired(sid: str) -> None:
     # 2. ntfy push (deduped per day per tenant).
     try:
         from app.core.config import settings as _cfg
-        if _cfg.ntfy_topic:
-            from app.services.alerts import _push_ntfy
-            _push_ntfy(
-                topic=_cfg.ntfy_topic,
+        if _cfg.telegram_bot_token and _cfg.telegram_chat_id:
+            from app.services.alerts import _push_telegram
+            _push_telegram(
+                _cfg.telegram_bot_token,
+                _cfg.telegram_chat_id,
                 title="Wealthsimple session expired",
-                body=(
-                    "Reopen dashboard and re-enter MFA to resume portfolio "
-                    "monitoring."
-                ),
-                priority="high",
-                tags="warning,key",
+                body="Reopen Claude and re-enter MFA to resume monitoring.",
+                severity="high",
             )
     except Exception as e:
-        _LOG.warning("session_expired ntfy push failed: %s", e)
+        _LOG.warning("session_expired telegram push failed: %s", e)
 
     _SESSION_EXPIRED_PUSHED.add(dedup_key)
 
@@ -373,7 +370,9 @@ async def _run_for_session(sid: str) -> dict:
             # Pass topic only if configured — detector silently no-ops on push
             # but still records detected count + updates last_signals snapshot.
             change_stats = await signal_change_detector.detect_and_dispatch(
-                thash, recs, ntfy_topic=(_cfg.ntfy_topic or None),
+                thash, recs,
+                telegram_bot_token=(_cfg.telegram_bot_token or None),
+                telegram_chat_id=(_cfg.telegram_chat_id or None),
             )
         except Exception as e:
             _LOG.warning("change detector failed: %s", e)

@@ -65,19 +65,20 @@ async def _persist(tenant_hash: str, snapshot: dict) -> None:
         )
 
 
-def _push_ntfy(title: str, body: str, priority: str = "default") -> None:
+def _push_telegram(title: str, body: str, severity: str = "medium") -> None:
     try:
         from app.core.config import settings
-        if not settings.ntfy_topic:
+        if not settings.telegram_bot_token or not settings.telegram_chat_id:
             return
-        from app.services.alerts import _push_ntfy as ntfy_send
-        ntfy_send(
-            topic=settings.ntfy_topic,
+        from app.services.alerts import _push_telegram as tg_send
+        tg_send(
+            settings.telegram_bot_token,
+            settings.telegram_chat_id,
             title=title, body=body,
-            priority=priority, tags="bell",
+            severity=severity,
         )
     except Exception as e:
-        log.warning("event_dispatcher: ntfy push failed: %s", e)
+        log.warning("event_dispatcher: telegram push failed: %s", e)
 
 
 # ── Public event handlers ──────────────────────────────────────────────────
@@ -125,14 +126,14 @@ async def on_regime_flip(
     prev_label = (
         getattr(prev_regime, "composite", "n/a") if prev_regime else "n/a"
     )
-    _push_ntfy(
+    _push_telegram(
         title=f"Regime flip: {prev_label} → {new_regime.composite}",
         body=(
             f"VIX {new_regime.vix} · "
             f"SPY-SMA200 {new_regime.spy_vs_sma200_pct}%. "
             "Risk/health/macro skills re-run."
         ),
-        priority="high",
+        severity="high",
     )
 
     return {
@@ -166,10 +167,10 @@ async def on_earnings_surprise(
     await _persist(tenant_hash, snap)
 
     direction = "beat" if surprise_pct > 0 else "miss"
-    _push_ntfy(
+    _push_telegram(
         title=f"{ticker}: earnings {direction} {surprise_pct:+.1f}%",
-        body="Post-mortem skill re-run; check dashboard.",
-        priority="high",
+        body="Post-mortem skill re-run; check Claude.",
+        severity="high",
     )
 
     return {
@@ -202,13 +203,13 @@ async def on_drawdown_breach(
     snap = await skill_llm_runner.run_risk_assessment(ctx)
     await _persist(tenant_hash, snap)
 
-    _push_ntfy(
+    _push_telegram(
         title=f"Risk gate → {new_status.upper()}",
         body=(
             f"Drawdown/vol breach (prev={prev_status or 'trade'}). "
             "Risk assessment skill re-run."
         ),
-        priority="urgent" if new_status == "halt" else "high",
+        severity="high",
     )
 
     return {
@@ -243,10 +244,10 @@ async def on_crowding_flip(
     await _persist(tenant_hash, snap)
 
     direction = "↑ crowded" if delta > 0 else "↓ uncrowded"
-    _push_ntfy(
+    _push_telegram(
         title=f"{ticker}: crowding {direction} ({delta:+.0f})",
         body=f"Score {prev_score:.0f} → {new_score:.0f}. Re-thesis triggered.",
-        priority="default",
+        severity="medium",
     )
 
     return {

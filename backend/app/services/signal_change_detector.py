@@ -198,12 +198,13 @@ async def detect_and_dispatch(
     tenant_hash: str,
     new_signals: list[dict],
     *,
-    ntfy_topic: str | None = None,
+    telegram_bot_token: str | None = None,
+    telegram_chat_id: str | None = None,
 ) -> dict:
     """Full pipeline:
       1. read prev_map from Redis last_signals:{tenant_hash}
       2. detect material changes
-      3. for each change: dedup-check against signal_changes, push ntfy, insert row
+      3. for each change: dedup-check against signal_changes, push Telegram, insert row
       4. overwrite last_signals:{tenant_hash} with new_signals
 
     Returns {detected, pushed, deduped}.
@@ -225,22 +226,20 @@ async def detect_and_dispatch(
     pushed = 0
     deduped = 0
 
-    if changes and ntfy_topic:
-        # Local import to avoid pulling alerts.py into module-import cost
-        # when ntfy is disabled.
-        from app.services.alerts import _push_ntfy
+    if changes and telegram_bot_token and telegram_chat_id:
+        from app.services.alerts import _push_telegram
         for ch in changes:
             dedup_key = ch.dedup_key()
             try:
                 if await changes_repo.dedup_exists(dedup_key):
                     deduped += 1
                     continue
-                _push_ntfy(
-                    topic=ntfy_topic,
+                _push_telegram(
+                    telegram_bot_token,
+                    telegram_chat_id,
                     title=ch.ntfy_title(),
                     body=ch.ntfy_body(),
-                    priority=ch.ntfy_priority(),
-                    tags=ch.ntfy_tags(),
+                    severity="medium",
                 )
                 pushed += 1
                 await changes_repo.insert(

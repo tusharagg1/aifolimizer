@@ -240,11 +240,11 @@ async def _cache_top(
 
 
 def _push_strong_picks(picks: list[dict[str, Any]]) -> int:
-    """ntfy push for each pick with score >= 8.0. Returns # pushed."""
+    """Telegram push for each pick with score >= 8.0. Returns # pushed."""
     from app.core.config import settings
-    if not settings.ntfy_topic:
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
         return 0
-    from app.services.alerts import _push_ntfy
+    from app.services.alerts import _push_telegram
     pushed = 0
     for p in picks:
         if p["score"] < _PUSH_SCORE:
@@ -253,8 +253,9 @@ def _push_strong_picks(picks: list[dict[str, Any]]) -> int:
             f" ({p['warning']})" if p.get("warning") else ""
         )
         try:
-            _push_ntfy(
-                topic=settings.ntfy_topic,
+            _push_telegram(
+                settings.telegram_bot_token,
+                settings.telegram_chat_id,
                 title=(
                     f"Discovery: {p['symbol']} score {p['score']:.1f} "
                     f"[{p['action']} {p.get('conviction', '').upper()}]"
@@ -262,8 +263,7 @@ def _push_strong_picks(picks: list[dict[str, Any]]) -> int:
                 body=(
                     f"{' · '.join(p['reasons'][:2])}{warning}"
                 ),
-                priority="high",
-                tags="mag,chart_with_upwards_trend",
+                severity="high",
             )
             pushed += 1
         except Exception as e:
