@@ -1,6 +1,6 @@
 # aifolimizer — Project Context
 
-## Session Startup (read this every new session)
+## Session Startup (read every new session)
 1. Read `.claude/context/changes.md` — what built, when
 2. Read `.claude/context/architecture.md` — data flow, API contracts, file index
 3. Read `.claude/context/lessons.md` — past corrections, do-not-repeat rules
@@ -42,7 +42,7 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code —
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (32 total — exposed to Claude; not all listed below — see `mcp_server.py` for full)
+## MCP Tools (32 total — see `mcp_server.py` for full)
 
 | Tool | Returns | Cache |
 |---|---|---|
@@ -100,7 +100,7 @@ L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold 
 
 Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP tools.
 
-## Investor Profile (use as context, always verify with get_profile)
+## Investor Profile (verify with get_profile)
 
 - Age 32, Canadian
 - Philosophy: growth stocks, index ETFs (XEQT/VFV), dividends, crypto
@@ -159,7 +159,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ## Workflow Rules
 
 - **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise changed code w/ real input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
-- **Lessons loop.** After correction or surprise bug, append short rule to `.claude/context/lessons.md`. Goal: same mistake never recurs.
+- **Lessons loop.** After correction or surprise bug, append short rule to `.claude/context/lessons.md`. Same mistake never recurs.
 - **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "cleaner path?" before commit. Skip one-line fixes.
 - **Surgical changes only.** Touch only what request requires. Don't clean adjacent code. Match existing style. Mention unrelated dead code, don't delete. Remove only imports/variables your changes made unused.
 

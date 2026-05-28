@@ -6,9 +6,6 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    supabase_url: str = ""
-    supabase_service_key: str = ""
-
     # Local-only WS credentials — never deployed to cloud
     ws_email: str = ""
     ws_password: str = ""

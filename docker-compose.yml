@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: aifolimizer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aifolimizer
+      POSTGRES_USER: aifolimizer
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+      - ./backend/app/db/schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+    ports:
+      - "5432:5432"
+    secrets:
+      - pg_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aifolimizer -d aifolimizer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aifolimizer-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+    volumes:
+      - ./.data/redis:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Phase 14: RQ worker — opt-in. Run from container only if you don't
+  # already run `python scripts/worker.py` locally in a terminal.
+  # Uncomment when ready, OR run the worker on the host venv (no docker
+  # python image rebuild needed for dev).
+  #
+  # worker:
+  #   image: python:3.12-slim
+  #   container_name: aifolimizer-worker
+  #   working_dir: /app
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     redis:    { condition: service_healthy }
+  #   environment:
+  #     POSTGRES_DSN: postgresql://aifolimizer:aifolimizer@postgres:5432/aifolimizer
+  #     REDIS_URL: redis://redis:6379/0
+  #     SENTRY_DSN: ""
+  #   volumes:
+  #     - ./backend:/app
+  #   command: >
+  #     bash -c "pip install -r requirements.txt &&
+  #              python scripts/worker.py"
+
+secrets:
+  pg_password:
+    file: ./.secrets/pg_password.txt

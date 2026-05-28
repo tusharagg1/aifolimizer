@@ -12,6 +12,31 @@ _LOG = get_logger("aifolimizer.services.technicals")
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600  # 1 hour
 
+_SPY_CACHE: dict[str, tuple[pd.Series, float]] = {}
+_SPY_CACHE_TTL = 3600
+
+
+def _fetch_spy_close() -> pd.Series | None:
+    """1y daily SPY close, cached 1h. Benchmark for RS-line calc."""
+    entry = _SPY_CACHE.get("SPY")
+    if entry and (time.time() - entry[1]) < _SPY_CACHE_TTL:
+        return entry[0]
+    try:
+        data = yf.download(
+            "SPY", period="1y", interval="1d",
+            progress=False, auto_adjust=True, threads=False,
+        )
+        if data is None or data.empty:
+            return None
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        spy_close = data["Close"].squeeze()
+        _SPY_CACHE["SPY"] = (spy_close, time.time())
+        return spy_close
+    except Exception as e:
+        _LOG.warning(f"[technicals] SPY fetch failed: {e}")
+        return None
+
 
 def _safe(series: pd.Series | None) -> float | None:
     try:
@@ -23,8 +48,11 @@ def _safe(series: pd.Series | None) -> float | None:
         return None
 
 
-def _compute_from_df(df: pd.DataFrame) -> dict:
-    """Indicators from 1y daily OHLCV. Returns {} if insufficient data."""
+def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> dict:
+    """Indicators from 1y daily OHLCV. Returns {} if insufficient data.
+
+    spy_close: optional SPY daily close series for relative-strength calc.
+    """
     try:
         if df is None or df.empty or len(df) < 21:
             return {}
@@ -204,7 +232,53 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             if pd.notna(obv_now) and pd.notna(obv_avg):
                 obv_trend = "rising" if float(obv_now) > float(obv_avg) else "falling"
 
-        # Composite technical score 0-1: minervini(35%) + trend(20%) + RSI(15%) + MACD(10%) + ADX(10%) + stoch(5%) + volume(5%)
+        # Relative Strength vs SPY (Jegadeesh-Titman momentum, IBD CANSLIM style)
+        rs_line_value: float | None = None
+        rs_21d_change_pct: float | None = None
+        rs_rating: bool | None = None
+        if spy_close is not None and not spy_close.empty:
+            try:
+                aligned = pd.DataFrame({"sym": close, "spy": spy_close}).dropna()
+                if len(aligned) >= 22:
+                    rs = aligned["sym"] / aligned["spy"]
+                    rs_now = float(rs.iloc[-1])
+                    rs_21ago = float(rs.iloc[-22])
+                    rs_line_value = round(rs_now, 6)
+                    if rs_21ago != 0:
+                        rs_21d_change_pct = round((rs_now - rs_21ago) / rs_21ago * 100, 3)
+                        rs_rating = rs_21d_change_pct > 0
+            except Exception:
+                pass
+
+        # 12-1 month momentum (price now / price 252-21 bars ago, skipping last 21)
+        # Jegadeesh-Titman: strongest standalone factor outside value
+        mom_12_1_pct: float | None = None
+        try:
+            if len(close) >= 252:
+                p_now_excl_recent = float(close.iloc[-22])
+                p_12mo_ago = float(close.iloc[-252])
+                if p_12mo_ago != 0:
+                    mom_12_1_pct = round(
+                        (p_now_excl_recent - p_12mo_ago) / p_12mo_ago * 100, 2
+                    )
+            elif len(close) >= 126:  # fallback: 6-1 momentum if <1yr data
+                p_now_excl_recent = float(close.iloc[-22])
+                p_6mo_ago = float(close.iloc[-126])
+                if p_6mo_ago != 0:
+                    mom_12_1_pct = round(
+                        (p_now_excl_recent - p_6mo_ago) / p_6mo_ago * 100, 2
+                    )
+        except Exception:
+            pass
+
+        # OBV pos (already computed above) — wire into score
+        obv_pos = 1.0 if obv_trend == "rising" else 0.0 if obv_trend == "falling" else 0.5
+
+        # Composite technical score 0-1 — REWEIGHTED 2026-05:
+        # Evidence-based: heavier on momentum/RS/volume (Jegadeesh-Titman, Lo-Mamaysky-Wang),
+        # lighter on lagging oscillators (MACD, stoch — Park-Irwin 2007 found marginal edge).
+        # minervini(25%) + trend(8%) + RS(12%) + 12-1 mom(10%) + volume(13%) + OBV(7%)
+        # + ADX(8%) + RSI(7%) + stoch(2%) + MACD(3%) + crowding-adjacent placeholder(5%)
         mnv = (minervini_score / 7)
         trn = 1.0 if trend == "uptrend" else (0.5 if trend == "sideways" else 0.0)
         rsi_pos = (
@@ -220,10 +294,72 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             else 0.0
         )
         vol_pos = min(volume_score or 0.0, 2.0) / 2.0
-        technical_score = round(
-            mnv * 0.35 + trn * 0.20 + rsi_pos * 0.15 + macd_pos * 0.10
-            + adx_pos * 0.10 + stoch_pos * 0.05 + vol_pos * 0.05, 3
+        rs_pos = (
+            1.0 if (rs_21d_change_pct is not None and rs_21d_change_pct > 2)
+            else 0.5 if (rs_21d_change_pct is not None and rs_21d_change_pct > -2)
+            else 0.0 if rs_21d_change_pct is not None
+            else 0.5  # neutral if RS unavailable (e.g. TSX vs SPY mismatch)
         )
+        mom_pos = (
+            1.0 if (mom_12_1_pct is not None and mom_12_1_pct > 15)
+            else 0.7 if (mom_12_1_pct is not None and mom_12_1_pct > 5)
+            else 0.3 if (mom_12_1_pct is not None and mom_12_1_pct > -5)
+            else 0.0 if mom_12_1_pct is not None
+            else 0.5
+        )
+        technical_score = round(
+            mnv * 0.25 + trn * 0.08 + rs_pos * 0.12 + mom_pos * 0.10
+            + vol_pos * 0.13 + obv_pos * 0.07 + adx_pos * 0.08
+            + rsi_pos * 0.07 + stoch_pos * 0.02 + macd_pos * 0.03
+            + 0.05 * 0.5,  # 5% placeholder for crowding-blend (set neutral until wired)
+            3,
+        )
+
+        # Signal agreement: count bullish vs bearish across 7 independent signals
+        _bull = sum([
+            trend == "uptrend",
+            rsi_pos >= 0.7,
+            macd_hist is not None and macd_hist > 0,
+            rs_21d_change_pct is not None and rs_21d_change_pct > 2,
+            mom_12_1_pct is not None and mom_12_1_pct > 5,
+            minervini_score >= 5,
+            obv_trend == "rising",
+        ])
+        _bear = sum([
+            trend == "downtrend",
+            rsi_val is not None and rsi_val > 70,
+            macd_hist is not None and macd_hist < 0,
+            rs_21d_change_pct is not None and rs_21d_change_pct < -2,
+            mom_12_1_pct is not None and mom_12_1_pct < -5,
+            minervini_score <= 2,
+            obv_trend == "falling",
+        ])
+        if _bull >= 5:
+            signal_agreement, signal_conviction = "bullish", "HIGH"
+        elif _bull == 4:
+            signal_agreement, signal_conviction = "bullish", "MODERATE"
+        elif _bear >= 5:
+            signal_agreement, signal_conviction = "bearish", "HIGH"
+        elif _bear == 4:
+            signal_agreement, signal_conviction = "bearish", "MODERATE"
+        elif abs(_bull - _bear) <= 1:
+            signal_agreement, signal_conviction = "mixed", "LOW"
+        else:
+            signal_agreement, signal_conviction = "neutral", "LOW"
+
+        signal_conflicts: list[str] = []
+        if rsi_val is not None and rsi_val > 70 and macd_hist is not None and macd_hist > 0:
+            signal_conflicts.append("RSI extended (overbought) but MACD still rising — potential late entry")
+        if rsi_val is not None and rsi_val < 30 and macd_hist is not None and macd_hist < 0:
+            signal_conflicts.append("RSI oversold but MACD still falling — falling knife risk")
+        if trend == "uptrend" and rs_21d_change_pct is not None and rs_21d_change_pct < -2:
+            signal_conflicts.append("Price uptrend but RS weakening vs SPY — leadership fading")
+        if trend == "downtrend" and mom_12_1_pct is not None and mom_12_1_pct > 15:
+            signal_conflicts.append("12-1mo momentum strong but short-term downtrend — pullback in momentum name")
+        if obv_trend == "falling" and trend == "uptrend":
+            signal_conflicts.append("Price rising but OBV falling — distribution under price strength")
+        if minervini_score >= 5 and rs_21d_change_pct is not None and rs_21d_change_pct < -2:
+            signal_conflicts.append("Strong Minervini setup but RS vs SPY deteriorating — relative weakness")
 
         return {
             "sma_20": _safe(sma20),
@@ -259,7 +395,14 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             "rsi_signal": rsi_signal,
             "pivot_levels": pivot_levels,
             "volume_score": volume_score,
+            "rs_line": rs_line_value,
+            "rs_21d_change_pct": rs_21d_change_pct,
+            "rs_rating": rs_rating,
+            "mom_12_1_pct": mom_12_1_pct,
             "technical_score": technical_score,
+            "signal_agreement": signal_agreement,
+            "signal_conviction": signal_conviction,
+            "signal_conflicts": signal_conflicts,
         }
     except Exception as e:
         _LOG.warning(f"[technicals] compute error: {e}")
@@ -352,12 +495,14 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
     if not to_fetch:
         return out
 
+    spy_close = _fetch_spy_close()
+
     needs_yfinance: list[str] = []
     for sym in to_fetch:
         if not is_tsx(sym):
             df = _fetch_massive_ohlcv(sym)
             if df is not None:
-                result = _compute_from_df(df)
+                result = _compute_from_df(df, spy_close=spy_close)
                 _cache[sym] = (result, time.time())
                 out[sym] = result
                 continue
@@ -379,7 +524,9 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
             data = None
         for sym in needs_yfinance:
             df = _slice_symbol(data, sym) if data is not None else None
-            result = _compute_from_df(df) if df is not None else {}
+            result = (
+                _compute_from_df(df, spy_close=spy_close) if df is not None else {}
+            )
             _cache[sym] = (result, time.time())
             out[sym] = result
     return out

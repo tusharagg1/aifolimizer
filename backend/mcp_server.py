@@ -23,6 +23,7 @@ from app.services import (
     wealthsimple, market_data, macro, portfolio_analytics, quant,
     fundamentals as fundamentals_svc,
     technicals as technicals_svc,
+    technicals_intraday as technicals_intraday_svc,
     news as news_svc,
     crypto_data as crypto_svc,
     alerts as alerts_svc,
@@ -377,6 +378,34 @@ async def get_technicals(account_id: str = "", symbols: list[str] = []) -> dict:
         symbols = [p.symbol for p in top]
     _validate_symbols(symbols)
     return await asyncio.to_thread(technicals_svc.get_technicals, symbols)
+
+
+@mcp.tool()
+async def get_technicals_intraday(account_id: str = "", symbols: list[str] = []) -> dict:
+    """
+    Intraday indicators on 5-minute bars: VWAP, opening range (first 30 min) +
+    break direction, RSI(2) Connors mean-reversion, RSI(14), ATR(14) for stop
+    sizing, EMA(9/20) trend, volume spike vs 20-bar avg, session volume vs 5-day
+    avg, overnight gap %, composite intraday_score (0-1).
+
+    Use for: day-trade entries, pre-trade-check on intraday horizon,
+    daily-briefing intraday addendum, catalyst-day momentum scans.
+
+    NOT for swing/position — those use get_technicals (daily bars).
+
+    Cached 60s — intraday bars stale fast. Yahoo 5m data is delayed ~15min.
+    """
+    session_id = await _ensure_session()
+    session = wealthsimple.get_session(session_id)
+    profile = session.get("profile") if session else None
+    _validate_account_id(account_id, profile)
+
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:10]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+    return await asyncio.to_thread(technicals_intraday_svc.get_technicals_intraday, symbols)
 
 
 @mcp.tool()
@@ -772,6 +801,32 @@ async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
     return await asyncio.to_thread(
         paper_trade_svc.get_track_record, windows_days
     )
+
+
+@mcp.tool()
+async def get_ticker_reflection(symbol: str, n: int = 3) -> dict:
+    """Prior recommendation history for a ticker — feeds reflection loop.
+
+    Returns last N logged recommendations for symbol with return_pct, alpha vs
+    XEQT, status (open/target_hit/stopped_out), and truncated rationale.
+    Use before adversarial-research or pre-trade-check to surface track record
+    on this name and avoid repeating losing patterns.
+    """
+    history = await asyncio.to_thread(paper_trade_svc.get_ticker_history, symbol, n)
+    if not history:
+        return {"symbol": symbol.upper(), "history": [], "summary": "No prior calls logged for this ticker."}
+    wins = sum(1 for r in history if r.get("return_pct") is not None and r["return_pct"] > 0)
+    scored = [r for r in history if r.get("return_pct") is not None]
+    avg_ret = round(sum(r["return_pct"] for r in scored) / len(scored), 2) if scored else None
+    return {
+        "symbol": symbol.upper(),
+        "history": history,
+        "summary": (
+            f"{len(history)} prior call(s): {wins}/{len(scored)} wins, "
+            f"avg return {avg_ret}% vs XEQT" if scored else
+            f"{len(history)} open call(s), no closed P&L yet"
+        ),
+    }
 
 
 @mcp.tool()
@@ -1711,6 +1766,138 @@ async def get_sentry_issues(limit: int = 10) -> dict:
         return sentry_monitor.build_digest(limit=limit)
     except RuntimeError as e:
         return {"error": str(e), "issues": []}
+
+
+# ── Meta-tools: batch related calls into one tool invocation ──────────────
+# Additive — individual tools remain. Use meta-tools when you need a full
+# picture; use individual tools for surgical single-signal queries.
+
+@mcp.tool()
+async def get_market_data(symbol: str) -> dict:
+    """Combined fundamentals + technicals + news for one ticker in one call.
+
+    Equivalent to calling get_fundamentals + get_technicals + get_news_headlines
+    separately. Use for stock-analysis, adversarial-research, pre-trade-check
+    when you need all three signal layers at once.
+    """
+    sym = symbol.upper()
+    fund, tech, news = await asyncio.gather(
+        asyncio.to_thread(fundamentals_svc.get_fundamentals, [sym]),
+        asyncio.to_thread(technicals_svc.get_technicals, [sym]),
+        asyncio.to_thread(news_svc.get_news, [sym]),
+    )
+    return {
+        "symbol": sym,
+        "fundamentals": fund.get(sym, {}),
+        "technicals": tech.get(sym, {}),
+        "news": news.get(sym, []),
+    }
+
+
+@mcp.tool()
+async def get_portfolio_analysis(account_id: str = "") -> dict:
+    """Combined portfolio + concentration warnings + x-ray in one call.
+
+    Equivalent to get_portfolio + get_concentration_warnings + get_xray.
+    Use for portfolio-health, sector-rotation, cash-deployment skills.
+    """
+    portfolio = await _load_portfolio(account_id)
+    return {
+        "portfolio": filter_portfolio(portfolio.model_dump()),
+        "concentration_warnings": portfolio_analytics.concentration_warnings(portfolio),
+        "xray": {
+            "xray_exposures": portfolio_analytics.xray_exposures(portfolio),
+            "sector_breakdown": portfolio_analytics.sector_concentration(portfolio),
+            "asset_class_breakdown": portfolio_analytics.asset_class_breakdown(portfolio),
+        },
+    }
+
+
+@mcp.tool()
+async def get_risk_suite(account_id: str = "", period: str = "1y", top_n: int = 15) -> dict:
+    """Combined risk metrics + correlation matrix in one call.
+
+    Equivalent to get_risk_metrics + get_correlation_matrix.
+    Use for risk-assessment skill or when gauging portfolio-level exposure.
+    """
+    portfolio = await _load_portfolio(account_id)
+    if not portfolio.positions:
+        return {"error": "No positions in portfolio"}
+    top_positions = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n]
+    symbols = [p.symbol for p in top_positions]
+    weights = {p.symbol: p.weight for p in top_positions}
+    returns = await asyncio.to_thread(market_data.fetch_returns, symbols, period)
+    corr_symbols = symbols[:10]
+    corr_returns = {s: returns[s] for s in corr_symbols if s in returns}
+    return {
+        "risk_metrics": {
+            "period": period,
+            "symbols_analyzed": symbols,
+            "metrics": quant.portfolio_risk_metrics(returns, weights),
+        },
+        "correlation_matrix": quant.correlation_matrix(corr_returns),
+    }
+
+
+@mcp.tool()
+async def get_alert_suite(account_id: str = "", since_hours: int = 24) -> dict:
+    """Combined triggered alerts + upcoming earnings + positioning signals in one call.
+
+    Equivalent to get_triggered_alerts + get_earnings_calendar + get_positioning_signals.
+    Use for daily-briefing skill or to get a full situational-awareness snapshot.
+    """
+    portfolio = await _load_portfolio(account_id)
+    symbols = [p.symbol for p in portfolio.positions]
+
+    alerts_data = await asyncio.to_thread(alerts_svc.read_recent_history, since_hours=since_hours)
+    fund_data, pos_data = await asyncio.gather(
+        asyncio.to_thread(fundamentals_svc.get_fundamentals, symbols),
+        asyncio.to_thread(positioning_svc.get_positioning, symbols),
+    )
+
+    from datetime import date as _date, timedelta
+    today = _date.today()
+    cutoff = today + timedelta(days=14)
+    earnings = []
+    for sym in symbols:
+        f = fund_data.get(sym, {})
+        ed = f.get("earnings_date")
+        if ed:
+            try:
+                from datetime import date as _date2
+                d = _date2.fromisoformat(str(ed)[:10])
+                earnings.append({
+                    "symbol": sym, "earnings_date": str(d),
+                    "is_upcoming": today <= d <= cutoff,
+                })
+            except (ValueError, TypeError):
+                pass
+    earnings.sort(key=lambda x: x["earnings_date"])
+
+    return {
+        "triggered_alerts": alerts_data,
+        "earnings_calendar": earnings,
+        "positioning": pos_data,
+    }
+
+
+@mcp.tool()
+async def get_track_record_suite() -> dict:
+    """Combined live track record + scored recommendations + alpha attribution in one call.
+
+    Equivalent to get_live_track_record + score_recommendations + get_alpha_attribution.
+    Use for weekly-mirror skill or full performance accountability review.
+    """
+    track, scored, alpha = await asyncio.gather(
+        asyncio.to_thread(paper_trade_svc.get_track_record, None),
+        asyncio.to_thread(paper_trade_svc.score_recommendations),
+        asyncio.to_thread(alpha_svc.get_alpha_attribution),
+    )
+    return {
+        "live_track_record": track,
+        "scored_recommendations": scored,
+        "alpha_attribution": alpha,
+    }
 
 
 if __name__ == "__main__":

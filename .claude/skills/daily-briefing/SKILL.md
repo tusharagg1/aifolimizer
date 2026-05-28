@@ -9,6 +9,14 @@ description: Run a one-shot morning portfolio digest that ties together health, 
 
 One scroll-length brief surfacing what matters today. Composes 7 MCP tools. No new data fetches outside listed below.
 
+## State check (BEFORE any tool calls)
+
+Read `.claude/context/STATE.md`. If `last_briefing_date` equals today's date (YYYY-MM-DD), output:
+> "Daily briefing already ran today (`last_briefing_date`). Skipping re-fetch to save tokens. Re-run with `/daily-briefing force` to override."
+Then stop — do not call any MCP tools.
+
+If `last_crowding_regime` is set, use it as prior context when interpreting positioning signals (flag if regime changed).
+
 ## How to run
 
 Call in parallel (no inter-dependencies):
@@ -20,6 +28,24 @@ Call in parallel (no inter-dependencies):
 5. `mcp__aifolimizer__get_triggered_alerts` (since_hours=24)
 6. `mcp__aifolimizer__get_earnings_calendar` (next 14d)
 7. `mcp__aifolimizer__get_positioning_signals` (top 15 holdings)
+8. `mcp__aifolimizer__get_technicals_intraday` (top 5 holdings + any focus-list tickers — only if US market is open or pre-market)
+
+## Catalyst day check (FIRST — before anything else)
+
+Catalysts drive intraday moves. Trading without knowing today's catalysts = trading blind.
+
+Check macro snapshot for these scheduled events TODAY (US Eastern):
+- **FOMC decision / Fed minutes** (8 per year, 2pm ET)
+- **CPI release** (monthly, 8:30am ET)
+- **NFP / jobs report** (first Friday monthly, 8:30am ET)
+- **PCE release** (monthly, 8:30am ET)
+- **GDP advance** (quarterly, 8:30am ET)
+- **VIX > 25** (elevated fear regime — wider stops, smaller size)
+- **Treasury auction** (10Y/30Y reopening — bond-proxy stocks reactive)
+
+Cross-reference earnings calendar for next 24h (large-cap names only): MSFT/AAPL/NVDA/META/GOOGL/AMZN reporting tonight = next-day gap risk across whole portfolio if mega-cap.
+
+If catalyst flagged, prefix section 1 headline with `⚠️ CATALYST: <event> @ <time>` and add section 2 bullet: "Reduce intraday position sizes by 50% until event resolves. Wide stops or no trade."
 
 ## Investor profile
 
@@ -55,8 +81,24 @@ Suggested action is one of: `review`, `trim`, `hedge`, `hold`, `add (small)`.
 - Consensus-crowded names with negative day change > 3% (late-entry risk materializing)
 - Yield curve / VIX / Fear-Greed extremes if macro snapshot flags
 
-### 5. Skipped today
-One line listing tools/checks that returned empty or stale data. Example: `Skipped: crypto (no holdings), tax-loss (no underwater positions)`.
+### 5. Intraday addendum (only if US market open or pre-market)
+From `get_technicals_intraday` on focus-list + top 5 by weight, surface:
+- Names with `intraday_score >= 0.7` AND `volume_spike >= 1.5` → "active setup"
+- Names with `opening_range_break == "below"` AND held weight > 3% → "intraday weakness on size"
+- Gap names: `abs(gap_pct) >= 3` → "gap watch"
+Format per line: `TICKER · intraday_score · VWAP $X.XX (Δ Y.Y%) · OR break: <dir> · note`
+If no intraday signals worth surfacing, write: `No notable intraday setups`.
+
+### 6. Skipped today
+One line listing tools/checks that returned empty or stale data. Example: `Skipped: crypto (no holdings), tax-loss (no underwater positions), intraday (market closed)`.
+
+## After output — write STATE.md
+
+After completing the brief, update `.claude/context/STATE.md`:
+- `last_briefing_date`: today's date (YYYY-MM-DD)
+- `last_crowding_regime`: regime label from positioning signals (bullish/neutral/cautious)
+- `active_alerts`: count of triggered alerts from `get_triggered_alerts`
+- `open_recs`: count of open recommendations (from brief context if available)
 
 ## Rules
 
@@ -73,3 +115,6 @@ One line listing tools/checks that returned empty or stale data. Example: `Skipp
 - Macro regime label `bull_low_fear` can co-exist with portfolio-level red day — regime is market-wide, day-change is portfolio-specific. Don't conflate.
 - Earnings calendar is yfinance — sparse for non-US listings. Cross-check IR pages for TSX names if stake is large.
 - "What changed" requires comparing to prior brief. If running fresh (no prior), say so in section 2 — don't invent comparisons.
+- `get_technicals_intraday` returns empty dict outside US market hours — that is correct, list "intraday (market closed)" in skipped section, do not error
+- Catalyst check is REQUIRED — never skip it. If macro snapshot data is unavailable, default to assuming a quiet day BUT explicitly state "catalyst data unavailable — assume normal" in the headline. Better to be wrong about a quiet day than to miss a Fed day.
+- Earnings catalyst list (mega-caps reporting in next 24h) only matters for big names — TSX small-caps reporting do not move SPY. Filter `get_earnings_calendar` to weight > 2% of portfolio OR market_cap > $500B before flagging as portfolio-wide catalyst.
