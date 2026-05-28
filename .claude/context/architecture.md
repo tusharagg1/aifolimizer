@@ -143,7 +143,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 | File | Purpose |
 |------|---------|
-| `backend/mcp_server.py` | All MCP tools (15 total) |
+| `backend/mcp_server.py` | All MCP tools (32 total) |
 | `backend/main.py` | FastAPI app entry point + CORS |
 | `backend/run.py` | uvicorn launcher |
 | `backend/scripts/build_skills.py` | Auto skills builder / scaffold tool |
@@ -160,21 +160,31 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/app/services/macro.py` | FRED macro data |
 | `backend/app/services/pii_filter.py` | PII stripping |
 | `backend/app/services/alerts.py` | Rule eval + ntfy.sh dispatch + JSONL history |
+| `backend/app/services/positioning.py` | Crowding signals (inst%, short%, analyst, news) |
+| `backend/app/services/backtest.py` | Per-position backtest + walk-forward |
+| `backend/app/services/data_router.py` | Multi-source fallback chain + batch quotes |
+| `backend/app/services/data_cache.py` | SQLite disk cache (quotes/history/fundamentals) |
+| `backend/app/services/paper_trade.py` | Forward rec logging + mark-to-market scoring |
+| `backend/app/services/alpha_attribution.py` | Alpha/beta vs SPY/XEQT/TSX/QQQ |
+| `backend/app/services/skill_backtest.py` | Backtest all 13 skills as codified rules |
+| `backend/app/services/trust_report.py` | Generate TRACK_RECORD.md + JSONL |
+| `backend/app/services/recommendations.py` | Rule-based BUY/SELL/HOLD/WATCH scoring |
+| `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
 | `backend/scripts/run_alerts.py` | CLI: evaluate alerts, push to ntfy (cron-friendly) |
-| `backend/app/services/backtest.py` | Per-position backtest: buy_hold / rsi_swing / sma_cross |
+| `backend/scripts/schedule_alerts.ps1` | Register Windows Task Scheduler job |
 | `backend/app/models/portfolio.py` | Pydantic data models |
 | `backend/app/core/config.py` | Env var loading |
 | `frontend/app/dashboard/page.tsx` | Main dashboard |
 | `frontend/app/login/page.tsx` | MFA login form |
-| `frontend/components/PortfolioTable.tsx` | Holdings table |
+| `frontend/components/PortfolioTable.tsx` | Holdings table + crowding badges |
 | `frontend/components/AllocationChart.tsx` | Pie chart |
 | `frontend/components/PriceChart.tsx` | OHLCV + SMA50 chart |
 | `frontend/components/HealthScoreWidget.tsx` | Health grade badge + breakdown |
 | `frontend/components/AlertsPanel.tsx` | Dismissable alert cards |
+| `frontend/components/RecommendationsPanel.tsx` | BUY/SELL/HOLD cards + AI narratives |
+| `frontend/components/MacroWidget.tsx` | Regime badge + FRED rates |
 | `frontend/lib/api.ts` | Typed fetch helpers |
-| `.claude/skills/*/SKILL.md` | 9 skills |
-| `.claude/agents/analyst.md` | Deep analysis subagent |
-| `.claude/agents/researcher.md` | Market data fetch subagent |
+| `.claude/skills/*/SKILL.md` | 13 skills |
 | `.claude/context/changes.md` | Change log |
 | `.claude/context/architecture.md` | This file |
 | `supabase_schema.sql` | Optional snapshot history schema |

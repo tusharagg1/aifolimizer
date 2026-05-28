@@ -32,7 +32,10 @@ _LOG = logging.getLogger("aifolimizer.scheduler")
 _TASK: asyncio.Task | None = None
 _SCORE_TASK: asyncio.Task | None = None
 _SENTRY_TASK: asyncio.Task | None = None
+_REGISTRY_TASK: asyncio.Task | None = None
 _STOP_EVENT: asyncio.Event | None = None
+_REGISTRY_FIRED: set[tuple[str, str]] = set()  # (agent_name, YYYYMMDD-HHMM)
+_REGISTRY_LOOP_INTERVAL_S = 60
 _LAST_RUN_TS: float | None = None
 _LAST_RUN_RESULT: dict | None = None
 _LAST_SCORE_DATE: str | None = None
@@ -784,16 +787,99 @@ def get_last_sentry_digest() -> dict | None:
     return _LAST_SENTRY_DIGEST
 
 
+async def _registry_cron_tick() -> dict:
+    """Fire any agent_registry cron-due agents whose backend runner resolves.
+
+    Runs once per minute. Per-minute dedup via _REGISTRY_FIRED.
+    Single-user mode: uses first active session as tenant.
+    """
+    from app.services import agent_registry as ar
+    from app.db.repositories import snapshots_repo
+
+    now = datetime.now(tz=timezone.utc)
+    minute_key = now.strftime("%Y%m%d-%H%M")
+    due = ar.cron_due_agents(now=now)
+    if not due:
+        return {"status": "idle", "minute": minute_key, "due": 0}
+
+    sids = _active_session_ids(limit=1)
+    if not sids:
+        return {"status": "no_session", "minute": minute_key}
+    sid = sids[0]
+    thash = _tenant_hash(sid)
+
+    fired = []
+    for spec in due:
+        key = (spec.name, minute_key)
+        if key in _REGISTRY_FIRED:
+            continue
+        runner = ar.resolve_runner(spec)
+        if runner is None:
+            continue
+        try:
+            ctx = {"tenant_hash": thash, "session_id": sid}
+            if asyncio.iscoroutinefunction(runner):
+                snap = await runner(ctx)
+            else:
+                snap = await asyncio.to_thread(runner, ctx)
+            try:
+                await snapshots_repo.upsert(thash, snap["skill"], snap)
+            except Exception as e:
+                _LOG.warning(
+                    "registry snapshot persist failed %s: %s", spec.name, e,
+                )
+            ar.mark_run(spec.name, snap.get("status") or "ok")
+            _REGISTRY_FIRED.add(key)
+            fired.append({
+                "agent": spec.name,
+                "status": snap.get("status"),
+            })
+        except Exception as e:
+            _LOG.warning("registry agent %s failed: %s", spec.name, e)
+            ar.mark_run(spec.name, "error")
+
+    # Garbage-collect dedup set so it doesn't grow forever
+    if len(_REGISTRY_FIRED) > 5000:
+        cutoff_key = (
+            now - timedelta(hours=2)
+        ).strftime("%Y%m%d-%H%M")
+        _REGISTRY_FIRED.intersection_update(
+            {k for k in _REGISTRY_FIRED if k[1] >= cutoff_key}
+        )
+
+    return {"status": "ok", "minute": minute_key, "fired": fired}
+
+
+async def _registry_cron_loop():
+    assert _STOP_EVENT is not None
+    while not _STOP_EVENT.is_set():
+        try:
+            await _registry_cron_tick()
+        except Exception:
+            _LOG.exception("registry cron tick failed")
+        try:
+            await asyncio.wait_for(
+                _STOP_EVENT.wait(), timeout=_REGISTRY_LOOP_INTERVAL_S,
+            )
+        except asyncio.TimeoutError:
+            continue
+
+
 def start_scheduler() -> None:
     """Spawn scheduler tasks. Idempotent — safe to call multiple times."""
-    global _TASK, _SCORE_TASK, _SENTRY_TASK, _STOP_EVENT
+    global _TASK, _SCORE_TASK, _SENTRY_TASK, _REGISTRY_TASK, _STOP_EVENT
     if _TASK and not _TASK.done():
         return
     _STOP_EVENT = asyncio.Event()
     _TASK = asyncio.create_task(_loop(), name="skill-scheduler")
     _SCORE_TASK = asyncio.create_task(_score_loop(), name="rec-scorer")
     _SENTRY_TASK = asyncio.create_task(_sentry_loop(), name="sentry-digest")
-    _LOG.info("scheduler: started (skill loop + nightly scorer + sentry digest)")
+    _REGISTRY_TASK = asyncio.create_task(
+        _registry_cron_loop(), name="agent-registry-cron",
+    )
+    _LOG.info(
+        "scheduler: started (skill loop + scorer + sentry + registry-cron)"
+    )
 
 
 def stop_scheduler() -> None:
@@ -805,6 +891,8 @@ def stop_scheduler() -> None:
         _SCORE_TASK.cancel()
     if _SENTRY_TASK:
         _SENTRY_TASK.cancel()
+    if _REGISTRY_TASK:
+        _REGISTRY_TASK.cancel()
     _LOG.info("scheduler: stopped")
 
 
@@ -812,6 +900,9 @@ def scheduler_status() -> dict:
     return {
         "running": bool(_TASK and not _TASK.done()),
         "score_running": bool(_SCORE_TASK and not _SCORE_TASK.done()),
+        "registry_running": bool(
+            _REGISTRY_TASK and not _REGISTRY_TASK.done()
+        ),
         "last_run_ts": _LAST_RUN_TS,
         "last_run_result": _LAST_RUN_RESULT,
         "last_score_date": _LAST_SCORE_DATE,

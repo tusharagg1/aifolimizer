@@ -183,15 +183,22 @@ def log_recommendation(
     return rec
 
 
-def _benchmark_returns(rec: dict) -> dict[str, float]:
-    """Compute current return for each benchmark captured at entry."""
+def _benchmark_returns(rec: dict, quote_map: dict[str, float] | None = None) -> dict[str, float]:
+    """Compute current return for each benchmark captured at entry.
+
+    If quote_map provided, uses it (batch-prefetched). Otherwise falls back
+    to per-symbol _safe_quote (slow path — kept for callers outside scorer).
+    """
     out: dict[str, float] = {}
     benches = rec.get("benchmarks_entry") or {}
     for sym, entry in benches.items():
         entry_px = float(entry.get("price") or 0.0)
         if entry_px <= 0:
             continue
-        now_px, _ = _safe_quote(sym)
+        if quote_map is not None:
+            now_px = quote_map.get(sym.upper(), 0.0)
+        else:
+            now_px, _ = _safe_quote(sym)
         if now_px <= 0:
             continue
         out[sym] = (now_px - entry_px) / entry_px * 100
@@ -216,6 +223,24 @@ def score_recommendations(max_age_days: int = 180) -> dict:
     scored: list[dict] = []
     skipped = 0
 
+    # Batch-fetch all quotes (tickers + benchmarks) in one call — replaces
+    # N serial data_router.get_quote() calls (~5x faster on N>5 open recs).
+    needed_syms: set[str] = set()
+    for r in open_recs:
+        if r.get("action") in ("HOLD", "WATCH", "NO_EDGE"):
+            continue
+        needed_syms.add(r["ticker"].upper())
+        for bsym in (r.get("benchmarks_entry") or {}).keys():
+            needed_syms.add(bsym.upper())
+    quote_map: dict[str, float] = {}
+    if needed_syms:
+        try:
+            batch = data_router.get_quotes_batch(sorted(needed_syms))
+            for sym, q in batch.items():
+                quote_map[sym.upper()] = float(q.get("price") or 0.0)
+        except Exception:
+            pass  # fall through to per-rec _safe_quote below
+
     for rec in open_recs:
         ticker = rec["ticker"]
         action = rec["action"]
@@ -229,7 +254,9 @@ def score_recommendations(max_age_days: int = 180) -> dict:
             skipped += 1
             continue
 
-        current, _ = _safe_quote(ticker)
+        current = quote_map.get(ticker.upper(), 0.0)
+        if current <= 0:
+            current, _ = _safe_quote(ticker)
         if current <= 0:
             skipped += 1
             continue
@@ -241,7 +268,7 @@ def score_recommendations(max_age_days: int = 180) -> dict:
         else:
             ret_pct = 0.0
 
-        bench_rets = _benchmark_returns(rec)
+        bench_rets = _benchmark_returns(rec, quote_map=quote_map)
         # alpha = signal pnl - benchmark pnl under the same directional bet.
         # For BUY/ADD signal pnl = +asset_ret, bench pnl = +bench_ret  -> alpha = ret_pct - br.
         # For SELL/TRIM signal pnl = -asset_ret (= ret_pct as stored), bench pnl = -bench_ret -> alpha = ret_pct + br.
@@ -516,3 +543,45 @@ def batch_log_recommendations(
             logged += 1
 
     return {"logged": logged, "skipped": skipped, "duplicates": duplicates, "failed": failed}
+
+
+def get_ticker_history(symbol: str, n: int = 3) -> list[dict]:
+    """Return last N scored recommendations for symbol, most recent first.
+
+    Each entry: {date, action, conviction, entry_price, return_pct, alpha_xeqt, status, rationale}.
+    Reads from recommendations.jsonl (scored records have return_pct set).
+    Returns [] if no history found.
+    """
+    if not _REC_FILE.exists():
+        return []
+    sym = symbol.upper()
+    rows: list[dict] = []
+    try:
+        lines = _REC_FILE.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in reversed(lines):
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("ticker", "").upper() != sym:
+            continue
+        if r.get("return_pct") is None and r.get("status") == "open":
+            # include open recs without return yet
+            pass
+        rows.append({
+            "date": r.get("date", ""),
+            "action": r.get("action", ""),
+            "conviction": r.get("conviction", ""),
+            "entry_price": r.get("entry_price"),
+            "return_pct": r.get("return_pct"),
+            "alpha_xeqt": (r.get("alpha") or {}).get("XEQT.TO"),
+            "status": r.get("status", "open"),
+            "rationale": (r.get("rationale") or "")[:120],
+        })
+        if len(rows) >= n:
+            break
+    return rows

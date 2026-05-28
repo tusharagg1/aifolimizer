@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -87,11 +88,21 @@ def _parse_json_safe(text: str | None) -> dict | None:
         return None
 
 
+_PROVIDERS_CACHE: dict[str, Any] = {"ts": 0.0, "available": False}
+_PROVIDERS_TTL_S = 30.0
+
+
 def _providers_available() -> bool:
+    now = time.time()
+    if now - _PROVIDERS_CACHE["ts"] < _PROVIDERS_TTL_S:
+        return _PROVIDERS_CACHE["available"]
     try:
-        return len(llm_router.active_provider_names()) > 0
+        available = len(llm_router.active_provider_names()) > 0
     except Exception:
-        return False
+        available = False
+    _PROVIDERS_CACHE["ts"] = now
+    _PROVIDERS_CACHE["available"] = available
+    return available
 
 
 async def _call_llm_json(
@@ -129,9 +140,17 @@ async def _call_llm_json(
 
 _ADV_SYSTEM = (
     "You are a balanced equity research analyst. For the given ticker, "
-    "produce JSON {\"verdict\":\"buy|hold|sell\",\"bull_thesis\":\"...\","
-    "\"bear_thesis\":\"...\",\"key_risk\":\"...\"}. Concise. No prose "
-    "outside the JSON object."
+    "produce JSON with these exact keys: "
+    "{\"verdict\":\"buy|hold|sell\","
+    "\"conviction\":\"low|medium|high\","
+    "\"bull_thesis\":\"<one sentence>\","
+    "\"bear_thesis\":\"<one sentence>\","
+    "\"key_risk\":\"<one sentence>\","
+    "\"price_target\":<float or null>,"
+    "\"stop\":<float or null>,"
+    "\"bull_invalidation\":\"<exact condition that kills bull thesis>\"}. "
+    "price_target and stop must be numeric when price is provided. "
+    "No prose outside the JSON object."
 )
 
 _EARN_SYSTEM = (
@@ -179,15 +198,62 @@ _BRIEFING_SYSTEM = (
     "Be specific, cite numbers. No prose outside the JSON object."
 )
 
+_PRE_TRADE_SYSTEM = (
+    "You are a brutally disciplined trading-desk risk officer. Given a trade "
+    "intent, run the pre-trade-check gates: FOMO-rip, crowding, sizing, stop "
+    "discipline, concentration, stage, re-entry. Produce JSON "
+    "{\"verdict\":\"PASS|REJECT\",\"reason\":\"<one line>\",\"failed_gates\":"
+    "[...],\"warnings\":[...],\"suggested_entry\":<float>,\"suggested_stop\":"
+    "<float>,\"suggested_shares\":<int>,\"position_pct_of_nav\":<float>,"
+    "\"max_loss_dollars\":<float>}. Never recommend size > 5% of NAV. "
+    "Never recommend re-entry on a stop-hit ticker without explicit new "
+    "bullish catalyst. No prose outside the JSON object."
+)
+
+_WEEKLY_MIRROR_SYSTEM = (
+    "You are a cold honest performance auditor. Given a week of trading + "
+    "portfolio state, produce JSON {\"verdict\":\"CONTINUE|COOL_OFF|SUSPEND\","
+    "\"reason\":\"<one line>\",\"win_rate_30d\":<float>,\"r_multiple_30d\":"
+    "<float>,\"trading_vs_core_pnl_diff\":<float>,\"top_pattern\":\"...\","
+    "\"next_actions\":[\"<bullet>\",...]}. Verdict thresholds: CONTINUE if "
+    "win_rate_30d>=50 AND r_multiple>=1.5; SUSPEND if win_rate<40 OR "
+    "r_multiple<1.0; else COOL_OFF. No hedging. No prose outside JSON."
+)
+
+_REBALANCE_SYSTEM = (
+    "You are a wealth-management rebalancer. Given target allocation, current "
+    "weights, and per-account cash, produce JSON {\"deployment\":[{\"ticker\":"
+    "\"...\",\"account\":\"...\",\"shares\":<int>,\"cost\":<float>,\"action\":"
+    "\"BUY|TRIM\"},...],\"drift_summary\":\"...\",\"cash_after\":<float>,"
+    "\"next_review_days\":<int>}. Never recommend selling a core holding "
+    "unless drift > 15pp above target. Rebalance via new cash by default. "
+    "Whole shares only. No prose outside the JSON object."
+)
+
 
 def _adv_prompt(ticker: str, context: dict) -> str:
-    return (
-        f"Ticker: {ticker}\n"
-        f"Sector: {context.get('sector', 'unknown')}\n"
-        f"Current weight in portfolio: {context.get('weight', 0):.1f}%\n"
-        f"Recent score (0-10): {context.get('score', 'n/a')}\n"
-        "Produce the JSON verdict object now."
-    )
+    lines = [
+        f"Ticker: {ticker}",
+        f"Sector: {context.get('sector', 'unknown')}",
+        f"Portfolio weight: {context.get('weight', 0):.1f}%",
+        f"Signal score (0-10): {context.get('score', 'n/a')}",
+    ]
+    if context.get("current_price"):
+        lines.append(f"Current price: ${context['current_price']}")
+    if context.get("rsi_14"):
+        lines.append(f"RSI 14: {context['rsi_14']}")
+    if context.get("stage"):
+        lines.append(f"Stage: {context['stage']}")
+    if context.get("analyst_upside_pct"):
+        lines.append(
+            f"Analyst upside %: {context['analyst_upside_pct']}",
+        )
+    if context.get("crowding_score"):
+        lines.append(f"Crowding score: {context['crowding_score']}")
+    if context.get("reflection"):
+        lines.append(f"\n## Prior Calls on {ticker}\n{context['reflection']}\nLearn from these. Don't repeat losing patterns.")
+    lines.append("Produce the JSON verdict object now.")
+    return "\n".join(lines)
 
 
 def _earn_prompt(ticker: str, context: dict) -> str:
@@ -283,22 +349,40 @@ async def run_adversarial_research(
             status="error", error="llm_no_response",
         )
     verdict = (data.get("verdict") or "hold").lower()
-    action = {
-        "buy": "BUY", "sell": "SELL",
-    }.get(verdict, "HOLD")
-    actionable = [{"symbol": ticker, "action": action,
-                   "reason": data.get("bull_thesis") or data.get("reason", "")}]
+    conviction = (data.get("conviction") or "medium").lower()
+    action = {"buy": "BUY", "sell": "SELL"}.get(verdict, "HOLD")
+    actionable = [{
+        "symbol": ticker,
+        "action": action,
+        "conviction": conviction,
+        "reason": data.get("bull_thesis") or data.get("reason", ""),
+        "price_target": data.get("price_target"),
+        "stop": data.get("stop"),
+        "bull_invalidation": data.get("bull_invalidation"),
+    }]
+    insights = [
+        f"{ticker} verdict: {verdict} ({conviction} conviction)",
+        f"Risk: {data.get('key_risk', '—')}",
+    ]
+    if data.get("price_target"):
+        insights.append(f"Target: ${data['price_target']}")
+    if data.get("stop"):
+        insights.append(f"Stop: ${data['stop']}")
     return _snapshot(
         "adversarial-research",
-        summary={"verdicts": {ticker: verdict}},
+        summary={
+            "verdicts": {ticker: verdict},
+            "conviction": conviction,
+            "price_target": data.get("price_target"),
+            "stop": data.get("stop"),
+            "bull_invalidation": data.get("bull_invalidation"),
+            "bear_thesis": data.get("bear_thesis"),
+        },
         actionable=actionable,
         alerts=([{"level": "warn", "symbol": ticker,
-                 "message": data.get("key_risk") or ""}]
+                  "message": data.get("key_risk") or ""}]
                 if data.get("key_risk") else []),
-        key_insights=[
-            f"{ticker} verdict: {verdict}",
-            f"Risk: {data.get('key_risk', '—')}",
-        ],
+        key_insights=insights,
     )
 
 
@@ -492,6 +576,425 @@ async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
     )
 
 
+def _pre_trade_prompt(ctx: dict) -> str:
+    return (
+        f"Ticker: {ctx.get('ticker', 'n/a')}\n"
+        f"Direction: {ctx.get('direction', 'BUY')}\n"
+        f"Horizon: {ctx.get('horizon', 'swing')}\n"
+        f"Current price: ${ctx.get('current_price', 'n/a')}\n"
+        f"Day change %: {ctx.get('day_change_pct', 'n/a')}\n"
+        f"3-day change %: {ctx.get('change_3d_pct', 'n/a')}\n"
+        f"ATR 14: ${ctx.get('atr_14', 'n/a')}\n"
+        f"RSI 14: {ctx.get('rsi_14', 'n/a')}\n"
+        f"Stage: {ctx.get('stage', 'n/a')}\n"
+        f"SMA50: ${ctx.get('sma_50', 'n/a')}\n"
+        f"Crowding score: {ctx.get('crowding_score', 'n/a')}\n"
+        f"Current weight in portfolio: {ctx.get('current_weight_pct', 0)}%\n"
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"User intent reason: {ctx.get('user_reason', 'unstated')}\n"
+        f"Last 30d user win rate: {ctx.get('user_win_rate_30d', 'n/a')}\n"
+        f"Recent stop-out on this ticker (30d): "
+        f"{ctx.get('recent_stop_out', False)}\n"
+        + (
+            f"\n## Prior Calls on {ctx.get('ticker', 'this ticker')}\n"
+            f"{ctx['reflection']}\n"
+            f"Factor this track record into your discipline gates.\n"
+            if ctx.get("reflection") else ""
+        )
+        + "Run the pre-trade-check gates. Produce the JSON verdict now."
+    )
+
+
+def _weekly_mirror_prompt(ctx: dict) -> str:
+    return (
+        f"Date: {ctx.get('date', 'today')}\n"
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Week NAV change %: {ctx.get('week_change_pct', 'n/a')}\n"
+        f"Total deposits YTD: ${ctx.get('deposits_ytd', 'n/a')}\n"
+        f"Return vs deposits %: {ctx.get('return_vs_deposits_pct', 'n/a')}\n"
+        f"Boring-core 7d P&L: ${ctx.get('core_pnl_7d', 'n/a')}\n"
+        f"Discretionary 7d P&L: ${ctx.get('disc_pnl_7d', 'n/a')}\n"
+        f"vs SPY 7d %: {ctx.get('vs_spy_7d_pct', 'n/a')}\n"
+        f"30d closed trades: {ctx.get('closed_trades_30d', 0)}\n"
+        f"30d win rate %: {ctx.get('win_rate_30d', 'n/a')}\n"
+        f"30d avg win $: {ctx.get('avg_win_30d', 'n/a')}\n"
+        f"30d avg loss $: {ctx.get('avg_loss_30d', 'n/a')}\n"
+        f"30d R-multiple: {ctx.get('r_multiple_30d', 'n/a')}\n"
+        f"90d alpha vs XEQT %: {ctx.get('alpha_vs_xeqt_90d', 'n/a')}\n"
+        f"Top recurring loss pattern: {ctx.get('top_pattern', 'n/a')}\n"
+        "Produce the JSON weekly verdict now."
+    )
+
+
+def _rebalance_prompt(ctx: dict) -> str:
+    return (
+        f"Strategy: {ctx.get('strategy', 'growth-aggressive')}\n"
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Target weights: {ctx.get('target_weights', {})}\n"
+        f"Current weights: {ctx.get('current_weights', {})}\n"
+        f"Per-account settled cash (CAD): {ctx.get('cash_per_account', {})}\n"
+        f"Last rebalance date: {ctx.get('last_rebalance_date', 'never')}\n"
+        f"Tax-loss superficial blocks (next 30d): "
+        f"{ctx.get('superficial_blocked_tickers', [])}\n"
+        "Produce the JSON deployment plan now."
+    )
+
+
+async def run_pre_trade_check(context: dict | None = None) -> dict[str, Any]:
+    """Discipline gate before any discretionary entry. Returns PASS/REJECT."""
+    if not _providers_available():
+        return _snapshot(
+            "pre-trade-check", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _pre_trade_prompt(context or {}), _PRE_TRADE_SYSTEM,
+        task="pre_trade_check",
+    )
+    if data is None:
+        return _snapshot(
+            "pre-trade-check", status="error", error="llm_no_response",
+        )
+    verdict = (data.get("verdict") or "REJECT").upper()
+    return _snapshot(
+        "pre-trade-check",
+        summary={
+            "verdict": verdict,
+            "ticker": (context or {}).get("ticker"),
+            "reason": data.get("reason"),
+            "suggested_entry": data.get("suggested_entry"),
+            "suggested_stop": data.get("suggested_stop"),
+            "suggested_shares": data.get("suggested_shares"),
+            "position_pct_of_nav": data.get("position_pct_of_nav"),
+            "max_loss_dollars": data.get("max_loss_dollars"),
+        },
+        actionable=[{
+            "recommendation": "PASS" if verdict == "PASS" else "BLOCK",
+            "ticker": (context or {}).get("ticker"),
+            "reason": data.get("reason", ""),
+        }],
+        alerts=(
+            [{"level": "warn", "message": f"REJECT: {data.get('reason')}"}]
+            if verdict == "REJECT" else []
+        ),
+        key_insights=[
+            f"{verdict}: {data.get('reason', '—')}",
+            f"Failed gates: {data.get('failed_gates') or 'none'}",
+            f"Warnings: {data.get('warnings') or 'none'}",
+        ],
+    )
+
+
+async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
+    """Cold honest weekly performance audit. Verdict: continue/cool-off/suspend."""
+    if not _providers_available():
+        return _snapshot(
+            "weekly-mirror", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _weekly_mirror_prompt(context or {}), _WEEKLY_MIRROR_SYSTEM,
+        task="weekly_mirror",
+    )
+    if data is None:
+        return _snapshot(
+            "weekly-mirror", status="error", error="llm_no_response",
+        )
+    verdict = (data.get("verdict") or "COOL_OFF").upper()
+    alert_level = {
+        "SUSPEND": "warn", "COOL_OFF": "info", "CONTINUE": "info",
+    }.get(verdict, "info")
+    return _snapshot(
+        "weekly-mirror",
+        summary={
+            "verdict": verdict,
+            "win_rate_30d": data.get("win_rate_30d"),
+            "r_multiple_30d": data.get("r_multiple_30d"),
+            "trading_vs_core_pnl_diff": data.get("trading_vs_core_pnl_diff"),
+            "top_pattern": data.get("top_pattern"),
+        },
+        actionable=[
+            {"recommendation": a, "reason": ""}
+            for a in (data.get("next_actions") or [])
+        ],
+        alerts=[{"level": alert_level, "message": f"Verdict: {verdict}"}],
+        key_insights=[
+            f"Verdict: {verdict} — {data.get('reason', '—')}",
+            f"30d win rate: {data.get('win_rate_30d', '—')}%",
+            f"30d R-multiple: {data.get('r_multiple_30d', '—')}",
+            f"Top pattern: {data.get('top_pattern', '—')}",
+        ],
+    )
+
+
+_STOCK_ANALYSIS_SYSTEM = (
+    "You are a Goldman + Citadel equity analyst. Given a ticker w/ tech + "
+    "fund + crowding context, produce JSON {\"verdict\":\"BUY|HOLD|SELL|"
+    "TRIM|ADD\",\"conviction\":\"low|med|high\",\"target_price\":<float>,"
+    "\"stop\":<float>,\"thesis\":\"...\",\"top_risk\":\"...\"}. No prose."
+)
+
+_EARN_ANALYZER_SYSTEM = (
+    "You are a JPMorgan pre-earnings analyst. Given ticker + earnings date + "
+    "fund context, produce JSON {\"hold_through\":\"yes|no|trim\","
+    "\"expected_move_pct\":<float>,\"key_metric\":\"...\",\"action\":"
+    "\"hold|trim|hedge|exit\",\"reason\":\"...\"}. No prose."
+)
+
+_CASH_DEPLOY_SYSTEM = (
+    "You are a cash-deployment analyst. Given settled cash + portfolio + "
+    "candidate setups, produce JSON {\"deployment\":[{\"ticker\":\"...\","
+    "\"shares\":<int>,\"cost\":<float>,\"entry\":<float>,\"stop\":<float>,"
+    "\"setup_score\":<int>},...],\"cash_remaining\":<float>,\"reason\":"
+    "\"...\"}. Never recommend single position > 5% NAV. Never add to "
+    "concentration-flagged or crowding>=70 names. No prose."
+)
+
+_DIV_SYSTEM = (
+    "You are a Harvard-endowment dividend strategist. Given holdings + "
+    "yield + payout context, produce JSON {\"income_health\":\"strong|ok|"
+    "weak\",\"projected_annual_income\":<float>,\"top_riskd_payer\":\"...\","
+    "\"recommendation\":\"hold|rotate|add_dividend|trim_low_yield\","
+    "\"reason\":\"...\"}. No prose."
+)
+
+_SECTOR_SYSTEM = (
+    "You are a Renaissance sector-rotation analyst. Given sector exposures "
+    "+ market regime, produce JSON {\"overweight\":[\"...\"],\"underweight\":"
+    "[\"...\"],\"top_rotation\":\"<from>->\\u003cto\\u003e\",\"reason\":"
+    "\"...\"}. No prose."
+)
+
+_TAX_LOSS_SYSTEM = (
+    "You are a Canadian tax-loss-harvesting analyst. Given underwater "
+    "positions + account types, produce JSON {\"candidates\":[{\"ticker\":"
+    "\"...\",\"loss_cad\":<float>,\"account\":\"...\",\"replacement\":"
+    "\"...\",\"superficial_block_until\":\"YYYY-MM-DD\"},...],"
+    "\"total_loss_to_harvest\":<float>,\"reason\":\"...\"}. Never recommend "
+    "harvesting in TFSA or RRSP (no tax benefit). Always flag superficial-"
+    "loss rule. No prose."
+)
+
+
+def _stock_analysis_prompt(ctx: dict) -> str:
+    return (
+        f"Ticker: {ctx.get('ticker', 'n/a')}\n"
+        f"Price: ${ctx.get('current_price', 'n/a')}\n"
+        f"Stage: {ctx.get('stage', 'n/a')}\n"
+        f"RSI 14: {ctx.get('rsi_14', 'n/a')}\n"
+        f"SMA50: ${ctx.get('sma_50', 'n/a')}  SMA200: ${ctx.get('sma_200', 'n/a')}\n"
+        f"P/E: {ctx.get('pe_ratio', 'n/a')}  Analyst upside %: "
+        f"{ctx.get('analyst_upside_pct', 'n/a')}\n"
+        f"Crowding score: {ctx.get('crowding_score', 'n/a')}\n"
+        f"Sector: {ctx.get('sector', 'n/a')}\n"
+        "Produce the JSON verdict now."
+    )
+
+
+def _earn_analyzer_prompt(ctx: dict) -> str:
+    return (
+        f"Ticker: {ctx.get('ticker', 'n/a')}\n"
+        f"Earnings date: {ctx.get('earnings_date', 'unknown')}\n"
+        f"Current price: ${ctx.get('current_price', 'n/a')}\n"
+        f"EPS estimate: {ctx.get('eps_estimate', 'n/a')}\n"
+        f"Avg past surprise %: {ctx.get('avg_surprise_pct', 'n/a')}\n"
+        f"IV / historical vol: {ctx.get('iv_hv_ratio', 'n/a')}\n"
+        "Produce the JSON pre-earnings call now."
+    )
+
+
+def _cash_deploy_prompt(ctx: dict) -> str:
+    return (
+        f"Settled cash CAD: ${ctx.get('cash', 'n/a')}\n"
+        f"Account: {ctx.get('account', 'n/a')}\n"
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Strategy lens: {ctx.get('strategy', 'aggressive growth')}\n"
+        f"Eligible candidates: {ctx.get('candidates', [])}\n"
+        f"Concentration-flagged tickers: {ctx.get('blocked', [])}\n"
+        "Produce the JSON deployment plan now."
+    )
+
+
+def _div_prompt(ctx: dict) -> str:
+    return (
+        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Dividend payers: {ctx.get('payers', [])}\n"
+        f"Portfolio yield %: {ctx.get('portfolio_yield_pct', 'n/a')}\n"
+        f"Annual income projection $: {ctx.get('annual_income', 'n/a')}\n"
+        "Produce the JSON dividend health now."
+    )
+
+
+def _sector_prompt(ctx: dict) -> str:
+    return (
+        f"Sector exposures %: {ctx.get('sector_weights', {})}\n"
+        f"Market regime: {ctx.get('regime_composite', 'n/a')}\n"
+        f"Top performing sectors (3mo): {ctx.get('top_3mo', [])}\n"
+        f"Bottom performing sectors (3mo): {ctx.get('bottom_3mo', [])}\n"
+        "Produce the JSON sector rotation tilt now."
+    )
+
+
+def _tax_loss_prompt(ctx: dict) -> str:
+    return (
+        f"Underwater positions: {ctx.get('losers', [])}\n"
+        f"Total unrealized loss CAD: ${ctx.get('total_loss', 'n/a')}\n"
+        f"Realized gains YTD CAD: ${ctx.get('realized_gains_ytd', 'n/a')}\n"
+        f"Account breakdown: {ctx.get('accounts', {})}\n"
+        "Produce the JSON tax-loss harvest plan now."
+    )
+
+
+def _generic_runner_factory(skill_name: str, prompt_fn, system_prompt, task):
+    """Returns an async runner that calls LLM + wraps in _snapshot()."""
+
+    async def _runner(context: dict | None = None) -> dict[str, Any]:
+        if not _providers_available():
+            return _snapshot(
+                skill_name, status="error", error="no_llm_provider",
+            )
+        data = await _call_llm_json(
+            prompt_fn(context or {}), system_prompt, task=task,
+        )
+        if data is None:
+            return _snapshot(
+                skill_name, status="error", error="llm_no_response",
+            )
+        return _snapshot(
+            skill_name,
+            summary={k: v for k, v in data.items()
+                     if not isinstance(v, (list, dict))},
+            actionable=(
+                data.get("deployment")
+                or data.get("candidates")
+                or [{
+                    "recommendation": data.get("action")
+                    or data.get("verdict")
+                    or data.get("recommendation", "hold"),
+                    "reason": data.get("reason")
+                    or data.get("thesis", ""),
+                }]
+            ),
+            key_insights=[
+                f"{skill_name}: {data.get('verdict') or data.get('reason') or '—'}",
+            ],
+        )
+
+    return _runner
+
+
+run_stock_analysis_for_ticker = _generic_runner_factory(
+    "stock-analysis", _stock_analysis_prompt,
+    _STOCK_ANALYSIS_SYSTEM, "stock_analysis",
+)
+run_earnings_analyzer = _generic_runner_factory(
+    "earnings-analyzer", _earn_analyzer_prompt,
+    _EARN_ANALYZER_SYSTEM, "earnings_analyzer",
+)
+run_cash_deployment = _generic_runner_factory(
+    "cash-deployment", _cash_deploy_prompt,
+    _CASH_DEPLOY_SYSTEM, "cash_deployment",
+)
+run_dividend_strategy = _generic_runner_factory(
+    "dividend-strategy", _div_prompt,
+    _DIV_SYSTEM, "dividend_strategy",
+)
+run_sector_rotation = _generic_runner_factory(
+    "sector-rotation", _sector_prompt,
+    _SECTOR_SYSTEM, "sector_rotation",
+)
+run_tax_loss_review = _generic_runner_factory(
+    "tax-loss-review", _tax_loss_prompt,
+    _TAX_LOSS_SYSTEM, "tax_loss_review",
+)
+
+
+async def run_auto_rebalance(context: dict | None = None) -> dict[str, Any]:
+    """Monthly core-ETF rebalance + DCA plan. Auto-execute=False by default."""
+    if not _providers_available():
+        return _snapshot(
+            "auto-rebalance", status="error", error="no_llm_provider",
+        )
+    data = await _call_llm_json(
+        _rebalance_prompt(context or {}), _REBALANCE_SYSTEM,
+        task="auto_rebalance",
+    )
+    if data is None:
+        return _snapshot(
+            "auto-rebalance", status="error", error="llm_no_response",
+        )
+    deployments = data.get("deployment") or []
+    return _snapshot(
+        "auto-rebalance",
+        summary={
+            "drift_summary": data.get("drift_summary"),
+            "cash_after": data.get("cash_after"),
+            "deployment_count": len(deployments),
+        },
+        actionable=[
+            {
+                "recommendation": d.get("action", "BUY"),
+                "ticker": d.get("ticker"),
+                "account": d.get("account"),
+                "shares": d.get("shares"),
+                "cost": d.get("cost"),
+            }
+            for d in deployments
+        ],
+        key_insights=[
+            f"Drift: {data.get('drift_summary', '—')}",
+            f"Deployments planned: {len(deployments)}",
+            f"Next review in {data.get('next_review_days', 30)}d",
+        ],
+    )
+
+
+# ── Context-only wrappers (for agent_registry uniform calling) ─────────────
+# Registry calls runner(context_dict). These wrappers extract symbol/ticker
+# from context, then call underlying ticker-positional runners.
+
+
+async def run_adversarial_research_ctx(
+    context: dict | None = None,
+) -> dict[str, Any]:
+    ctx = context or {}
+    ticker = (ctx.get("ticker") or ctx.get("symbol") or "").upper()
+    if not ticker:
+        return _snapshot(
+            "adversarial-research",
+            status="error",
+            error="missing_ticker_in_context",
+        )
+    return await run_adversarial_research(ticker, ctx)
+
+
+async def run_earnings_postmortem_ctx(
+    context: dict | None = None,
+) -> dict[str, Any]:
+    ctx = context or {}
+    ticker = (ctx.get("ticker") or ctx.get("symbol") or "").upper()
+    if not ticker:
+        return _snapshot(
+            "earnings-postmortem",
+            status="error",
+            error="missing_ticker_in_context",
+        )
+    return await run_earnings_postmortem(ticker, ctx)
+
+
+async def run_stock_compare_ctx(
+    context: dict | None = None,
+) -> dict[str, Any]:
+    ctx = context or {}
+    a = (ctx.get("a") or ctx.get("ticker_a") or "").upper()
+    b = (ctx.get("b") or ctx.get("ticker_b") or "").upper()
+    if not a or not b:
+        return _snapshot(
+            "stock-compare",
+            status="error",
+            error="missing_tickers_in_context",
+        )
+    return await run_stock_compare(a, b)
+
+
 # ── Nightly orchestrator ───────────────────────────────────────────────────
 
 async def run_nightly_llm_skills(
@@ -519,57 +1022,59 @@ async def run_nightly_llm_skills(
 
     results: dict[str, int] = {"adv": 0, "earn": 0, "compare": 0, "errors": 0}
 
-    # Adversarial-research for top N by weight
-    for h in top_holdings[:max_adv]:
-        try:
-            snap = await run_adversarial_research(h["symbol"], h)
-            await snapshots_repo.upsert(tenant_hash, snap["skill"], snap)
-            if snap.get("status") == "ok":
-                results["adv"] += 1
-            else:
-                results["errors"] += 1
-        except Exception as e:
-            log.warning("adv failed for %s: %s", h.get("symbol"), e)
-            results["errors"] += 1
+    # Bounded concurrency — free-tier rate-limits cap us at 4 parallel calls.
+    sem = asyncio.Semaphore(4)
 
-    # Earnings-postmortem for holdings with a recent earnings_date
-    earn_candidates = [
-        h for h in top_holdings
-        if h.get("earnings_date")
-    ][:max_earn]
-    for h in earn_candidates:
-        try:
-            snap = await run_earnings_postmortem(h["symbol"], h)
-            await snapshots_repo.upsert(tenant_hash, snap["skill"], snap)
-            if snap.get("status") == "ok":
-                results["earn"] += 1
-            else:
-                results["errors"] += 1
-        except Exception as e:
-            log.warning("earn failed for %s: %s", h.get("symbol"), e)
-            results["errors"] += 1
+    async def _run_adv(h: dict) -> tuple[str, bool]:
+        async with sem:
+            try:
+                snap = await run_adversarial_research(h["symbol"], h)
+                await snapshots_repo.upsert(tenant_hash, snap["skill"], snap)
+                return "adv", snap.get("status") == "ok"
+            except Exception as e:
+                log.warning("adv failed for %s: %s", h.get("symbol"), e)
+                return "adv", False
 
-    # Stock-compare: top weight vs each next 3 (rotating)
-    if len(top_holdings) >= 2:
-        anchor = top_holdings[0]["symbol"]
-        for h in top_holdings[1:max_compare_pairs + 1]:
+    async def _run_earn(h: dict) -> tuple[str, bool]:
+        async with sem:
+            try:
+                snap = await run_earnings_postmortem(h["symbol"], h)
+                await snapshots_repo.upsert(tenant_hash, snap["skill"], snap)
+                return "earn", snap.get("status") == "ok"
+            except Exception as e:
+                log.warning("earn failed for %s: %s", h.get("symbol"), e)
+                return "earn", False
+
+    async def _run_compare(anchor: str, h: dict) -> tuple[str, bool]:
+        async with sem:
             try:
                 snap = await run_stock_compare(anchor, h["symbol"])
-                await snapshots_repo.upsert(
-                    tenant_hash, snap["skill"], snap,
-                )
-                if snap.get("status") == "ok":
-                    results["compare"] += 1
-                else:
-                    results["errors"] += 1
+                await snapshots_repo.upsert(tenant_hash, snap["skill"], snap)
+                return "compare", snap.get("status") == "ok"
             except Exception as e:
                 log.warning(
                     "compare failed for %s vs %s: %s",
                     anchor, h.get("symbol"), e,
                 )
-                results["errors"] += 1
+                return "compare", False
 
-    # Inter-call sleep keeps free-tier rate-limits happy
-    await asyncio.sleep(0.0)
+    tasks: list = [_run_adv(h) for h in top_holdings[:max_adv]]
+    earn_candidates = [
+        h for h in top_holdings if h.get("earnings_date")
+    ][:max_earn]
+    tasks += [_run_earn(h) for h in earn_candidates]
+    if len(top_holdings) >= 2:
+        anchor = top_holdings[0]["symbol"]
+        tasks += [
+            _run_compare(anchor, h)
+            for h in top_holdings[1:max_compare_pairs + 1]
+        ]
+
+    outcomes = await asyncio.gather(*tasks, return_exceptions=False)
+    for bucket, ok in outcomes:
+        if ok:
+            results[bucket] += 1
+        else:
+            results["errors"] += 1
 
     return {"status": "ok", **results}

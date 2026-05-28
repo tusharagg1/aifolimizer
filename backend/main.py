@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from app.api import ws
 from app.api import skills as skills_api
 from app.api import ops as ops_api
+from app.api import agents as agents_api
 from app.services import wealthsimple
 from app.services import data_router
 from app.jobs import scheduler
@@ -83,6 +84,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(ws.router, prefix="/ws", tags=["wealthsimple"])
 app.include_router(skills_api.router, prefix="/skills", tags=["skills"])
 app.include_router(ops_api.router, prefix="/ops", tags=["ops"])
+app.include_router(agents_api.router, prefix="/agents", tags=["agents"])
 
 
 @app.get("/health")
