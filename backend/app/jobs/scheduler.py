@@ -185,6 +185,7 @@ async def _persist_integrated_signals(
                     "kelly_pct": rec.get("kelly_pct"),
                     "win_prob": rec.get("win_prob"),
                     "earnings_risk": rec.get("earnings_risk"),
+                    "evidence_tier": rec.get("evidence_tier"),
                 },
             )
             written += 1

@@ -535,12 +535,16 @@ def backtest_all_skills(
     lookback_days: int = 365 * 5,
     tx_cost_bps: float = 5.0,
     persist: bool = True,
+    label: str = "broad",
 ) -> dict:
+    # label distinguishes the personalized "holdings" run from the unbiased
+    # "broad" basket run so the trust report can show both side by side.
     out = {
         "as_of": time.time(),
         "lookback_days": lookback_days,
         "tx_cost_bps": tx_cost_bps,
         "universe": universe,
+        "label": label,
         "results": [],
     }
     for skill in list_skills():
@@ -557,16 +561,20 @@ def backtest_all_skills(
 
     if persist:
         _OUT_DIR.mkdir(parents=True, exist_ok=True)
-        path = _OUT_DIR / f"skill_backtests_{int(time.time())}.json"
+        path = _OUT_DIR / f"skill_backtests_{label}_{int(time.time())}.json"
         path.write_text(json.dumps(out, indent=2), encoding="utf-8")
         out["persisted_to"] = str(path)
     return out
 
 
-def latest_results() -> dict | None:
+def latest_results(label: str | None = None) -> dict | None:
+    """Most recent persisted run. Pass label ('broad'/'holdings') to filter;
+    None returns the latest of any label (recency by file mtime, so legacy
+    unlabeled files still resolve correctly)."""
     if not _OUT_DIR.exists():
         return None
-    files = sorted(_OUT_DIR.glob("skill_backtests_*.json"))
+    pattern = f"skill_backtests_{label}_*.json" if label else "skill_backtests_*.json"
+    files = sorted(_OUT_DIR.glob(pattern), key=lambda p: p.stat().st_mtime)
     if not files:
         return None
     return json.loads(files[-1].read_text(encoding="utf-8"))

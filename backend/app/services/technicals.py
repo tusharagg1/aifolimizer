@@ -48,6 +48,45 @@ def _safe(series: pd.Series | None) -> float | None:
         return None
 
 
+def _candle_patterns(df: pd.DataFrame) -> dict:
+    """Detect candlestick patterns on last 2 bars. Returns detected list + signal."""
+    try:
+        if "Open" not in df.columns or len(df) < 3:
+            return {"detected": [], "signal": "neutral"}
+        o = df["Open"].squeeze()
+        h = df["High"].squeeze()
+        l = df["Low"].squeeze()
+        c = df["Close"].squeeze()
+        o1, h1, l1, c1 = float(o.iloc[-1]), float(h.iloc[-1]), float(l.iloc[-1]), float(c.iloc[-1])
+        o2, h2, l2, c2 = float(o.iloc[-2]), float(h.iloc[-2]), float(l.iloc[-2]), float(c.iloc[-2])
+        rng1 = h1 - l1
+        body1 = abs(c1 - o1)
+        upper_wick1 = h1 - max(c1, o1)
+        lower_wick1 = min(c1, o1) - l1
+        body2 = abs(c2 - o2)
+        patterns: list[str] = []
+        if rng1 > 0 and body1 / rng1 < 0.1:
+            patterns.append("doji")
+        if rng1 > 0 and body1 > 0 and lower_wick1 > 2 * body1 and upper_wick1 < 0.3 * rng1:
+            patterns.append("hammer")
+        if rng1 > 0 and body1 > 0 and upper_wick1 > 2 * body1 and lower_wick1 < 0.3 * rng1:
+            patterns.append("shooting_star")
+        if c2 < o2 and c1 > o1 and body1 > body2 and c1 > o2 and o1 < c2:
+            patterns.append("bullish_engulfing")
+        if c2 > o2 and c1 < o1 and body1 > body2 and c1 < o2 and o1 > c2:
+            patterns.append("bearish_engulfing")
+        if rng1 > 0 and body1 / rng1 > 0.9:
+            patterns.append("marubozu_bullish" if c1 > o1 else "marubozu_bearish")
+        bullish = {"hammer", "bullish_engulfing", "marubozu_bullish"}
+        bearish = {"shooting_star", "bearish_engulfing", "marubozu_bearish"}
+        nb = sum(1 for p in patterns if p in bullish)
+        nbe = sum(1 for p in patterns if p in bearish)
+        signal = "bullish" if nb > nbe else ("bearish" if nbe > nb else ("indecision" if "doji" in patterns else "neutral"))
+        return {"detected": patterns, "signal": signal}
+    except Exception:
+        return {"detected": [], "signal": "neutral"}
+
+
 def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> dict:
     """Indicators from 1y daily OHLCV. Returns {} if insufficient data.
 
@@ -403,6 +442,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             "signal_agreement": signal_agreement,
             "signal_conviction": signal_conviction,
             "signal_conflicts": signal_conflicts,
+            "candle_patterns": _candle_patterns(df),
         }
     except Exception as e:
         _LOG.warning(f"[technicals] compute error: {e}")
@@ -529,4 +569,91 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
             )
             _cache[sym] = (result, time.time())
             out[sym] = result
+    return out
+
+
+_MTF_CACHE: dict[tuple, tuple[dict, float]] = {}
+_MTF_CACHE_TTL = 3600
+
+_MTF_PERIOD_MAP = {"1d": "1y", "1wk": "5y", "1mo": "10y"}
+_MTF_KEY_FIELDS = (
+    "trend", "rsi_14", "rsi_signal", "macd_hist", "signal_agreement",
+    "signal_conviction", "technical_score", "stage", "obv_trend", "adx_signal",
+    "sma_200", "current_price",
+)
+
+
+def _mtf_confluence(tf_results: dict, tfs: list[str]) -> dict:
+    """Summarise signal alignment across timeframes."""
+    trends = [tf_results[tf].get("trend") for tf in tfs if tf_results.get(tf)]
+    agreements = [tf_results[tf].get("signal_agreement") for tf in tfs if tf_results.get(tf)]
+    valid_trends = [t for t in trends if t in ("uptrend", "downtrend")]
+    if len(valid_trends) == len(tfs) and len(set(valid_trends)) == 1:
+        trend_alignment = "aligned_" + valid_trends[0]
+    else:
+        trend_alignment = "mixed" if valid_trends else "no_data"
+    valid_agreements = [a for a in agreements if a in ("bullish", "bearish")]
+    if len(valid_agreements) == len(tfs) and len(set(valid_agreements)) == 1:
+        signal_alignment = "aligned_" + valid_agreements[0]
+    else:
+        signal_alignment = "mixed" if valid_agreements else "no_data"
+    if trend_alignment == "aligned_uptrend" and signal_alignment == "aligned_bullish":
+        overall = "strong_bullish"
+    elif trend_alignment == "aligned_downtrend" and signal_alignment == "aligned_bearish":
+        overall = "strong_bearish"
+    elif "mixed" in (trend_alignment, signal_alignment):
+        overall = "mixed"
+    else:
+        overall = "neutral"
+    return {
+        "trend_alignment": trend_alignment,
+        "signal_alignment": signal_alignment,
+        "overall": overall,
+        "timeframes_checked": tfs,
+    }
+
+
+def get_technicals_mtf(
+    symbols: list[str],
+    timeframes: list[str] | None = None,
+) -> dict[str, dict]:
+    """Multi-timeframe technicals for symbols.
+
+    Returns per-symbol dict keyed by TF ("1d", "1wk", "1mo") with key signals
+    plus a mtf_confluence summary indicating whether signals align across TFs.
+    timeframes defaults to ["1d", "1wk"]. Valid values: "1d", "1wk", "1mo".
+    """
+    tfs = [t for t in (timeframes or ["1d", "1wk"]) if t in _MTF_PERIOD_MAP]
+    if not tfs:
+        tfs = ["1d", "1wk"]
+    now = time.time()
+    spy_close = _fetch_spy_close()
+    out: dict[str, dict] = {}
+    for sym in symbols:
+        cache_key = (sym.upper(), tuple(sorted(tfs)))
+        entry = _MTF_CACHE.get(cache_key)
+        if entry and (now - entry[1]) < _MTF_CACHE_TTL:
+            out[sym] = entry[0]
+            continue
+        tf_results: dict[str, dict] = {}
+        for tf in tfs:
+            period = _MTF_PERIOD_MAP[tf]
+            try:
+                df = yf.download(
+                    sym, period=period, interval=tf,
+                    progress=False, auto_adjust=True,
+                )
+                if df is None or df.empty:
+                    tf_results[tf] = {}
+                    continue
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                full = _compute_from_df(df, spy_close=spy_close)
+                tf_results[tf] = {k: full[k] for k in _MTF_KEY_FIELDS if k in full}
+            except Exception as e:
+                _LOG.warning(f"[technicals_mtf] {sym} {tf}: {e}")
+                tf_results[tf] = {}
+        result = {"timeframes": tf_results, "mtf_confluence": _mtf_confluence(tf_results, tfs)}
+        _MTF_CACHE[cache_key] = (result, now)
+        out[sym] = result
     return out

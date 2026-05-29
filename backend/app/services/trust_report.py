@@ -10,6 +10,11 @@ Produces two artefacts:
 
 Call generate_report() to refresh both. Designed to be called
 once per week via scheduler or manually via MCP tool.
+
+The report shows up to two labeled backtest blocks:
+- "holdings"  — personalized run on live portfolio (decision-relevant headline)
+- "broad"     — unbiased 40+ symbol basket (strategy mechanics, no single-name luck)
+Each is picked up independently from the latest persisted run of that label.
 """
 
 from __future__ import annotations
@@ -34,9 +39,28 @@ def generate_report() -> dict:
     ts = time.time()
     dt_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # --- Backtest section ---
-    bt = skill_bt_svc.latest_results() or {}
-    bt_rows: list[dict] = bt.get("results", [])
+    # --- Backtest blocks: prefer labeled runs (holdings headline + broad
+    # mechanics); fall back to any legacy unlabeled run. ---
+    holdings = skill_bt_svc.latest_results("holdings")
+    broad = skill_bt_svc.latest_results("broad")
+    blocks: list[tuple[str, str, dict]] = []
+    if holdings:
+        blocks.append((
+            "Headline — Your Holdings",
+            "Run on your live portfolio top holdings — decision-relevant, but a "
+            "small single-account universe.",
+            holdings,
+        ))
+    if broad:
+        blocks.append((
+            "Mechanics — Unbiased Broad Basket",
+            "40+ symbols across 11 GICS sectors including laggards and drawdown "
+            "names — tests strategy mechanics, not single-name luck.",
+            broad,
+        ))
+    if not blocks:
+        legacy = skill_bt_svc.latest_results()
+        blocks.append(("Backtest Results", "", legacy or {}))
 
     # --- Live track record ---
     live = pt_svc.get_track_record(windows=[7, 30, 90])
@@ -48,7 +72,8 @@ def generate_report() -> dict:
     # --- Write private jsonl ---
     evidence = {
         "generated_at": ts,
-        "backtest": bt,
+        "backtest_holdings": holdings,
+        "backtest_broad": broad,
         "live_track_record": live,
         "source_reliability": reliability,
     }
@@ -57,22 +82,86 @@ def generate_report() -> dict:
         f.write(json.dumps(evidence) + "\n")
 
     # --- Write public markdown ---
-    md = _render_markdown(dt_str, bt_rows, bt, live_windows, reliability)
+    md = _render_markdown(dt_str, blocks, live_windows, reliability)
     _PUBLIC_OUT.write_text(md, encoding="utf-8")
 
+    total_skills = sum(len(b[2].get("results", [])) for b in blocks)
     return {
         "generated_at": ts,
         "public": str(_PUBLIC_OUT),
         "private": str(_PRIVATE_OUT),
-        "backtest_skills": len(bt_rows),
+        "backtest_skills": total_skills,
         "live_recs_logged": live.get("total_logged", 0),
     }
 
 
+def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
+    """Honest trust tier driven by forward (out-of-sample) sample size, not by
+    backtest gloss. Closed forward signals are the only OOS evidence we have."""
+    forward_n = max((w.get("count", 0) for w in live_windows.values()), default=0)
+    if forward_n < 30:
+        return (
+            "EXPERIMENTAL", forward_n,
+            f"Only {forward_n} closed forward signals (<30). Recommendations are "
+            "unproven. Backtests below are in-sample proxies, NOT evidence of edge.",
+        )
+    if forward_n < 100:
+        return (
+            "DEVELOPING", forward_n,
+            f"{forward_n} closed forward signals (30–99). Trend forming but below "
+            "the ~100-signal bar for trusting confidence labels.",
+        )
+    return (
+        "SEED-ESTABLISHED", forward_n,
+        f"{forward_n} closed forward signals (≥100). Minimum sample met — judge by "
+        "calibration and net-of-cost expectancy, not raw win rate.",
+    )
+
+
+def _universe_str(universe: list[str]) -> str:
+    if not universe:
+        return "—"
+    if len(universe) <= 12:
+        return ", ".join(universe)
+    return ", ".join(universe[:12]) + f", … ({len(universe)} total)"
+
+
+def _render_backtest_block(a, title: str, subtitle: str, bt_meta: dict) -> None:
+    a(f"### {title}")
+    a("")
+    if subtitle:
+        a(subtitle)
+        a("")
+    a(f"- Universe: {_universe_str(bt_meta.get('universe', []))}")
+    a(f"- Lookback: {bt_meta.get('lookback_days', 0)} days")
+    a(f"- Transaction cost: {bt_meta.get('tx_cost_bps', 0)} bps/leg")
+    a("")
+    a("| Skill | Rule Proxy | CAGR % | Sharpe | Sortino | Max DD % | Hit Rate % | Alpha vs SPY % |")
+    a("|---|---|---|---|---|---|---|---|")
+    for r in bt_meta.get("results", []):
+        if "error" in r:
+            a(f"| {r['skill']} | — | error | | | | | |")
+            continue
+        alpha_spy = r.get("alpha_vs_spy_pct")
+        a_str = f"{alpha_spy:+.1f}" if alpha_spy is not None else "—"
+        a(
+            f"| {r['skill']} "
+            f"| {r.get('strategy_spec', '')} "
+            f"| {r.get('cagr_pct', '')} "
+            f"| {r.get('sharpe', '')} "
+            f"| {r.get('sortino', '')} "
+            f"| {r.get('max_drawdown_pct', '')} "
+            f"| {r.get('hit_rate_pct', '')} "
+            f"| {a_str} |"
+        )
+    a("")
+    a("*SPY and XEQT.TO returns over same period used as benchmark.*")
+    a("")
+
+
 def _render_markdown(
     dt_str: str,
-    bt_rows: list[dict],
-    bt_meta: dict,
+    blocks: list[tuple[str, str, dict]],
     live_windows: dict,
     reliability: list[dict],
 ) -> str:
@@ -94,6 +183,25 @@ def _render_markdown(
     a("")
     a("---")
     a("")
+
+    # --- Evidence tier banner (data-driven, forward-sample gated) ---
+    tier, forward_n, why = _evidence_tier(live_windows)
+    a("## Evidence Tier")
+    a("")
+    a(f"> **{tier}** — {why}")
+    a(">")
+    a("> Evidence hierarchy used here: `proven edge` (large forward sample + calibrated +")
+    a("> positive net expectancy) > `reasonable thesis` > `experimental`. Until the forward")
+    a("> sample is large enough, treat every recommendation as **experimental**.")
+    a(">")
+    a("> **Survivorship-bias caveat:** the broad backtest universe is a fixed list of names")
+    a("> that still trade today. Free data lacks delisted/merged tickers, so backtest returns")
+    a("> are biased upward versus a true point-in-time universe. Treat them as a lower-bound")
+    a("> sanity check on mechanics, not a return forecast.")
+    a("")
+    a("---")
+    a("")
+
     a("## Methodology")
     a("")
     a("### Data Sources")
@@ -113,43 +221,23 @@ def _render_markdown(
     a("Each skill is approximated by a deterministic Python rule applied to OHLC bars.")
     a("LLM thesis, news sentiment, and qualitative overlay are NOT replayed.")
     a("Treat rule-based results as a **lower bound** on actual skill quality.")
-    a("")
-    if bt_meta:
-        a(f"- Universe: {', '.join(bt_meta.get('universe', []))}")
-        a(f"- Lookback: {bt_meta.get('lookback_days', 0)} days")
-        a(f"- Transaction cost: {bt_meta.get('tx_cost_bps', 0)} bps/leg")
+    a("Signals are shifted one bar before execution (no same-bar look-ahead).")
     a("")
     a("---")
     a("")
+
     a("## Historical Backtest Results")
     a("")
-    a("| Skill | Rule Proxy | CAGR % | Sharpe | Sortino | Max DD % | Hit Rate % | Alpha vs SPY % |")
-    a("|---|---|---|---|---|---|---|---|")
-    for r in bt_rows:
-        if "error" in r:
-            a(f"| {r['skill']} | — | error | | | | | |")
-            continue
-        alpha_spy = r.get("alpha_vs_spy_pct")
-        a_str = f"{alpha_spy:+.1f}" if alpha_spy is not None else "—"
-        a(
-            f"| {r['skill']} "
-            f"| {r.get('strategy_spec', '')} "
-            f"| {r.get('cagr_pct', '')} "
-            f"| {r.get('sharpe', '')} "
-            f"| {r.get('sortino', '')} "
-            f"| {r.get('max_drawdown_pct', '')} "
-            f"| {r.get('hit_rate_pct', '')} "
-            f"| {a_str} |"
-        )
-    a("")
-    a("*SPY and XEQT.TO returns over same period used as benchmark.*")
-    a("")
+    for title, subtitle, bt_meta in blocks:
+        _render_backtest_block(a, title, subtitle, bt_meta)
     a("---")
     a("")
+
     a("## Forward Paper-Trade (Live)")
     a("")
     a("Every recommendation logged via `log_recommendation` MCP tool.")
     a("Scored daily via `score_recommendations`.")
+    a(f"Closed forward signals so far: **{forward_n}** (out-of-sample evidence).")
     a("")
     a("| Window | Count | Win Rate % | Avg Return % |")
     a("|---|---|---|---|")

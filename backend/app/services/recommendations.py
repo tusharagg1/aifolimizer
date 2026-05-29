@@ -637,6 +637,11 @@ def _score_position(
             if earnings_risk == "imminent" and action == "BUY":
                 entry_timing = "wait_pullback"  # don't enter right before binary event
 
+    _ev = _evidence_context()
+    evidence_tier, evidence_note = _evidence_tier(
+        action, confidence, _ev["forward_n"], _ev["calibrated"], ev_dollars
+    )
+
     return {
         "symbol": symbol,
         "name": position.get("name") or symbol,
@@ -644,6 +649,8 @@ def _score_position(
         "action": action,
         "score": score,
         "confidence": confidence,
+        "evidence_tier": evidence_tier,
+        "evidence_note": evidence_note,
         "reasons": reasons[:5],
         "flags": flags,
         "asset_class": position.get("asset_class") or "",
@@ -667,9 +674,13 @@ def _score_position(
         "risk_reward": risk_reward,
         "entry_timing": entry_timing,
         "kelly_pct": kelly_pct,
+        # Sizing/EV are indicative only: win_prob is a heuristic, not yet
+        # calibrated from realized outcomes — do not treat as precise.
+        "sizing_basis": "indicative_heuristic",
         # Expected value
         "ev_dollars": ev_dollars,
         "win_prob": round(win_prob, 3),
+        "win_prob_basis": "heuristic",
         "max_loss_dollars": max_loss_dollars,
         # Earnings
         "days_to_earnings": days_to_earnings,
@@ -689,6 +700,75 @@ def _score_position(
             "direction": sq["prediction"]["direction"],
         },
     }
+
+
+# ── Evidence tiering ─────────────────────────────────────────────────────────
+# Honest separation: a recommendation is only "proven" once enough closed
+# forward signals exist AND probabilities are calibrated. Until then it is
+# experimental, no matter how cleanly today's sub-signals converge. This stops
+# in-sample backtests + live convergence from masquerading as realized edge.
+_MIN_FORWARD_PROVEN = 100
+_MIN_FORWARD_THESIS = 30
+_EVIDENCE_TTL = 300
+_EVIDENCE_CACHE: tuple[dict, float] | None = None
+
+
+def _evidence_context() -> dict:
+    """Forward (out-of-sample) sample size, cached 5 min. Forward closed
+    signals are the only OOS evidence we have; in-sample backtests and live
+    sub-signal convergence do not count as proof. Calibration status is wired
+    in a later phase (calibration.calibration_verdict is async + DB-backed);
+    until then `calibrated` stays False so nothing is labeled proven_edge."""
+    global _EVIDENCE_CACHE
+    if _EVIDENCE_CACHE and time.time() - _EVIDENCE_CACHE[1] < _EVIDENCE_TTL:
+        return _EVIDENCE_CACHE[0]
+    forward_n = 0
+    try:
+        tr = paper_trade.get_track_record(windows=[90])
+        forward_n = max(
+            (w.get("count", 0) for w in tr.get("windows", {}).values()),
+            default=0,
+        )
+    except Exception:
+        forward_n = 0
+    ctx = {"forward_n": forward_n, "calibrated": False}
+    _EVIDENCE_CACHE = (ctx, time.time())
+    return ctx
+
+
+def _evidence_tier(
+    action: str,
+    confidence: str,
+    forward_n: int,
+    calibrated: bool,
+    ev_dollars: float | None,
+) -> tuple[str, str]:
+    """Classify a recommendation: proven_edge / reasonable_thesis /
+    experimental / no_edge. Determines whether 'high confidence' is earned."""
+    if action == "NO_EDGE":
+        return "no_edge", "No measurable edge — no clean directional signal."
+    positive_ev = ev_dollars is None or ev_dollars > 0
+    if (
+        forward_n >= _MIN_FORWARD_PROVEN
+        and calibrated
+        and positive_ev
+        and confidence == "high"
+    ):
+        return (
+            "proven_edge",
+            f"High convergence + {forward_n} calibrated forward signals.",
+        )
+    if forward_n >= _MIN_FORWARD_THESIS and confidence in ("high", "medium"):
+        return (
+            "reasonable_thesis",
+            f"Signals align; {forward_n} forward signals logged but not yet "
+            "calibrated/proven.",
+        )
+    return (
+        "experimental",
+        f"Only {forward_n} closed forward signals — experimental until "
+        f"calibrated (need ~{_MIN_FORWARD_PROVEN}).",
+    )
 
 
 def _fmt_price(price: float) -> str:

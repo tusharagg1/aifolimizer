@@ -80,6 +80,9 @@ def _fetch_one(symbol: str) -> dict:
             pass
 
         return {
+            "name": info.get("longName") or info.get("shortName"),
+            "quote_type": info.get("quoteType"),
+            "currency": info.get("currency"),
             "pe_ratio": info.get("trailingPE"),
             "forward_pe": info.get("forwardPE"),
             "eps_ttm": info.get("trailingEps"),
