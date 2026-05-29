@@ -49,6 +49,13 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(
         asyncio.to_thread(data_router.get_quotes_batch, _PREWARM, 300)
     )
+    # Re-seed the WS session from disk so the scheduler keeps the token warm
+    # across restarts (its ticks refresh it) instead of idling until a manual
+    # login. Failure is non-fatal — falls back to lazy login on first use.
+    try:
+        await asyncio.to_thread(wealthsimple.restore_session)
+    except Exception:
+        pass
     scheduler.start_scheduler()
     yield
     scheduler.stop_scheduler()

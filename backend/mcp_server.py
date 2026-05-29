@@ -43,6 +43,9 @@ from app.services import (
     shadow_account as shadow_svc,
     run_card as run_card_svc,
     skill_runner as skill_runner_svc,
+    geopolitical as geopolitical_svc,
+    recommendations as recommendations_svc,
+    watchlist as watchlist_svc,
 )
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
@@ -51,22 +54,12 @@ from ws_api import WSAPISession
 mcp = FastMCP("aifolimizer")
 
 _state: dict[str, Any] = {"session_id": None}
-_SESSION_FILE = Path(__file__).parent / ".ws_session.json"
+# Unified WS session file — same path _persist_session rewrites on token
+# refresh, so headless runs survive rotation for the full refresh-token life.
+_SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 
 _MAX_SYMBOLS = 100
 _VALID_ACCOUNT_TYPES = {"TFSA", "RRSP", "RESP", "Non-Reg", "Crypto", "LIRA", "FHSA", "Cash", ""}
-
-# Diverse 20-symbol fallback universe: 5 US sectors + 4 Canadian + 3 ETFs + 2 mid/small
-_DEFAULT_BACKTEST_UNIVERSE = [
-    # US tech
-    "AAPL", "MSFT", "NVDA", "GOOGL", "META",
-    # US non-tech (financials, healthcare, energy, consumer)
-    "JPM", "JNJ", "XOM", "AMZN", "HD",
-    # Canadian equities (banks + energy)
-    "TD.TO", "RY.TO", "ENB.TO", "CNQ.TO",
-    # ETFs — Canadian broad + US tech + US small-cap
-    "XEQT.TO", "VFV.TO", "XIC.TO", "QQQ", "IWM",
-]
 
 
 def _load_cached_session() -> str | None:
@@ -315,6 +308,32 @@ async def get_market_breadth() -> dict:
     return await asyncio.to_thread(macro.market_breadth)
 
 
+@mcp.tool()
+async def get_geopolitical_signals(lookback_hours: int = 24) -> dict:
+    """
+    Geopolitical tension index from GDELT 2.0 Doc API (free, no key).
+    Scans last lookback_hours of global news for conflict, trade, sanctions,
+    energy, and political-instability themes.
+
+    Returns:
+      global_tension_index (0-100): weighted mean across regions
+      level: "high" | "moderate" | "low"
+      regions: {Americas, Europe, Asia_Pacific, Middle_East, Emerging} each with
+               tension_score (0-100), article_count, level
+      hot_regions: regions where tension_score >= 60
+      categories_detected: event types found (armed_conflict, trade_tensions,
+                           sanctions, macro_stress, energy_events, ...)
+      market_implications: list of ETF/sector impacts (e.g. "XLE (Energy +)")
+      articles_analyzed: total article count processed
+
+    lookback_hours: 6–168 (defaults 24h). Use 48-72h for broader signal.
+    Cached 1h. Use alongside get_macro_snapshot in macro-impact skill.
+    """
+    return await asyncio.to_thread(
+        geopolitical_svc.get_geopolitical_signals, lookback_hours
+    )
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Fundamentals, technicals, news
 # ────────────────────────────────────────────────────────────────────────────────
@@ -381,6 +400,46 @@ async def get_technicals(account_id: str = "", symbols: list[str] = []) -> dict:
 
 
 @mcp.tool()
+async def get_technicals_mtf(
+    account_id: str = "",
+    symbols: list[str] = [],
+    timeframes: list[str] = ["1d", "1wk"],
+) -> dict:
+    """
+    Multi-timeframe technical analysis. Returns per-symbol signals for each
+    timeframe plus a mtf_confluence summary.
+
+    timeframes: list of intervals to analyse — "1d" (daily), "1wk" (weekly),
+    "1mo" (monthly). Defaults to ["1d", "1wk"].
+
+    Per-TF fields: trend, rsi_14, rsi_signal, macd_hist, signal_agreement,
+    signal_conviction, technical_score, stage, obv_trend, adx_signal,
+    sma_200, current_price.
+
+    mtf_confluence fields:
+      trend_alignment: "aligned_uptrend" | "aligned_downtrend" | "mixed" | "no_data"
+      signal_alignment: "aligned_bullish" | "aligned_bearish" | "mixed" | "no_data"
+      overall: "strong_bullish" | "strong_bearish" | "mixed" | "neutral"
+
+    Use when daily signal conflicts with weekly trend — MTF resolves ambiguity.
+    Cached 1h per (symbol, timeframes). If symbols=[], uses top 15 by weight.
+    """
+    session_id = await _ensure_session()
+    session = wealthsimple.get_session(session_id)
+    profile = session.get("profile") if session else None
+    _validate_account_id(account_id, profile)
+
+    if not symbols:
+        portfolio = await _load_portfolio(account_id)
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
+        symbols = [p.symbol for p in top]
+    _validate_symbols(symbols)
+    valid = {"1d", "1wk", "1mo"}
+    tfs = [t for t in timeframes if t in valid] or ["1d", "1wk"]
+    return await asyncio.to_thread(technicals_svc.get_technicals_mtf, symbols, tfs)
+
+
+@mcp.tool()
 async def get_technicals_intraday(account_id: str = "", symbols: list[str] = []) -> dict:
     """
     Intraday indicators on 5-minute bars: VWAP, opening range (first 30 min) +
@@ -409,15 +468,26 @@ async def get_technicals_intraday(account_id: str = "", symbols: list[str] = [])
 
 
 @mcp.tool()
-async def get_earnings_calendar(account_id: str = "") -> list[dict]:
+async def get_earnings_calendar(
+    account_id: str = "", symbols: list[str] = [],
+) -> list[dict]:
     """
     Next earnings dates for all portfolio holdings, sorted ascending.
     Flags entries in the next 14 days as is_upcoming=True.
+    Pass `symbols` to also include non-held names (e.g. watchlist tickers);
+    they are unioned with holdings. Each entry has held=True/False.
     Useful for pre-earnings analysis — call this before earnings_analyzer skill.
     """
     portfolio = await _load_portfolio(account_id)
-    symbols = [p.symbol for p in portfolio.positions]
-    fund_data = await asyncio.to_thread(fundamentals_svc.get_fundamentals, symbols)
+    held = [p.symbol for p in portfolio.positions]
+    held_set = set(held)
+    extra = _validate_symbols(
+        [s.strip().upper() for s in symbols if s and s.strip()]
+    )
+    all_syms = list(dict.fromkeys(held + extra))  # dedupe, preserve order
+    fund_data = await asyncio.to_thread(
+        fundamentals_svc.get_fundamentals, all_syms
+    )
 
     from datetime import date, timedelta
     today = date.today()
@@ -435,10 +505,116 @@ async def get_earnings_calendar(account_id: str = "") -> list[dict]:
                 "earnings_date": ed[:10],
                 "days_until": days_until,
                 "is_upcoming": today <= ed_date <= cutoff,
+                "held": sym in held_set,
             })
         except Exception:
             continue
     return sorted(results, key=lambda r: r["earnings_date"])
+
+
+@mcp.tool()
+async def get_watchlist() -> list[dict]:
+    """
+    User-defined watchlist — symbols being tracked but not held.
+    Returns symbol, name, asset_class, notes, added_at. No PII (no positions).
+    Pair with get_trade_ideas or get_earnings_calendar(symbols=...) to fold
+    watchlist names into ranking / earnings checks.
+    """
+    items = await asyncio.to_thread(watchlist_svc.load_watchlist)
+    return [
+        {
+            "symbol": i.get("symbol"),
+            "name": i.get("name") or i.get("symbol"),
+            "asset_class": i.get("asset_class") or "stock",
+            "notes": i.get("notes", ""),
+            "added_at": i.get("added_at"),
+        }
+        for i in items
+        if i.get("symbol")
+    ]
+
+
+@mcp.tool()
+async def get_trade_ideas(
+    top_n: int = 3,
+    include_watchlist: bool = True,
+    min_risk_reward: float = 1.5,
+) -> dict:
+    """
+    Top-N actionable trade ideas across holdings (+ watchlist), ranked by score.
+
+    Reuses the backend recommendation engine (same scoring as the dashboard /
+    nightly signals) — no duplicated logic. Filters out non-actionable names
+    (HOLD/WATCH/PASS/NO_EDGE), names whose entry timing says wait for a pullback,
+    and ideas below `min_risk_reward`. Each idea carries entry/stop/target so it
+    is directly tradeable. Use for "top stocks to trade today" / morning brief.
+    """
+    portfolio = await _load_portfolio("")
+    held = {p.symbol for p in portfolio.positions if p.symbol}
+    positions = [
+        {
+            "symbol": p.symbol, "name": p.name, "weight": p.weight,
+            "market_value_cad": p.market_value_cad,
+            "total_return_pct": p.total_return_pct,
+            "currency": p.currency, "asset_class": p.asset_class,
+            "sector": p.sector,
+        }
+        for p in portfolio.positions if p.symbol
+    ]
+    if include_watchlist:
+        wl = await asyncio.to_thread(watchlist_svc.load_watchlist)
+        for i in wl:
+            sym = i.get("symbol")
+            if not sym or sym in held:
+                continue
+            positions.append({
+                "symbol": sym, "name": i.get("name") or sym, "weight": 0.0,
+                "market_value_cad": 0.0, "total_return_pct": 0.0,
+                "currency": "CAD" if sym.endswith((".TO", ".V")) else "USD",
+                "asset_class": i.get("asset_class") or "stock", "sector": "",
+            })
+
+    recs = await asyncio.to_thread(
+        recommendations_svc.get_recommendations, positions, None,
+    )
+
+    _SKIP_ACTIONS = {"HOLD", "WATCH", "PASS", "NO_EDGE"}
+    ideas: list[dict] = []
+    for r in recs:
+        action = (r.get("action") or "").upper()
+        if action in _SKIP_ACTIONS:
+            continue
+        if r.get("entry_timing") == "wait_pullback":
+            continue
+        rr = r.get("risk_reward")
+        if rr is not None and rr < min_risk_reward:
+            continue
+        sym = r.get("symbol")
+        ideas.append({
+            "symbol": sym,
+            "name": r.get("name") or sym,
+            "action": action,
+            "held": sym in held,
+            "score": r.get("score"),
+            "conviction": r.get("confidence"),
+            "current_price": r.get("current_price"),
+            "entry_timing": r.get("entry_timing"),
+            "stop_loss": r.get("stop_loss"),
+            "take_profit": r.get("take_profit"),
+            "risk_reward": rr,
+            "kelly_pct": r.get("kelly_pct"),
+            "currency": r.get("currency"),
+            "reasons": (r.get("reasons") or [])[:3],
+        })
+
+    ideas.sort(key=lambda x: (x.get("score") or 0), reverse=True)
+    return {
+        "ideas": ideas[: max(0, top_n)],
+        "universe": "holdings+watchlist" if include_watchlist else "holdings",
+        "min_risk_reward": min_risk_reward,
+        "scored": len(positions),
+        "actionable": len(ideas),
+    }
 
 
 @mcp.tool()
@@ -678,6 +854,8 @@ async def backtest_portfolio(
     tx_cost_bps: float = 5.0,
     walk_forward: bool = False,
     train_frac: float = 0.7,
+    exclude_weekdays: list[int] = [],
+    max_hold_days: int = 0,
 ) -> dict:
     """
     Replay simple rule-based strategies on historical OHLCV for portfolio holdings.
@@ -691,15 +869,22 @@ async def backtest_portfolio(
     tx_cost_bps: deducted per leg (entry + exit). 5 bps default (~0.05% per side).
     walk_forward=True splits each window into in-sample (train_frac) / out-of-sample.
     Per-symbol result then includes in_sample, out_of_sample, oos_minus_is_pct fields.
+    exclude_weekdays: list of weekday ints to skip entries on (0=Mon, 1=Tue, ..., 4=Fri).
+      Pass [0] to test the "no Monday entries" filter from backtesting research.
+    max_hold_days: force-exit positions after N calendar days (0=disabled). Adds
+      time-based exits independent of signal — reduces overnight/weekend exposure.
+    profit_factor and insufficient_trades_warning (<150 trades) included in per-symbol output.
     Returns per-symbol metrics, weight-aggregated portfolio totals, delta-vs-buy-hold
     (positive = strategy beat passive). lookback_days clamped 30..730.
     If symbols=[], uses top_n holdings by weight. Cached 1h per (symbol, strategy,
-    lookback, tx_cost, walk_forward, train_frac).
+    lookback, tx_cost, walk_forward, train_frac, exclude_weekdays, max_hold_days).
     """
     lookback_days = max(30, min(int(lookback_days), 730))
     top_n = max(1, min(int(top_n), 25))
     tx_cost_bps = max(0.0, min(float(tx_cost_bps), 100.0))
     train_frac = max(0.3, min(float(train_frac), 0.9))
+    max_hold_days = max(0, int(max_hold_days))
+    exclude_weekdays = [int(d) for d in exclude_weekdays if 0 <= int(d) <= 6]
     if not strategies:
         strategies = ["buy_hold", "rsi_swing", "sma_cross", "crowd_fade"]
 
@@ -715,7 +900,7 @@ async def backtest_portfolio(
     return await asyncio.to_thread(
         backtest_svc.backtest_portfolio,
         symbols, weights, lookback_days, strategies, tx_cost_bps,
-        walk_forward, train_frac,
+        walk_forward, train_frac, exclude_weekdays or None, max_hold_days,
     )
 
 
@@ -920,6 +1105,7 @@ async def get_skill_track_record(
     lookback_days: int = 1825,
     tx_cost_bps: float = 5.0,
     fresh: bool = False,
+    label: str | None = None,
 ) -> dict:
     """Backtest all 13 skills as codified strategies over historical bars.
 
@@ -928,13 +1114,11 @@ async def get_skill_track_record(
     alpha_vs_xeqt_pct. Honest caveat: skills are codified to deterministic
     rules — LLM thesis nuance not replayed.
 
-    If universe is None, uses current portfolio top-10 holdings.
-    fresh=True forces re-run; otherwise the latest cached run is returned.
+    If universe is None: uses current portfolio top-10 holdings (label
+    "holdings") when a session exists, else the unbiased 40-name basket
+    (label "broad"). The trust report shows both labeled runs side by side.
+    fresh=True forces re-run; otherwise the latest cached run for that label.
     """
-    if not fresh:
-        cached = await asyncio.to_thread(skill_bt_svc.latest_results)
-        if cached:
-            return cached
     if not universe:
         session_id = _state.get("session_id")
         if session_id:
@@ -947,14 +1131,23 @@ async def get_skill_track_record(
                     portfolio.positions, key=lambda p: p.weight, reverse=True
                 )[:10]
                 universe = [p.symbol for p in top]
+                label = label or "holdings"
             except Exception:
-                universe = _DEFAULT_BACKTEST_UNIVERSE
+                universe = skill_bt_svc.DEFAULT_UNIVERSE
+                label = label or "broad"
         else:
-            universe = _DEFAULT_BACKTEST_UNIVERSE
+            universe = skill_bt_svc.DEFAULT_UNIVERSE
+            label = label or "broad"
+    label = label or "holdings"
+
+    if not fresh:
+        cached = await asyncio.to_thread(skill_bt_svc.latest_results, label)
+        if cached:
+            return cached
 
     return await asyncio.to_thread(
         skill_bt_svc.backtest_all_skills,
-        universe, int(lookback_days), float(tx_cost_bps), True,
+        universe, int(lookback_days), float(tx_cost_bps), True, label,
     )
 
 

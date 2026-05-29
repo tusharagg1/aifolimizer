@@ -14,6 +14,7 @@ import getpass
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,7 +26,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
 
-SESSION_FILE = Path(__file__).parent / ".ws_session.json"
+# Unified WS session file — same path app.services.wealthsimple persists/reads.
+# Schema must match wealthsimple._persist_session so refresh + restore + MCP all
+# share one file (token rotation never orphans the session the MCP server reads).
+SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 
 
 def main() -> None:
@@ -71,11 +75,20 @@ def main() -> None:
         print(f"ERROR: Login failed — {e}")
         sys.exit(1)
 
-    payload = {"session_json": session.to_json(), "email": email}
+    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "email": email,
+        "session_json": session.to_json(),
+        "saved_utc": time.time(),
+    }
     SESSION_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    try:
+        os.chmod(SESSION_FILE, 0o600)
+    except OSError:
+        pass
     print(f"\nSession cached to {SESSION_FILE}")
-    print("MCP server will use this session for ~8 hours.")
-    print("Re-run this script when the session expires.")
+    print("MCP server + backend share this file; it auto-refreshes on use.")
+    print("Re-run this script only when Wealthsimple forces re-auth (MFA).")
 
 
 if __name__ == "__main__":
