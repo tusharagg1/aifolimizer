@@ -586,13 +586,14 @@ def _pre_trade_prompt(ctx: dict) -> str:
     # (current_price, ATR, SMA50) is fine. Sizing is requested as % of NAV.
     # ATR is converted to % of price so the model has volatility scale without
     # an absolute dollar reference.
-    price = ctx.get("current_price")
-    atr = ctx.get("atr_14")
-    atr_pct = (
-        f"{round(float(atr) / float(price) * 100, 2)}"
-        if price and atr and isinstance(price, (int, float))
-        and isinstance(atr, (int, float)) and price > 0 else "n/a"
-    )
+    # numpy scalars (np.float64 from yfinance/pandas) fail isinstance(_, float)
+    # silently — try-cast covers Python and numpy numeric types alike.
+    try:
+        _p = float(ctx.get("current_price"))
+        _a = float(ctx.get("atr_14"))
+        atr_pct = f"{round(_a / _p * 100, 2)}" if _p > 0 else "n/a"
+    except (TypeError, ValueError):
+        atr_pct = "n/a"
     return (
         f"Ticker: {ctx.get('ticker', 'n/a')}\n"
         f"Direction: {ctx.get('direction', 'BUY')}\n"
