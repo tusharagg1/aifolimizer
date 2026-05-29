@@ -30,13 +30,17 @@ if ($alive) { exit 0 }
 
 Write-Log 'backend not responding — restarting'
 
-# Kill any stale uvicorn/python on 8000 first.
-$pid8000 = (netstat -ano | Select-String ':8000 .*LISTENING' | ForEach-Object {
-    ($_ -split '\s+')[-1]
-}) | Select-Object -First 1
-if ($pid8000) {
-    Stop-Process -Id ([int]$pid8000) -Force -ErrorAction SilentlyContinue
-    Write-Log "killed stale pid $pid8000"
+# Kill ALL stale listeners on 8000 (uvicorn binds both IPv4 and IPv6 → two
+# LISTENING rows). Killing only the first PID leaves the other stack holding
+# the port, and the restart below fails with 'address already in use'.
+$listeners = Get-NetTCPConnection -LocalPort 8000 -State Listen `
+    -ErrorAction SilentlyContinue
+foreach ($conn in $listeners) {
+    $stalePid = $conn.OwningProcess
+    if ($stalePid) {
+        Stop-Process -Id ([int]$stalePid) -Force -ErrorAction SilentlyContinue
+        Write-Log "killed stale pid $stalePid (local $($conn.LocalAddress):8000)"
+    }
 }
 
 # Restart backend.

@@ -26,9 +26,23 @@ from pathlib import Path
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BACKEND_DIR))
 
+# Force UTF-8 stdout so unicode in skill snapshots (em-dashes, arrows, non-ASCII
+# tickers) doesn't raise UnicodeEncodeError on Windows cp1252 console and break
+# the Telegram automation pipeline.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
 # Load .env before any service imports that read config at module level.
-from dotenv import load_dotenv  # noqa: E402
-load_dotenv(_BACKEND_DIR / ".env", override=False)
+# Soft-import so a venv missing python-dotenv falls back to OS-only env vars
+# instead of crashing the scheduled fallback with ModuleNotFoundError.
+try:
+    from dotenv import load_dotenv  # noqa: E402
+    load_dotenv(_BACKEND_DIR / ".env", override=False)
+except ImportError:
+    pass
 
 from app.services import agent_registry as ar  # noqa: E402
 from app.services import wealthsimple  # noqa: E402
