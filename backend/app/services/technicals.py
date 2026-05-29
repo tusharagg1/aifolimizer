@@ -55,14 +55,14 @@ def _candle_patterns(df: pd.DataFrame) -> dict:
             return {"detected": [], "signal": "neutral"}
         o = df["Open"].squeeze()
         h = df["High"].squeeze()
-        l = df["Low"].squeeze()
+        lo = df["Low"].squeeze()
         c = df["Close"].squeeze()
-        o1, h1, l1, c1 = float(o.iloc[-1]), float(h.iloc[-1]), float(l.iloc[-1]), float(c.iloc[-1])
-        o2, h2, l2, c2 = float(o.iloc[-2]), float(h.iloc[-2]), float(l.iloc[-2]), float(c.iloc[-2])
-        rng1 = h1 - l1
+        o1, h1, lo1, c1 = float(o.iloc[-1]), float(h.iloc[-1]), float(lo.iloc[-1]), float(c.iloc[-1])
+        o2, _, _, c2 = float(o.iloc[-2]), float(h.iloc[-2]), float(lo.iloc[-2]), float(c.iloc[-2])
+        rng1 = h1 - lo1
         body1 = abs(c1 - o1)
         upper_wick1 = h1 - max(c1, o1)
-        lower_wick1 = min(c1, o1) - l1
+        lower_wick1 = min(c1, o1) - lo1
         body2 = abs(c2 - o2)
         patterns: list[str] = []
         if rng1 > 0 and body1 / rng1 < 0.1:
