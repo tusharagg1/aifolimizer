@@ -49,3 +49,9 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Two-tier cache pattern.** L1 = in-process dict (hot path). L2 = diskcache (survives restarts + cross-process FastAPI ↔ MCP sharing). Never replace L1 with L2 — pickled SQLite reads are 1000x slower. Always L1 → L2 → fetch.
 
 - **Multi-process app = multiple cold starts.** MCP and FastAPI are two Python processes with independent dict caches. In-process cache only helps process that fetched. Cross-process diskcache makes second process see first one's work.
+
+- **Verify isinstance/subclass claims with a repro before writing them into commit messages.** np.float64 IS subclass of float (issubclass(np.float64, float) is True). An `isinstance(x, (int, float))` check accepts numpy scalars. *(Source: 8a3ac35 commit message claimed isinstance silently rejected np.float64 — false. New try-cast is harmless superset, but the premise was wrong.)*
+
+- **Cross-currency invariants: read the producer before writing "fix" math in the consumer.** wealthsimple.py:369 stores `acc["cash"] = cad_cash + usd_cash * fx` (CAD-equivalent total) before per_account propagation. `cash_available_usd` is RAW USD kept for per-currency display only — adding it to `cash_available` double-counts. fa17419 added a comment claiming the wrong invariant; d7b6ffd weaponized that comment to introduce a high-severity double-count. e3a65d8 reverted both. Always trace producer → field semantics → all consumers before adding currency arithmetic. *(Source: cash_pct double-count saga, May 29 2026.)*
+
+- **Caveat for self-correcting fixes: the comment IS part of the fix.** A wrong comment near math is worse than no comment because it actively misleads the next reviewer/editor. Either omit the invariant claim or verify it across all producer/consumer call sites before committing.
