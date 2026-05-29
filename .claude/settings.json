@@ -1,6 +1,8 @@
 {
   "permissions": {
     "allow": [
+      "mcp__code-review-graph__build_or_update_graph_tool",
+      "mcp__code-review-graph__detect_changes",
       "mcp__aifolimizer__get_profile",
       "mcp__aifolimizer__get_portfolio",
       "mcp__aifolimizer__get_xray",
@@ -162,10 +164,64 @@
       "PowerShell(git -C $proj config user.name \"tusharagg1\")",
       "PowerShell($proj = \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\")",
       "PowerShell(git -C $proj add .)",
-      "PowerShell(git -C $proj status --short)"
+      "PowerShell(git -C $proj status --short)",
+      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\sync_coordinator.py\" *)",
+      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\" *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-dirty \"${TOOL_INPUT_file_path:-}\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__code-review-graph__build_or_update_graph_tool",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-graph-rebuilt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" status",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" should-export && python \"C:\\Users\\Tusha\\.claude\\scripts\\obsidian_export.py\" --stop-hook",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-obsidian-synced",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

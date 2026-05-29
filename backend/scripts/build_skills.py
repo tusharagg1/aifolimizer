@@ -127,10 +127,16 @@ def main() -> None:
             if skill_dir.is_dir():
                 skill_file = skill_dir / "SKILL.md"
                 has_profile = False
+                requires_profile = True
                 if skill_file.exists():
                     content = skill_file.read_text(encoding="utf-8")
                     has_profile = "get_profile" in content
-                flag = "[OK]" if has_profile else "[MISSING get_profile]"
+                    if "requires_profile: false" in content:
+                        requires_profile = False
+                if not requires_profile:
+                    flag = "[OK n/a]"
+                else:
+                    flag = "[OK]" if has_profile else "[MISSING get_profile]"
                 print(f"  {skill_dir.name:30s}  {flag}")
     else:
         print("  .claude/skills/ not found")

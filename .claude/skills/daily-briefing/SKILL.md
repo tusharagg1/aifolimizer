@@ -42,6 +42,7 @@ Check macro snapshot for these scheduled events TODAY (US Eastern):
 - **GDP advance** (quarterly, 8:30am ET)
 - **VIX > 25** (elevated fear regime — wider stops, smaller size)
 - **Treasury auction** (10Y/30Y reopening — bond-proxy stocks reactive)
+- **Turn-of-Month window** (McConnell & Xu, 1897–2005): last trading day of month OR first 3 trading days of new month. Historically, essentially ALL positive equity returns are concentrated in this 4-day window. If today falls in this window, flag: `📅 TOTM WINDOW — bias long, avoid aggressive intraday shorts, favor momentum adds.`
 
 Cross-reference earnings calendar for next 24h (large-cap names only): MSFT/AAPL/NVDA/META/GOOGL/AMZN reporting tonight = next-day gap risk across whole portfolio if mega-cap.
 

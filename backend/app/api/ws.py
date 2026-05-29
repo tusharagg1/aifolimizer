@@ -1211,7 +1211,10 @@ async def add_to_watchlist(req: WatchlistAddRequest):
         raise HTTPException(status_code=401, detail="Session expired")
     if not req.symbol.strip():
         raise HTTPException(status_code=400, detail="symbol required")
-    return watchlist_svc.add_symbol(req.symbol, req.notes)
+    try:
+        return watchlist_svc.add_symbol(req.symbol, req.notes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/watchlist/{symbol}")

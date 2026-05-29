@@ -348,7 +348,17 @@
       "PowerShell(try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing -TimeoutSec 3\\).StatusCode } catch { \"not running\" })",
       "PowerShell(Start-Process -FilePath \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" -ArgumentList \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\run.py\" -WorkingDirectory \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\" -WindowStyle Minimized)",
       "PowerShell(Start-Sleep -Seconds 4; try { \\(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { \"not up yet\" })",
-      "PowerShell($script = \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\scripts\\\\schedule_alerts.ps1\"; & $script)"
+      "PowerShell($script = \"C:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\\\\scripts\\\\schedule_alerts.ps1\"; & $script)",
+      "Bash(.venv/Scripts/python.exe -c \"import time; t0=time.perf_counter\\(\\); import mcp_server; print\\(f'cold_import_ms={int\\(\\(time.perf_counter\\(\\)-t0\\)*1000\\)}'\\)\")",
+      "Bash(.venv/Scripts/python.exe ../scripts/build_skills.py)",
+      "PowerShell(.\\\\backend\\\\.venv\\\\Scripts\\\\python.exe .\\\\scripts\\\\build_skills.py 2>&1)",
+      "Bash(.venv/Scripts/python.exe scripts/build_skills.py)",
+      "PowerShell($skillsExists = Test-Path \"C:\\\\Users\\\\Tusha\\\\.claude\\\\skills\"; $vaultExists = Test-Path \"C:\\\\Users\\\\Tusha\\\\Documents\\\\obsidian\"; $scriptsExists = Test-Path \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\"; Write-Output \"skills: $skillsExists | vault: $vaultExists | scripts: $scriptsExists\"; if \\($skillsExists\\) { Get-ChildItem \"C:\\\\Users\\\\Tusha\\\\.claude\\\\skills\" | Select-Object Name })",
+      "PowerShell(\\(Get-Command python\\).Source; python --version)",
+      "Bash(backend/.venv/Scripts/python.exe backend/scripts/build_skills.py)",
+      "PowerShell(\\(Get-Command py -ErrorAction SilentlyContinue\\).Source; \\(Get-Command python3 -ErrorAction SilentlyContinue\\).Source; Get-ChildItem \"C:\\\\Users\\\\Tusha\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell($payload = '{\"mode\":\"note\",\"title\":\"obsidian-setup-test\",\"content\":\"Test note\",\"folder\":\"general\",\"tags\":[\"claude\",\"test\"]}'; $payload | py \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\"; echo \"exit: $LASTEXITCODE\")",
+      "PowerShell($payload = '{\"mode\":\"note\",\"title\":\"obsidian-setup-test\",\"content\":\"Test note\",\"folder\":\"general\",\"tags\":[\"claude\",\"test\"]}'; $payload | Out-File -Encoding utf8 \"$env:TEMP\\\\obs_test.json\"; Get-Content \"$env:TEMP\\\\obs_test.json\" | py \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\"; echo \"exit: $LASTEXITCODE\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context",

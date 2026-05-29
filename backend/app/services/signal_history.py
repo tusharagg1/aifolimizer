@@ -103,6 +103,7 @@ def log_signal(rec: dict, *, source: str = "recommendations") -> dict:
         "action": action,
         "score": rec.get("score"),
         "confidence": rec.get("confidence"),
+        "evidence_tier": rec.get("evidence_tier"),
         "entry_price": rec.get("current_price"),
         # Feature vector — what the model "saw" at decision time
         "features": {

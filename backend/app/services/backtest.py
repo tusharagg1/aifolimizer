@@ -123,6 +123,8 @@ def _run_buy_hold(close: pd.Series, tx_cost_bps: float = 0.0) -> dict:
         "max_drawdown_pct": max_dd,
         "risk_adjusted_score": _risk_adjusted(total_ret, max_dd),
         "num_trades": 1,
+        "profit_factor": None,
+        "insufficient_trades_warning": False,
         "days": days,
         "tx_cost_bps_per_leg": tx_cost_bps,
         "_daily_ret": eq_daily_ret.values,
@@ -134,20 +136,30 @@ def _run_signal(
     signal: pd.Series,
     lookback_days: int,
     tx_cost_bps: float = 0.0,
+    exclude_weekdays: list[int] | None = None,
+    max_hold_days: int = 0,
 ) -> dict:
     """Long-only walk: enter on signal=1, exit on signal=0.
     Each entry and each exit deducts tx_cost_bps from equity (one leg).
+    exclude_weekdays: skip entries on these weekdays (0=Mon, 4=Fri).
+    max_hold_days: force exit after N calendar days in position (0=disabled).
     """
     if close.empty or signal.empty:
         return _empty_result()
     aligned = pd.concat([close, signal], axis=1).dropna()
     aligned.columns = ["close", "sig"]
+    # Signal at bar i is computed from data up to bar i's close, so trading on
+    # that same bar is lookahead. Shift one bar so the decision from day i-1's
+    # close executes at day i's close (matches skill_backtest._simulate).
+    aligned["sig"] = aligned["sig"].shift(1).fillna(0).astype(int)
     if len(aligned) < 2:
         return _empty_result()
 
+    _excl = set(exclude_weekdays or [])
     fee_leg = tx_cost_bps / 10000.0
     in_pos = False
     entry_price = 0.0
+    entry_date: pd.Timestamp | None = None
     trades: list[tuple[float, float]] = []
     equity = [1.0]
 
@@ -155,20 +167,32 @@ def _run_signal(
         price_prev = aligned["close"].iloc[i - 1]
         price_now = aligned["close"].iloc[i]
         sig_now = aligned["sig"].iloc[i]
+        date_now = aligned.index[i]
 
         if in_pos:
             equity.append(equity[-1] * (price_now / price_prev))
+            # Force exit when max_hold_days exceeded
+            if max_hold_days > 0 and entry_date is not None:
+                if (date_now - entry_date).days >= max_hold_days:
+                    trades.append((entry_price, float(price_now)))
+                    in_pos = False
+                    entry_date = None
+                    equity[-1] *= (1 - fee_leg)
+                    continue
         else:
             equity.append(equity[-1])
 
         # Execute on transition — deduct one leg of fee from equity
         if not in_pos and sig_now == 1:
-            in_pos = True
-            entry_price = float(price_now)
-            equity[-1] *= (1 - fee_leg)
+            if date_now.weekday() not in _excl:
+                in_pos = True
+                entry_price = float(price_now)
+                entry_date = date_now
+                equity[-1] *= (1 - fee_leg)
         elif in_pos and sig_now == 0:
             trades.append((entry_price, float(price_now)))
             in_pos = False
+            entry_date = None
             equity[-1] *= (1 - fee_leg)
 
     if in_pos:
@@ -182,6 +206,12 @@ def _run_signal(
     final = equity[-1]
     total_ret = round((final - 1) * 100, 2)
     max_dd = round(_max_drawdown(eq_series), 2)
+
+    trade_rets = [(x / e - 1) for e, x in trades if e > 0]
+    gross_profit = sum(r for r in trade_rets if r > 0)
+    gross_loss = abs(sum(r for r in trade_rets if r < 0))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else None
+
     return {
         "total_return_pct": total_ret,
         "cagr_pct": round(_cagr(1.0, final, days), 2),
@@ -189,6 +219,8 @@ def _run_signal(
         "max_drawdown_pct": max_dd,
         "risk_adjusted_score": _risk_adjusted(total_ret, max_dd),
         "num_trades": len(trades),
+        "profit_factor": profit_factor,
+        "insufficient_trades_warning": len(trades) < 150,
         "days": days,
         "tx_cost_bps_per_leg": tx_cost_bps,
         "_daily_ret": daily_ret.values,
@@ -203,6 +235,8 @@ def _empty_result() -> dict:
         "max_drawdown_pct": 0.0,
         "risk_adjusted_score": 0.0,
         "num_trades": 0,
+        "profit_factor": None,
+        "insufficient_trades_warning": False,
         "days": 0,
         "tx_cost_bps_per_leg": 0.0,
         "_daily_ret": np.array([], dtype=float),
@@ -315,17 +349,21 @@ def _run_strategy_on_window(
     lookback_days: int,
     tx_cost_bps: float,
     crowding_label: str | None,
+    exclude_weekdays: list[int] | None = None,
+    max_hold_days: int = 0,
 ) -> dict:
     """Helper: run any strategy on a pre-trimmed close series."""
     if strategy == "buy_hold":
         return _run_buy_hold(close, tx_cost_bps)
     if strategy == "rsi_swing":
         return _run_signal(
-            close, _rsi_signal(close), lookback_days, tx_cost_bps
+            close, _rsi_signal(close), lookback_days, tx_cost_bps,
+            exclude_weekdays, max_hold_days,
         )
     if strategy == "sma_cross":
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps
+            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
+            exclude_weekdays, max_hold_days,
         )
     if strategy == "crowd_fade":
         if crowding_label == "consensus":
@@ -333,7 +371,8 @@ def _run_strategy_on_window(
             r["skipped_due_to_crowding"] = True
             return r
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps
+            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
+            exclude_weekdays, max_hold_days,
         )
     if strategy == "crowd_buy":
         if crowding_label != "contrarian":
@@ -341,7 +380,8 @@ def _run_strategy_on_window(
             r["skipped_due_to_crowding"] = True
             return r
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps
+            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
+            exclude_weekdays, max_hold_days,
         )
     return _empty_result()
 
@@ -353,6 +393,8 @@ def backtest_symbol(
     tx_cost_bps: float = _DEFAULT_TX_BPS,
     walk_forward: bool = False,
     train_frac: float = 0.7,
+    exclude_weekdays: list[int] | None = None,
+    max_hold_days: int = 0,
 ) -> dict[str, Any]:
     """Backtest one symbol on one strategy. Cached 1h.
 
@@ -367,6 +409,7 @@ def backtest_symbol(
     cache_key = (
         symbol.upper(), strategy, int(lookback_days),
         float(tx_cost_bps), bool(walk_forward), round(train_frac, 2),
+        tuple(sorted(exclude_weekdays or [])), int(max_hold_days),
     )
     entry = _CACHE.get(cache_key)
     now = time.time()
@@ -395,12 +438,15 @@ def backtest_symbol(
         out_sample = close.iloc[split_idx:]
         is_metrics = _run_strategy_on_window(
             strategy, in_sample, lookback_days, tx_cost_bps, crowding_label,
+            exclude_weekdays, max_hold_days,
         )
         oos_metrics = _run_strategy_on_window(
             strategy, out_sample, lookback_days, tx_cost_bps, crowding_label,
+            exclude_weekdays, max_hold_days,
         )
         full_metrics = _run_strategy_on_window(
             strategy, close, lookback_days, tx_cost_bps, crowding_label,
+            exclude_weekdays, max_hold_days,
         )
         is_ret = is_metrics.pop("_daily_ret", np.array([]))
         oos_ret = oos_metrics.pop("_daily_ret", np.array([]))
@@ -426,6 +472,7 @@ def backtest_symbol(
     else:
         metrics = _run_strategy_on_window(
             strategy, close, lookback_days, tx_cost_bps, crowding_label,
+            exclude_weekdays, max_hold_days,
         )
         daily_ret = metrics.pop("_daily_ret", np.array([]))
         result = {
@@ -449,6 +496,8 @@ def backtest_portfolio(
     tx_cost_bps: float = _DEFAULT_TX_BPS,
     walk_forward: bool = False,
     train_frac: float = 0.7,
+    exclude_weekdays: list[int] | None = None,
+    max_hold_days: int = 0,
 ) -> dict[str, Any]:
     """Backtest each symbol across listed strategies.
     Returns per-symbol results + weighted-portfolio totals + delta-vs-buy-hold.
@@ -476,6 +525,7 @@ def backtest_portfolio(
             per_symbol[sym][strat] = backtest_symbol(
                 sym, strat, lookback_days, tx_cost_bps,
                 walk_forward, train_frac,
+                exclude_weekdays, max_hold_days,
             )
 
     # Weighted portfolio totals per strategy
@@ -499,12 +549,17 @@ def backtest_portfolio(
             agg_ras += r.get("risk_adjusted_score", 0.0) * norm_w[sym]
             worst_dd = min(worst_dd, r.get("max_drawdown_pct", 0.0))
             n_valid += 1
+        n_insufficient = sum(
+            1 for sym in symbols
+            if per_symbol[sym][strat].get("insufficient_trades_warning", False)
+        )
         portfolio_totals[strat] = {
             "weighted_total_return_pct": round(agg_return, 2),
             "weighted_cagr_pct": round(agg_cagr, 2),
             "weighted_risk_adjusted_score": round(agg_ras, 2),
             "worst_position_drawdown_pct": round(worst_dd, 2),
             "symbols_evaluated": n_valid,
+            "insufficient_trades_count": n_insufficient,
         }
 
     # Delta vs buy_hold per strategy
@@ -524,6 +579,8 @@ def backtest_portfolio(
         "tx_cost_bps": tx_cost_bps,
         "walk_forward": walk_forward,
         "train_frac": train_frac if walk_forward else None,
+        "exclude_weekdays": exclude_weekdays or [],
+        "max_hold_days": max_hold_days,
     }
     card = generate_run_card(
         strategy=",".join(strategies),
