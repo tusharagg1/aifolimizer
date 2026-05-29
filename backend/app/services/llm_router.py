@@ -16,6 +16,7 @@ Narrative is None when all providers fail — rule-based signals still show.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from typing import Any
 
@@ -344,41 +345,48 @@ _PORTFOLIO_COMMENTARY_SYSTEM = (
     "STRICT RULES — violating any is a hallucination:\n"
     "1. TRIM/SELL actions must reference a symbol ONLY from the HOLDINGS list. "
     "   NEVER propose trimming a symbol not in HOLDINGS.\n"
-    "2. TRIM dollar amounts must be <= the position's current market_value_cad. "
-    "   Prefer percentage trims (e.g. 'Trim 25%') over fixed dollars when "
-    "   uncertain.\n"
-    "3. BUY actions must fit within Cash Available. Sum of BUY $ amounts <= "
-    "   cash. Round to nearest $100.\n"
+    "2. Size every action as a PERCENTAGE (e.g. 'Trim 25%', 'Add 2% of NLV'). "
+    "   NEVER quote absolute dollar amounts — you are not given any balances.\n"
+    "3. BUY actions must fit within the Cash figure (given as % of NLV). Sum of "
+    "   BUY allocations must not exceed available cash %.\n"
     "4. Distinguish Account Return (overall NLV vs deposits, includes cash "
     "   interest) from Equity Return (PnL on equity sleeve only). High-cash "
     "   accounts often have positive Account Return + negative Equity Return.\n"
-    "5. Reference NUMBERS from the data given — do not invent.\n"
+    "5. Reference figures from the data given — do not invent. Use weights and "
+    "   percentages only; never fabricate dollar amounts.\n"
     "6. No disclaimers, no markdown outside JSON. Each action under 15 words."
 )
 
 
 def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
-    cash_cad = summary.get("cash_available", 0)
-    cash_usd = summary.get("cash_available_usd", 0)
-    nlv = summary.get("total_value", 0)
+    # SPI guard: this prompt is sent to external LLM providers (GitHub Models,
+    # Gemini, OpenRouter, Qwen) when their keys are set. Absolute dollar amounts
+    # (NLV, cash, net deposits, per-position market value) are financial SPI and
+    # MUST NOT leave the machine. Send only relative sizing — weights and % of
+    # NLV — which is enough for the model to reason about allocation.
+    nlv = summary.get("total_value", 0) or 0
+    cash_cad = summary.get("cash_available", 0) or 0
+    cash_usd = summary.get("cash_available_usd", 0) or 0
     eq_ret = summary.get("total_return_pct", 0)
     acc_ret = summary.get("account_return_pct")
-    net_dep = summary.get("net_deposits_cad")
+    cash_pct = round((cash_cad + cash_usd) / nlv * 100, 1) if nlv else None
 
-    # Holdings table: every actual position, sorted by weight desc
+    # Holdings table: every actual position, sorted by weight desc. Weight (% of
+    # NLV) is the held-position signal — recs for watchlist/buy candidates have
+    # weight 0. Using weight (not absolute market value) keeps balances off-machine.
     holdings_with_val = sorted(
-        [r for r in top_recs if (r.get("market_value_cad") or 0) > 0],
-        key=lambda r: -(r.get("market_value_cad") or 0),
+        [r for r in top_recs if (r.get("weight") or 0) > 0],
+        key=lambda r: -(r.get("weight") or 0),
     )
     if not holdings_with_val:
         # Watchlist-only context — no held positions
         holdings_block = "(no held positions — cash + watchlist only)"
     else:
-        rows = ["sym  |  val_cad  |  ret%  |  action  |  score"]
+        rows = ["sym  |  weight%  |  ret%  |  action  |  score"]
         for r in holdings_with_val[:12]:
             rows.append(
                 f"{r['symbol']:<6} | "
-                f"${r.get('market_value_cad', 0):,.0f} | "
+                f"{r.get('weight', 0):>5.1f}% | "
                 f"{r.get('total_return_pct', 0):+.1f}% | "
                 f"{r.get('action', 'HOLD')} | "
                 f"{r.get('score', 0)}"
@@ -388,26 +396,26 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     buys = [
         r for r in top_recs
         if r.get("action") in ("BUY", "ADD")
-        and not (r.get("market_value_cad") or 0)
+        and not (r.get("weight") or 0)
     ]
     buy_block = (
         ", ".join(f"{r['symbol']} (score {r['score']})" for r in buys[:5])
         or "none"
     )
 
+    acc_ret_str = f"{acc_ret:+.2f}%" if acc_ret is not None else "N/A"
+    cash_str = f"{cash_pct:.1f}% of NLV" if cash_pct is not None else "N/A"
     return (
-        f"PORTFOLIO\n"
-        f"  NLV: ${nlv:,.0f} CAD\n"
-        f"  Net deposits: ${net_dep:,.0f} CAD\n"
-        f"  Account Return: {acc_ret:+.2f}% (NLV vs deposits)\n"
+        f"PORTFOLIO (relative sizing only — no absolute balances)\n"
+        f"  Account Return: {acc_ret_str} (NLV vs deposits)\n"
         f"  Equity Return: {eq_ret:+.2f}% (PnL on equity sleeve)\n"
-        f"  Cash CAD: ${cash_cad:,.0f} | Cash USD: ${cash_usd:,.0f} CAD\n"
+        f"  Cash: {cash_str}\n"
         f"  Health: {summary.get('grade', '?')} ({summary.get('score', '?')}/100)\n"
         f"  Regime: {top_recs[0].get('market_regime', 'unknown') if top_recs else 'unknown'}\n\n"
         f"HOLDINGS (only these may be TRIMmed/SOLD)\n{holdings_block}\n\n"
         f"BUY CANDIDATES (not yet held): {buy_block}\n\n"
-        f"Produce JSON. Actions must reference specific symbols from "
-        f"HOLDINGS or BUY CANDIDATES with realistic $ sizes."
+        f"Produce JSON. Actions must reference specific symbols from HOLDINGS or "
+        f"BUY CANDIDATES, sized as a % of the portfolio (never absolute dollars)."
     )
 
 
@@ -416,7 +424,22 @@ _PORTFOLIO_COMMENTARY_TTL = 900  # 15 min
 
 # Bump when system prompt or _build_portfolio_prompt change so stale cached
 # responses don't survive across deploys.
-_PORTFOLIO_PROMPT_VERSION = "v2-grounded-holdings"
+_PORTFOLIO_PROMPT_VERSION = "v3-relative-only"
+
+
+def _portfolio_cache_key(summary: dict, recs: list[dict]) -> str:
+    """Cache key bound to the holdings shape, not just NLV. Two distinct
+    portfolios at similar NLV used to collide and serve each other's commentary;
+    keying on (sorted symbol, weight%-bucketed) prevents that."""
+    holdings = sorted(
+        (
+            (str(r.get("symbol") or ""), round(float(r.get("weight") or 0), 1))
+            for r in recs
+            if r.get("symbol")
+        )
+    )
+    digest = hashlib.sha1(repr(holdings).encode("utf-8")).hexdigest()[:16]
+    return f"{_PORTFOLIO_PROMPT_VERSION}_{digest}"
 
 
 def _parse_json_tolerant(text: str | None) -> dict | None:
@@ -446,10 +469,7 @@ def _parse_json_tolerant(text: str | None) -> dict | None:
 
 async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict | None:
     """Generate 2-3 sentence portfolio assessment + 2-4 action items. 15-min cache."""
-    cache_key = (
-        f"{_PORTFOLIO_PROMPT_VERSION}_"
-        f"{round(summary.get('total_value', 0), -2)}"
-    )
+    cache_key = _portfolio_cache_key(summary, recs)
     entry = _PORTFOLIO_COMMENTARY_CACHE.get(cache_key)
     if entry and time.time() - entry[1] < _PORTFOLIO_COMMENTARY_TTL:
         return entry[0]
