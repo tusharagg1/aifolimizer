@@ -4,6 +4,98 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-05-29 — Claude-run skill automation (headless + fault-tolerant)
+
+### Why
+Reasoning skills only ran when interactively in Claude Code. Goal: run them
+automatically *by Claude*, push to Telegram, survive reboots; free-LLM agent
+route kept as the fallback if Claude Pro is lost.
+
+### Built / changed
+- **Unified WS session file** (fault-tolerance must-fix): `mcp_server._SESSION_FILE`
+  and `mcp_login.py` now both use `~/.aifolimizer/ws_session.json` — the same file
+  `wealthsimple._persist_session` rewrites on token refresh. Prevents a rotated
+  refresh token from orphaning the file the MCP server reads (headless runs now
+  survive for the full refresh-token lifetime; MFA only on first login / forced
+  re-auth). `mcp_login.py` writes the canonical `{email, session_json, saved_utc}`
+  schema + chmod 0600.
+- **main.py lifespan**: calls `wealthsimple.restore_session()` at startup so the
+  scheduler re-seeds the session after a restart and keeps the token warm.
+- **MCP tools**: `get_earnings_calendar(account_id, symbols=[])` now unions
+  watchlist/extra symbols + adds `held` flag (Option A). New `get_watchlist`.
+  New `get_trade_ideas(top_n, include_watchlist, min_risk_reward)` — reuses
+  `recommendations.get_recommendations` (no duplicated scoring), filters to
+  actionable + R:R floor, returns entry/stop/target/RR/conviction.
+- **New skills**: `top-trades-today` (composer: get_trade_ideas + crowding +
+  catalyst guards), `position-review` (router -> earnings-analyzer /
+  earnings-postmortem / adversarial-research / stock-analysis -> HOLD/TRIM/SELL,
+  logs decisions; respects subagent-nesting limit in sweeps).
+- **Automation scripts**: `backend/scripts/send_telegram.py` (plain-text,
+  4096-char chunked; verified real send), `backend/scripts/run_skill_fallback.py`
+  (free-LLM tier via agent_registry runner), `scripts/run-claude-skill.ps1`
+  (Claude primary -> free-LLM fallback -> Telegram, WS-session preflight, run log),
+  `scripts/register-skill-task.ps1`, `scripts/install-backend-service.ps1` (NSSM),
+  `scripts/AUTOMATION.md` runbook.
+
+### Resilience model
+Two-tier: **Claude** (`claude -p`, Pro) primary; **free LLMs** (existing backend
+agent route) fallback when Pro/auth unavailable. New composer skills have no
+free-LLM runner (Claude-only). Keep agent_registry + skill_llm_runner.
+
+### Verified
+Import/compile-clean (mcp_server, main, mcp_login, both py scripts); PS scripts
+parse; send_telegram real send EXIT=0; fallback exits 4 cleanly with no session.
+Live `get_trade_ideas` / full `claude -p` run pending user MFA login (Phase 0).
+
+### Known follow-ups
+MCP cold import ~5s (eager service imports) -> `mcp list` health-check can time
+out; harmless for `claude -p`. Lazy-import pass = perf-optimizer task. Optional
+phases not built: MFA-relay over Telegram, watchlist earnings in daily-briefing,
+event-driven Claude skills, hosted backend.
+
+---
+
+## 2026-05-28 — Backtest + Technicals + Geopolitical Upgrades
+
+### What
+
+**backtest.py + MCP `backtest_portfolio`:**
+- `profit_factor` (gross_profit / gross_loss) added to per-symbol output for all signal strategies
+- `insufficient_trades_warning` flag (True when num_trades < 150 — statistically insufficient)
+- `insufficient_trades_count` added to portfolio_totals per strategy
+- `exclude_weekdays: list[int]` param — skip entries on specified weekdays (0=Mon). Pass `[0]` to test "no Monday entries" filter from backtesting research
+- `max_hold_days: int` param — force-exit positions after N calendar days regardless of signal. Adds time-based exits to reduce overnight/gap exposure
+- Both params wired through entire call chain and cache key
+
+**technicals.py:**
+- `_candle_patterns()` — detects doji, hammer, shooting star, bullish/bearish engulfing, marubozu on last 2 bars. Returns `{detected: [...], signal: bullish|bearish|indecision|neutral}`. Added to `_compute_from_df` output as `candle_patterns` field
+- `get_technicals_mtf()` — multi-timeframe analysis. Fetches 1d/1wk/1mo data per symbol via yfinance, runs `_compute_from_df` for each TF, returns key signals per TF + `mtf_confluence` dict (`trend_alignment`, `signal_alignment`, `overall`). Cached 1h
+- New MCP tool `get_technicals_mtf` with `timeframes: list[str]` param
+
+**geopolitical.py (new service):**
+- `get_geopolitical_signals(lookback_hours=24)` — queries GDELT 2.0 Doc API (free, no key) for conflict/trade/sanctions/energy themes
+- Returns `global_tension_index` (0-100), per-region scores (Americas, Europe, Asia_Pacific, Middle_East, Emerging), `hot_regions` (score >= 60), `categories_detected`, `market_implications` (ETF/sector impacts)
+- New MCP tool `get_geopolitical_signals` — use alongside `get_macro_snapshot` in macro-impact analysis
+
+### Why
+Multiple external sources (GeoTrade architecture, backtesting research, ICT curriculum) independently identified: (1) missing profit_factor/trade-count quality gates, (2) single-timeframe blind spot, (3) zero geopolitical risk signal. All gaps closed without new paid data sources.
+
+---
+
+## 2026-05-28 — Quant Anomaly Skills: PEAD + Momentum + TOTM
+
+### What
+3 evidence-based market anomaly signals added as skills:
+
+- **`pead-tracker`** — Post-Earnings Announcement Drift (Bernard & Thomas 1989). Scans holdings for earnings surprises in last 85 calendar days, computes remaining drift window (60 trading days), estimates residual edge by firm size (large 2.8%, mid 4.3%, small 5.1%). Uses `get_earnings_results` + `get_technicals` + `get_fundamentals`.
+- **`momentum-scanner`** — 12-Month Momentum (Jegadeesh & Titman 1993) + 52-Week High Effect (George & Hwang 2004). Ranks all holdings by composite score (50% 12m return from `backtest_portfolio`, 30% 52wk high proximity from `get_technicals`, 20% Minervini score). Flags laggards as trim candidates; crowding-suppresses add signals.
+- **Turn-of-Month signal in `daily-briefing`** — McConnell & Xu (1897–2005): all positive equity returns concentrated in last trading day of month + first 3 trading days. Added TOTM window check to catalyst day section.
+
+### Why
+Portfolio analytics lacked systematic exploitation of documented academic anomalies. All three use existing MCP tools with zero new data sources.
+
+---
+
 ## 2026-05-18 — Data Layer + Accuracy/Benchmarking Pass (Phase 1-6)
 
 ### Why

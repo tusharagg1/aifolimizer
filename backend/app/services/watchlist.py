@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from app.services import fundamentals as fund_svc
+from app.services import symbol_resolver
 from app.services import technicals as tech_svc
 from app.services.fundamentals import get_earnings_expected_moves
 from app.services.macro import market_breadth
@@ -81,12 +82,22 @@ def _save(items: list[dict]) -> None:
 
 def add_symbol(symbol: str, notes: str = "") -> list[dict]:
     sym = symbol.strip().upper()
+    if not sym:
+        raise ValueError("symbol required")
+    # Validate the ticker resolves to a real security before persisting.
+    # Reject only when the network confirmed it does not exist; fail open on
+    # transient lookup errors so a flaky network never blocks a real symbol.
+    ident = symbol_resolver.resolve(sym)
+    if not ident["valid"] and ident.get("reason") == "not_found":
+        raise ValueError(f"unknown symbol: {sym}")
     items = load_watchlist()
     if any(i["symbol"] == sym for i in items):
         return items
     items.append({
         "symbol": sym, "notes": notes,
         "added_at": time.strftime("%Y-%m-%d"),
+        "name": ident.get("name") or sym,
+        "asset_class": ident.get("asset_class") or "stock",
     })
     _save(items)
     return items
@@ -137,12 +148,14 @@ def _score_one_symbol(sym: str, notes: str, macro_data: dict) -> dict:
         em_data = {}
 
     fd = fund_data.get(sym) or {}
-    currency = "CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD"
+    currency = fd.get("currency") or (
+        "CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD"
+    )
     position = {
         "symbol": sym,
-        "name": fd.get("longName") or fd.get("shortName") or sym,
+        "name": fd.get("name") or sym,
         "currency": currency,
-        "asset_class": fd.get("quoteType", "stock").lower(),
+        "asset_class": symbol_resolver._asset_class(fd.get("quote_type")),
         "weight": 0.0,
         "market_value_cad": 0.0,
         "total_return_pct": 0.0,
