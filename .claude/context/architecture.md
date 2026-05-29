@@ -41,7 +41,7 @@ MCP Server  (backend/mcp_server.py — FastMCP, stdio transport)
     ├─ get_alpha_attribution()     → alpha_attribution.py vs SPY/XEQT/TSX/QQQ
     ├─ get_skill_track_record()    → skill_backtest.py 3-5yr rule replay
     ├─ generate_trust_report()     → trust_report.py → TRACK_RECORD.md + JSONL
-    └─ list_analysis_modes()       → static list (16 skills)
+    └─ list_analysis_modes()       → filesystem-driven list of all 21 skills
 
 FastAPI REST API  (backend/main.py — port 8000)
     ├─ app/api/ws.py              → portfolio, profile, fundamentals, technicals, alerts, crypto
@@ -76,8 +76,10 @@ Login flow:
   5. All subsequent calls pass session_id → backend looks up token → calls WS
 
 Token lifecycle:
-  - Stored in Python dict (server RAM only, never disk/DB)
-  - TTL: 8 hours from login
+  - Stored in Python dict (server RAM) AND persisted to ~/.aifolimizer/ws_session.json
+    (mode 0600, outside repo) so a backend restart resumes without re-OTP. Password
+    never persisted — only access+refresh token + email + timestamp.
+  - TTL: 8 hours from login; persisted file auto-cleared when stale or rejected by WS
   - Evicted on 401 from WS or manual logout
   - MCP server shares same session store as FastAPI
 ```
@@ -137,7 +139,8 @@ WS_EMAIL=...
 WS_PASSWORD=...
 SUPABASE_URL=...        # optional
 SUPABASE_SERVICE_KEY=...  # optional
-NTFY_TOPIC=...          # optional — ntfy.sh topic for alerts push (random string, treat as private)
+TELEGRAM_BOT_TOKEN=...  # optional — Telegram bot token for alert push (BotFather)
+TELEGRAM_CHAT_ID=...    # optional — Telegram chat/channel ID receiving alerts
 
 # frontend/.env.local (LOCAL ONLY)
 NEXT_PUBLIC_API_URL=http://localhost:8000
@@ -147,7 +150,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 | File | Purpose |
 |------|---------|
-| `backend/mcp_server.py` | All MCP tools (32 total) |
+| `backend/mcp_server.py` | All MCP tools (80 total) |
 | `backend/main.py` | FastAPI app entry point + CORS |
 | `backend/run.py` | uvicorn launcher |
 | `backend/scripts/build_skills.py` | Auto skills builder / scaffold tool |
@@ -163,18 +166,18 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/app/services/quant.py` | Risk metrics (pure Python) |
 | `backend/app/services/macro.py` | FRED macro data |
 | `backend/app/services/pii_filter.py` | PII stripping |
-| `backend/app/services/alerts.py` | Rule eval + ntfy.sh dispatch + JSONL history |
+| `backend/app/services/alerts.py` | Rule eval + Telegram dispatch + JSONL history |
 | `backend/app/services/positioning.py` | Crowding signals (inst%, short%, analyst, news) |
 | `backend/app/services/backtest.py` | Per-position backtest + walk-forward |
 | `backend/app/services/data_router.py` | Multi-source fallback chain + batch quotes |
 | `backend/app/services/data_cache.py` | SQLite disk cache (quotes/history/fundamentals) |
 | `backend/app/services/paper_trade.py` | Forward rec logging + mark-to-market scoring |
 | `backend/app/services/alpha_attribution.py` | Alpha/beta vs SPY/XEQT/TSX/QQQ |
-| `backend/app/services/skill_backtest.py` | Backtest all 13 skills as codified rules |
+| `backend/app/services/skill_backtest.py` | Backtest 13 codified-rule skills (LLM-driven skills not replayed) |
 | `backend/app/services/trust_report.py` | Generate TRACK_RECORD.md + JSONL |
 | `backend/app/services/recommendations.py` | Rule-based BUY/SELL/HOLD/WATCH scoring |
 | `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
-| `backend/scripts/run_alerts.py` | CLI: evaluate alerts, push to ntfy (cron-friendly) |
+| `backend/scripts/run_alerts.py` | CLI: evaluate alerts, push to Telegram (cron-friendly) |
 | `backend/scripts/schedule_alerts.ps1` | Register Windows Task Scheduler job |
 | `backend/app/models/portfolio.py` | Pydantic data models |
 | `backend/app/core/config.py` | Env var loading |
@@ -195,7 +198,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
 | `backend/app/services/skill_llm_runner.py` | Runs skills via LLM router |
 | `docker-compose.yml` | Postgres (TimescaleDB pg16) + Redis 7 |
-| `.claude/skills/*/SKILL.md` | 16 skills |
+| `.claude/skills/*/SKILL.md` | 21 skills |
 | `.claude/context/changes.md` | Change log |
 | `.claude/context/architecture.md` | This file |
 | `supabase_schema.sql` | Optional snapshot history schema |

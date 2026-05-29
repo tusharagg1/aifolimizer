@@ -14,9 +14,9 @@ AI investment advisor, Canadian Wealthsimple user (32, growth+income+crypto). Li
 ```
 Claude Code / Claude Desktop  (Pro subscription — no API key)
         ↓ invokes
-   .claude/skills/*  (9 institutional analysis skills)
+   .claude/skills/*  (21 institutional analysis skills)
         ↓ calls MCP tool
-   backend/mcp_server.py  (FastMCP, 14 tools)
+   backend/mcp_server.py  (FastMCP, 80 tools)
         ↓ uses
    app/services/{wealthsimple, market_data, fundamentals, technicals, news, macro, quant, portfolio_analytics, health_score, crypto_data}
         ↓ HTTP
@@ -42,73 +42,73 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code —
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (32 total — see `mcp_server.py` for full)
+## MCP Tools (80 total — table below is a curated subset; see `mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
 |---|---|---|
-| `get_profile` | Account types (TFSA/RRSP/etc), cash balances, total invested — PII stripped | session |
-| `get_portfolio` | Live enriched positions + summary (aggregate or per-account) — PII stripped | live |
-| `get_xray` | ETF exposure expansion + sector/asset-class breakdown | live |
+| `get_profile` | Account types, cash balances, total invested — PII stripped | session |
+| `get_portfolio` | Live enriched positions + summary — PII stripped | live |
+| `get_xray` | ETF exposure + sector/asset-class breakdown | live |
 | `get_concentration_warnings` | Single-position / sector over-allocation flags | live |
-| `get_tax_loss_candidates` | Underwater positions for Canadian tax-loss harvesting | live |
+| `get_tax_loss_candidates` | Underwater positions for tax-loss harvesting | live |
 | `get_risk_metrics` | Annualized vol, Sharpe, Sortino, VaR 95%, ES, max drawdown | 1h |
-| `get_correlation_matrix` | Pairwise correlation between top N holdings | 1h |
+| `get_correlation_matrix` | Pairwise correlation top N holdings | 1h |
 | `get_macro_snapshot` | FRED: Fed funds, 10Y yield, CPI, CAD/USD, BoC rate, unemployment | 12h |
-| `get_fundamentals` | P/E, EPS, div yield, payout, market cap, earnings date, analyst target, beta | 6h (L1+L2) |
-| `get_technicals` | SMA20/50/200, RSI(14), MACD, Bollinger Bands, trend, RSI signal | 1h |
+| `get_fundamentals` | P/E, EPS, div yield, payout, market cap, earnings date, analyst target, beta | 6h |
+| `get_technicals` | SMA20/50/200, RSI(14), MACD, Bollinger, trend, RSI signal | 1h |
 | `get_earnings_calendar` | Next earnings dates per holding, flags next-14-days | 6h |
-| `get_earnings_results` | Last N quarters EPS estimate/actual/surprise/outcome per ticker | 12h |
-| `get_news_headlines` | Recent headlines per ticker from yfinance news | 30m |
-| `get_positioning_signals` | Crowding score, institutional ownership, short interest, headline velocity — flag consensus-crowded names | 6h (L1+L2) |
-| `snapshot_positioning_history` | Append today's crowding scores to JSONL log (idempotent per-day). Run daily, build regime-shift dataset. | live |
-| `get_crowding_shifts` | Detect symbols whose crowding score shifted ≥threshold over lookback. Reads from history JSONL. | live |
-| `get_crypto_data` | CoinGecko: price CAD, market cap, 24h/7d/30d change, ATH distance | 5m |
-| `get_triggered_alerts` | Recent alert events from local jsonl log (price drop, RSI, earnings, concentration) | live |
-| `run_alerts_now` | Evaluate alert rules vs live portfolio, append triggers to history | live |
-| `backtest_portfolio` | Per-symbol rule-replay (buy_hold / rsi_swing / sma_cross / crowd_fade / crowd_buy). Supports `tx_cost_bps` + `walk_forward`. | 1h |
-| `get_skill_track_record` | Backtest 13 skills as codified rules over 3-5yr historical bars. Returns CAGR, Sharpe, Sortino, max DD, hit-rate, alpha vs SPY/XEQT. | disk |
-| `log_recommendation` | Log skill rec (action, conviction, entry price, target, stop) to recommendations.jsonl for forward tracking. | live |
-| `score_recommendations` | Mark-to-market open recs, flag stops/targets hit. Returns win-rate + avg return. | live |
-| `get_live_track_record` | Rolling 7/30/90d win-rate + P&L from scored recs. By-conviction breakdown. | live |
-| `snapshot_portfolio_equity` | Append today's total NAV to portfolio_history.jsonl (idempotent per day). | live |
-| `get_alpha_attribution` | Annualized alpha, beta, Sharpe, info ratio, tracking error vs SPY/XEQT/TSX/QQQ. Includes WS Managed AUM benchmark. | live |
-| `get_quote_with_source` | Live quote w/ data-source attribution (yfinance→finnhub→tiingo→stooq fallback). | 5m |
-| `get_quotes_batch` | Batch quote fetch for N symbols in one HTTP call — 13x faster than serial. | 5m |
-| `get_data_source_reliability` | Per-source success rate + avg latency over trailing window. Trust-signal evidence. | live |
-| `generate_trust_report` | Write TRACK_RECORD.md (public) + track_record_full.jsonl (private). Git-commit to timestamp. | live |
-| `list_analysis_modes` | All 13 skills with tool lists | static |
+| `get_earnings_results` | Last N quarters EPS estimate/actual/surprise/outcome | 12h |
+| `get_news_headlines` | Recent headlines per ticker | 30m |
+| `get_positioning_signals` | Crowding score, inst. ownership, short interest, headline velocity | 6h |
+| `snapshot_positioning_history` | Append crowding scores to JSONL (idempotent/day) | live |
+| `get_crowding_shifts` | Symbols w/ crowding score shift ≥threshold over lookback | live |
+| `get_crypto_data` | CoinGecko: price CAD, market cap, 24h/7d/30d, ATH distance | 5m |
+| `get_triggered_alerts` | Alert events from jsonl log | live |
+| `run_alerts_now` | Evaluate alert rules vs live portfolio | live |
+| `backtest_portfolio` | Rule-replay per symbol. Supports `tx_cost_bps` + `walk_forward` | 1h |
+| `get_skill_track_record` | Backtest 13 codified-rule skills over 3-5yr bars. CAGR, Sharpe, Sortino, max DD, hit-rate, alpha | disk |
+| `log_recommendation` | Log skill rec to recommendations.jsonl | live |
+| `score_recommendations` | Mark-to-market open recs, flag stops/targets hit | live |
+| `get_live_track_record` | Rolling 7/30/90d win-rate + P&L from scored recs | live |
+| `snapshot_portfolio_equity` | Append NAV to portfolio_history.jsonl (idempotent/day) | live |
+| `get_alpha_attribution` | Alpha, beta, Sharpe, info ratio, tracking error vs benchmarks | live |
+| `get_quote_with_source` | Live quote w/ source attribution (fallback chain) | 5m |
+| `get_quotes_batch` | Batch quotes for N symbols — 13x faster than serial | 5m |
+| `get_data_source_reliability` | Per-source success rate + avg latency | live |
+| `generate_trust_report` | Write TRACK_RECORD.md + jsonl, git-commit | live |
+| `list_analysis_modes` | Filesystem-driven list of all 21 skills + their MCP tools | static |
 
-L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2 — cold MCP restart hits L2 if FastAPI warmed within TTL.
+L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2.
 
-## Analysis Skills (13 — in `.claude/skills/`)
+## Analysis Skills (21 in `.claude/skills/` — table below highlights core 13)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|
-| `daily-briefing` | One-shot morning digest composing 7 MCP tools | get_profile, get_portfolio, get_macro_snapshot, get_concentration_warnings, get_triggered_alerts, get_earnings_calendar, get_positioning_signals |
-| `portfolio-health` | BlackRock Portfolio Builder | get_profile, get_portfolio, get_xray, get_concentration_warnings |
-| `risk-assessment` | Bridgewater Risk Assessment | get_profile, get_portfolio, get_risk_metrics, get_correlation_matrix |
-| `stock-analysis` | Goldman Sachs + Citadel TA | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_positioning_signals |
-| `stock-compare` | Head-to-head A vs B matchup | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines |
-| `macro-impact` | McKinsey Macro | get_profile, get_portfolio, get_macro_snapshot |
-| `dividend-strategy` | Harvard Endowment Dividend | get_profile, get_portfolio, get_fundamentals |
-| `earnings-analyzer` | JPMorgan Earnings | get_profile, get_portfolio, get_earnings_calendar, get_fundamentals |
-| `earnings-postmortem` | Post-report EPS beat/miss breakdown | get_profile, get_portfolio, get_earnings_results, get_fundamentals, get_news_headlines |
-| `sector-rotation` | Renaissance / Sector Rotation | get_profile, get_portfolio, get_xray |
-| `tax-loss-review` | Canadian tax-loss harvesting | get_profile, get_tax_loss_candidates |
-| `adversarial-research` | Multi-agent bull/bear/consensus pipeline | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot, get_positioning_signals |
-| `cash-deployment` | Add-to-winners cash deployment w/ concentration + crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
+| `daily-briefing` | Morning digest | get_profile, get_portfolio, get_macro_snapshot, get_concentration_warnings, get_triggered_alerts, get_earnings_calendar, get_positioning_signals |
+| `portfolio-health` | BlackRock | get_profile, get_portfolio, get_xray, get_concentration_warnings |
+| `risk-assessment` | Bridgewater | get_profile, get_portfolio, get_risk_metrics, get_correlation_matrix |
+| `stock-analysis` | Goldman + Citadel TA | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_positioning_signals |
+| `stock-compare` | Head-to-head | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines |
+| `macro-impact` | McKinsey | get_profile, get_portfolio, get_macro_snapshot |
+| `dividend-strategy` | Harvard Endowment | get_profile, get_portfolio, get_fundamentals |
+| `earnings-analyzer` | JPMorgan | get_profile, get_portfolio, get_earnings_calendar, get_fundamentals |
+| `earnings-postmortem` | Post-report EPS | get_profile, get_portfolio, get_earnings_results, get_fundamentals, get_news_headlines |
+| `sector-rotation` | Renaissance | get_profile, get_portfolio, get_xray |
+| `tax-loss-review` | Canadian harvesting | get_profile, get_tax_loss_candidates |
+| `adversarial-research` | Bull/bear/consensus | get_profile, get_portfolio, get_fundamentals, get_technicals, get_news_headlines, get_macro_snapshot, get_positioning_signals |
+| `cash-deployment` | Add-to-winners w/ crowding guard | get_profile, get_portfolio, get_concentration_warnings, get_fundamentals, get_technicals, get_positioning_signals |
 
-Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP tools.
+Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 
 ## Investor Profile (verify with get_profile)
 
 - Age 32, Canadian
 - Philosophy: growth stocks, index ETFs (XEQT/VFV), dividends, crypto
-- Risk: mixed — conservative (bonds/GIC), moderate (index ETFs), aggressive (stocks, crypto)
+- Risk: mixed — conservative (bonds/GIC), moderate (ETFs), aggressive (stocks, crypto)
 - Horizons: day trading + short-term (<3yr) + long-term (10yr+)
-- Tax: TFSA (gains tax-free), RRSP (tax-deferred), Non-Reg (50% capital gains inclusion)
-- **Capital + account balances: ALWAYS pull from `get_profile` — never hardcode**
-- **Crowding awareness**: before add to name, call `get_positioning_signals`. Consensus-crowded (score ≥70) → negative expected alpha per Goldman/BlackRock 2025. Defer adds on consensus names; favor contrarian (score ≤30) when fundamentals support.
+- Tax: TFSA (tax-free), RRSP (tax-deferred), Non-Reg (50% cap gains inclusion)
+- **Capital + balances: ALWAYS pull from `get_profile` — never hardcode**
+- **Crowding**: before adding to name, call `get_positioning_signals`. Score ≥70 = consensus-crowded → negative expected alpha. Defer adds; favor contrarian (score ≤30) when fundamentals support.
 
 ## Tech Stack
 
@@ -127,10 +127,11 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST, then MCP to
 ## Privacy Rules (NON-NEGOTIABLE)
 
 <important if="touching backend/, .env, mcp_server.py, pii_filter.py, or any MCP tool response">
-- WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI
-- WS access token: server RAM only (Python dict), 8h TTL, never persisted
+- WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI. Password is NEVER persisted to disk.
+- WS access + refresh token: server RAM (Python dict) + persisted to `~/.aifolimizer/ws_session.json` (mode 0600, owner-only) so a backend restart resumes without re-OTP. 8h TTL; file auto-cleared when stale/rejected. Delete the file to force re-auth. Lives outside the repo — never committed.
 - `pii_filter.py` MUST run before every MCP tool response
 - Account IDs, numbers, email, full name: NEVER leave server
+- External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts sent to them carry symbols, weights (% of NLV), returns %, and scores — NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all inference on-machine.
 </important>
 
 ## Environment Variables
@@ -153,18 +154,21 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - Functions short, single-purpose
 - No comments explaining WHAT — only WHY when non-obvious
 - Append to `.claude/context/changes.md` after significant changes
-- Auto skills builder: `python backend/scripts/build_skills.py` lists tools + skills
-- Scaffold new skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`
+- Skills builder: `python backend/scripts/build_skills.py` lists tools + skills
+- Scaffold skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`
 
 ## Workflow Rules
 
-- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise changed code w/ real input. Empty-import tests miss `UnboundLocalError` and shape mismatches.
-- **Lessons loop.** After correction or surprise bug, append short rule to `.claude/context/lessons.md`. Same mistake never recurs.
-- **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "cleaner path?" before commit. Skip one-line fixes.
-- **Surgical changes only.** Touch only what request requires. Don't clean adjacent code. Match existing style. Mention unrelated dead code, don't delete. Remove only imports/variables your changes made unused.
+- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise w/ real input.
+- **Lessons loop.** After correction or surprise bug, append rule to `.claude/context/lessons.md`.
+- **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "cleaner path?" before commit.
+- **Surgical changes only.** Touch only what request requires. Match existing style. Remove only imports/vars your changes made unused.
+- **Targeted reads only.** Use `semantic_search_nodes` or `get_review_context` before Grep/Read. Read only relevant lines. Ask before loading large files, logs, generated files, or full dependency trees.
+- **Summarize tool output.** Never paste full logs. Extract relevant; drop rest.
+- **Final answer format:** changes made + verification + blockers only.
 
 ## Commit Rules
 
 - NEVER add `Co-Authored-By: Claude ...` trailer to commits
 - NEVER add "Generated with Claude Code" footer or AI-attribution to commits, PRs, or PR bodies
-- Commit messages authored solely by human user — no AI co-author lines, no tool ads
+- Commit messages authored solely by human user

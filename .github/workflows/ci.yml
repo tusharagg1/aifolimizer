@@ -33,6 +33,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check . --output-format=github
 
+      - name: Doc count drift guard
+        run: python scripts/check_doc_counts.py
+
       - name: Type check (pyright)
         run: pyright --pythonversion 3.12
         continue-on-error: true

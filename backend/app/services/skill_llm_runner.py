@@ -204,8 +204,10 @@ _PRE_TRADE_SYSTEM = (
     "discipline, concentration, stage, re-entry. Produce JSON "
     "{\"verdict\":\"PASS|REJECT\",\"reason\":\"<one line>\",\"failed_gates\":"
     "[...],\"warnings\":[...],\"suggested_entry\":<float>,\"suggested_stop\":"
-    "<float>,\"suggested_shares\":<int>,\"position_pct_of_nav\":<float>,"
-    "\"max_loss_dollars\":<float>}. Never recommend size > 5% of NAV. "
+    "<float>,\"position_pct_of_nav\":<float>,"
+    "\"max_loss_pct_of_nav\":<float>}. "
+    "Size is given in % of NAV only — never request or quote dollar amounts. "
+    "Never recommend size > 5% of NAV. "
     "Never recommend re-entry on a stop-hit ticker without explicit new "
     "bullish catalyst. No prose outside the JSON object."
 )
@@ -214,20 +216,22 @@ _WEEKLY_MIRROR_SYSTEM = (
     "You are a cold honest performance auditor. Given a week of trading + "
     "portfolio state, produce JSON {\"verdict\":\"CONTINUE|COOL_OFF|SUSPEND\","
     "\"reason\":\"<one line>\",\"win_rate_30d\":<float>,\"r_multiple_30d\":"
-    "<float>,\"trading_vs_core_pnl_diff\":<float>,\"top_pattern\":\"...\","
+    "<float>,\"trading_vs_core_diff_pct\":<float>,\"top_pattern\":\"...\","
     "\"next_actions\":[\"<bullet>\",...]}. Verdict thresholds: CONTINUE if "
     "win_rate_30d>=50 AND r_multiple>=1.5; SUSPEND if win_rate<40 OR "
-    "r_multiple<1.0; else COOL_OFF. No hedging. No prose outside JSON."
+    "r_multiple<1.0; else COOL_OFF. All P&L figures are in % of NAV; never "
+    "request or quote dollar amounts. No hedging. No prose outside JSON."
 )
 
 _REBALANCE_SYSTEM = (
     "You are a wealth-management rebalancer. Given target allocation, current "
-    "weights, and per-account cash, produce JSON {\"deployment\":[{\"ticker\":"
-    "\"...\",\"account\":\"...\",\"shares\":<int>,\"cost\":<float>,\"action\":"
-    "\"BUY|TRIM\"},...],\"drift_summary\":\"...\",\"cash_after\":<float>,"
-    "\"next_review_days\":<int>}. Never recommend selling a core holding "
+    "weights, and per-account cash %, produce JSON {\"deployment\":[{\"ticker\":"
+    "\"...\",\"account_label\":\"...\",\"pct_of_nav\":<float>,\"action\":"
+    "\"BUY|TRIM\"},...],\"drift_summary\":\"...\",\"cash_remaining_pct\":<float>,"
+    "\"next_review_days\":<int>}. All sizing in % of NAV — never request or "
+    "quote dollar amounts. Never recommend selling a core holding "
     "unless drift > 15pp above target. Rebalance via new cash by default. "
-    "Whole shares only. No prose outside the JSON object."
+    "No prose outside the JSON object."
 )
 
 
@@ -287,8 +291,9 @@ def _risk_prompt(ctx: dict) -> str:
 
 
 def _health_prompt(ctx: dict) -> str:
+    # SPI guard: prompt sent to external LLMs. NAV / balances must stay on-machine.
+    # Send relative allocation (% of NAV) only.
     return (
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
         f"Cash %: {ctx.get('cash_pct', 'n/a')}%\n"
         f"Equity %: {ctx.get('equity_pct', 'n/a')}%\n"
         f"Crypto %: {ctx.get('crypto_pct', 'n/a')}%\n"
@@ -315,9 +320,9 @@ def _macro_prompt(ctx: dict) -> str:
 
 
 def _briefing_prompt(ctx: dict) -> str:
+    # SPI guard: NAV in dollars must not leave the machine. Day change % is fine.
     return (
         f"Date: {ctx.get('date', 'today')}\n"
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
         f"Day change: {ctx.get('day_change_pct', 'n/a')}%\n"
         f"Regime: {ctx.get('regime_composite', 'n/a')}\n"
         f"Risk gate: {ctx.get('risk_gate_status', 'trade')}\n"
@@ -577,20 +582,30 @@ async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
 
 
 def _pre_trade_prompt(ctx: dict) -> str:
+    # SPI guard: Total NAV is private — never send. Public market data
+    # (current_price, ATR, SMA50) is fine. Sizing is requested as % of NAV.
+    # ATR is converted to % of price so the model has volatility scale without
+    # an absolute dollar reference.
+    price = ctx.get("current_price")
+    atr = ctx.get("atr_14")
+    atr_pct = (
+        f"{round(float(atr) / float(price) * 100, 2)}"
+        if price and atr and isinstance(price, (int, float))
+        and isinstance(atr, (int, float)) and price > 0 else "n/a"
+    )
     return (
         f"Ticker: {ctx.get('ticker', 'n/a')}\n"
         f"Direction: {ctx.get('direction', 'BUY')}\n"
         f"Horizon: {ctx.get('horizon', 'swing')}\n"
-        f"Current price: ${ctx.get('current_price', 'n/a')}\n"
+        f"Current price (public market): ${ctx.get('current_price', 'n/a')}\n"
         f"Day change %: {ctx.get('day_change_pct', 'n/a')}\n"
         f"3-day change %: {ctx.get('change_3d_pct', 'n/a')}\n"
-        f"ATR 14: ${ctx.get('atr_14', 'n/a')}\n"
+        f"ATR 14 (% of price): {atr_pct}%\n"
         f"RSI 14: {ctx.get('rsi_14', 'n/a')}\n"
         f"Stage: {ctx.get('stage', 'n/a')}\n"
-        f"SMA50: ${ctx.get('sma_50', 'n/a')}\n"
+        f"SMA50 (public market): ${ctx.get('sma_50', 'n/a')}\n"
         f"Crowding score: {ctx.get('crowding_score', 'n/a')}\n"
         f"Current weight in portfolio: {ctx.get('current_weight_pct', 0)}%\n"
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
         f"User intent reason: {ctx.get('user_reason', 'unstated')}\n"
         f"Last 30d user win rate: {ctx.get('user_win_rate_30d', 'n/a')}\n"
         f"Recent stop-out on this ticker (30d): "
@@ -606,19 +621,18 @@ def _pre_trade_prompt(ctx: dict) -> str:
 
 
 def _weekly_mirror_prompt(ctx: dict) -> str:
+    # SPI guard: NAV, deposits, P&L absolute dollars are private — never send.
+    # All P&L figures are relative (% of NAV). avg_win/avg_loss in dollars are
+    # dropped; R-multiple already conveys their ratio.
     return (
         f"Date: {ctx.get('date', 'today')}\n"
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
         f"Week NAV change %: {ctx.get('week_change_pct', 'n/a')}\n"
-        f"Total deposits YTD: ${ctx.get('deposits_ytd', 'n/a')}\n"
         f"Return vs deposits %: {ctx.get('return_vs_deposits_pct', 'n/a')}\n"
-        f"Boring-core 7d P&L: ${ctx.get('core_pnl_7d', 'n/a')}\n"
-        f"Discretionary 7d P&L: ${ctx.get('disc_pnl_7d', 'n/a')}\n"
+        f"Boring-core 7d P&L (% of NAV): {ctx.get('core_pnl_pct_7d', 'n/a')}%\n"
+        f"Discretionary 7d P&L (% of NAV): {ctx.get('disc_pnl_pct_7d', 'n/a')}%\n"
         f"vs SPY 7d %: {ctx.get('vs_spy_7d_pct', 'n/a')}\n"
         f"30d closed trades: {ctx.get('closed_trades_30d', 0)}\n"
         f"30d win rate %: {ctx.get('win_rate_30d', 'n/a')}\n"
-        f"30d avg win $: {ctx.get('avg_win_30d', 'n/a')}\n"
-        f"30d avg loss $: {ctx.get('avg_loss_30d', 'n/a')}\n"
         f"30d R-multiple: {ctx.get('r_multiple_30d', 'n/a')}\n"
         f"90d alpha vs XEQT %: {ctx.get('alpha_vs_xeqt_90d', 'n/a')}\n"
         f"Top recurring loss pattern: {ctx.get('top_pattern', 'n/a')}\n"
@@ -627,12 +641,15 @@ def _weekly_mirror_prompt(ctx: dict) -> str:
 
 
 def _rebalance_prompt(ctx: dict) -> str:
+    # SPI guard: NAV and per-account cash dollar amounts are private. Send
+    # per-account cash as % of NAV instead, keyed by account label (TFSA/RRSP/
+    # Non-Reg/...) — caller is expected to redact account IDs upstream.
     return (
         f"Strategy: {ctx.get('strategy', 'growth-aggressive')}\n"
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
-        f"Target weights: {ctx.get('target_weights', {})}\n"
-        f"Current weights: {ctx.get('current_weights', {})}\n"
-        f"Per-account settled cash (CAD): {ctx.get('cash_per_account', {})}\n"
+        f"Target weights (% of NAV): {ctx.get('target_weights', {})}\n"
+        f"Current weights (% of NAV): {ctx.get('current_weights', {})}\n"
+        f"Per-account cash (% of NAV, keyed by account label): "
+        f"{ctx.get('cash_per_account_pct', {})}\n"
         f"Last rebalance date: {ctx.get('last_rebalance_date', 'never')}\n"
         f"Tax-loss superficial blocks (next 30d): "
         f"{ctx.get('superficial_blocked_tickers', [])}\n"
@@ -663,9 +680,8 @@ async def run_pre_trade_check(context: dict | None = None) -> dict[str, Any]:
             "reason": data.get("reason"),
             "suggested_entry": data.get("suggested_entry"),
             "suggested_stop": data.get("suggested_stop"),
-            "suggested_shares": data.get("suggested_shares"),
             "position_pct_of_nav": data.get("position_pct_of_nav"),
-            "max_loss_dollars": data.get("max_loss_dollars"),
+            "max_loss_pct_of_nav": data.get("max_loss_pct_of_nav"),
         },
         actionable=[{
             "recommendation": "PASS" if verdict == "PASS" else "BLOCK",
@@ -708,7 +724,7 @@ async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
             "verdict": verdict,
             "win_rate_30d": data.get("win_rate_30d"),
             "r_multiple_30d": data.get("r_multiple_30d"),
-            "trading_vs_core_pnl_diff": data.get("trading_vs_core_pnl_diff"),
+            "trading_vs_core_diff_pct": data.get("trading_vs_core_diff_pct"),
             "top_pattern": data.get("top_pattern"),
         },
         actionable=[
@@ -740,20 +756,22 @@ _EARN_ANALYZER_SYSTEM = (
 )
 
 _CASH_DEPLOY_SYSTEM = (
-    "You are a cash-deployment analyst. Given settled cash + portfolio + "
+    "You are a cash-deployment analyst. Given cash % of NAV + portfolio + "
     "candidate setups, produce JSON {\"deployment\":[{\"ticker\":\"...\","
-    "\"shares\":<int>,\"cost\":<float>,\"entry\":<float>,\"stop\":<float>,"
-    "\"setup_score\":<int>},...],\"cash_remaining\":<float>,\"reason\":"
-    "\"...\"}. Never recommend single position > 5% NAV. Never add to "
-    "concentration-flagged or crowding>=70 names. No prose."
+    "\"pct_of_nav\":<float>,\"entry\":<float>,\"stop\":<float>,"
+    "\"setup_score\":<int>},...],\"cash_remaining_pct\":<float>,\"reason\":"
+    "\"...\"}. All sizing in % of NAV — never quote dollar amounts. Never "
+    "recommend single position > 5% NAV. Never add to concentration-flagged "
+    "or crowding>=70 names. No prose."
 )
 
 _DIV_SYSTEM = (
     "You are a Harvard-endowment dividend strategist. Given holdings + "
     "yield + payout context, produce JSON {\"income_health\":\"strong|ok|"
-    "weak\",\"projected_annual_income\":<float>,\"top_riskd_payer\":\"...\","
+    "weak\",\"projected_yield_pct\":<float>,\"top_risked_payer\":\"...\","
     "\"recommendation\":\"hold|rotate|add_dividend|trim_low_yield\","
-    "\"reason\":\"...\"}. No prose."
+    "\"reason\":\"...\"}. Yield expressed as % only — never quote dollar "
+    "income amounts. No prose."
 )
 
 _SECTOR_SYSTEM = (
@@ -765,12 +783,14 @@ _SECTOR_SYSTEM = (
 
 _TAX_LOSS_SYSTEM = (
     "You are a Canadian tax-loss-harvesting analyst. Given underwater "
-    "positions + account types, produce JSON {\"candidates\":[{\"ticker\":"
-    "\"...\",\"loss_cad\":<float>,\"account\":\"...\",\"replacement\":"
-    "\"...\",\"superficial_block_until\":\"YYYY-MM-DD\"},...],"
-    "\"total_loss_to_harvest\":<float>,\"reason\":\"...\"}. Never recommend "
-    "harvesting in TFSA or RRSP (no tax benefit). Always flag superficial-"
-    "loss rule. No prose."
+    "positions (loss as % of NAV) + account labels, produce JSON "
+    "{\"candidates\":[{\"ticker\":\"...\",\"loss_pct_of_nav\":<float>,"
+    "\"account_label\":\"...\",\"replacement\":\"...\","
+    "\"superficial_block_until\":\"YYYY-MM-DD\"},...],"
+    "\"total_loss_pct_of_nav\":<float>,\"reason\":\"...\"}. Loss figures in "
+    "% of NAV only — never quote dollar amounts. Never recommend harvesting "
+    "in TFSA or RRSP (no tax benefit). Always flag superficial-loss rule. "
+    "No prose."
 )
 
 
@@ -802,10 +822,12 @@ def _earn_analyzer_prompt(ctx: dict) -> str:
 
 
 def _cash_deploy_prompt(ctx: dict) -> str:
+    # SPI guard: settled cash CAD and Total NAV are private balances. Send
+    # cash as % of NAV so the model recommends pct_of_nav allocations; the
+    # caller resolves $ + share counts locally after the LLM returns.
     return (
-        f"Settled cash CAD: ${ctx.get('cash', 'n/a')}\n"
-        f"Account: {ctx.get('account', 'n/a')}\n"
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
+        f"Settled cash (% of NAV): {ctx.get('cash_pct_of_nav', 'n/a')}%\n"
+        f"Account label: {ctx.get('account_label', 'n/a')}\n"
         f"Strategy lens: {ctx.get('strategy', 'aggressive growth')}\n"
         f"Eligible candidates: {ctx.get('candidates', [])}\n"
         f"Concentration-flagged tickers: {ctx.get('blocked', [])}\n"
@@ -814,11 +836,11 @@ def _cash_deploy_prompt(ctx: dict) -> str:
 
 
 def _div_prompt(ctx: dict) -> str:
+    # SPI guard: Total NAV and absolute annual income $ are private. Yield
+    # already expressed as % — sufficient signal without dollar amounts.
     return (
-        f"Total NAV: ${ctx.get('total_nav', 'n/a')}\n"
         f"Dividend payers: {ctx.get('payers', [])}\n"
         f"Portfolio yield %: {ctx.get('portfolio_yield_pct', 'n/a')}\n"
-        f"Annual income projection $: {ctx.get('annual_income', 'n/a')}\n"
         "Produce the JSON dividend health now."
     )
 
@@ -834,11 +856,16 @@ def _sector_prompt(ctx: dict) -> str:
 
 
 def _tax_loss_prompt(ctx: dict) -> str:
+    # SPI guard: absolute CAD loss + YTD realized gain $ are private. Send
+    # loss as % of NAV. Account breakdown should arrive pre-redacted (labels
+    # only, no IDs) — the caller is responsible upstream.
     return (
         f"Underwater positions: {ctx.get('losers', [])}\n"
-        f"Total unrealized loss CAD: ${ctx.get('total_loss', 'n/a')}\n"
-        f"Realized gains YTD CAD: ${ctx.get('realized_gains_ytd', 'n/a')}\n"
-        f"Account breakdown: {ctx.get('accounts', {})}\n"
+        f"Total unrealized loss (% of NAV): "
+        f"{ctx.get('total_loss_pct_of_nav', 'n/a')}%\n"
+        f"YTD realized gains (% of NAV): "
+        f"{ctx.get('realized_gains_pct_of_nav', 'n/a')}%\n"
+        f"Account labels in scope: {ctx.get('account_labels', [])}\n"
         "Produce the JSON tax-loss harvest plan now."
     )
 
@@ -926,7 +953,7 @@ async def run_auto_rebalance(context: dict | None = None) -> dict[str, Any]:
         "auto-rebalance",
         summary={
             "drift_summary": data.get("drift_summary"),
-            "cash_after": data.get("cash_after"),
+            "cash_remaining_pct": data.get("cash_remaining_pct"),
             "deployment_count": len(deployments),
         },
         actionable=[

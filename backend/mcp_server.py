@@ -904,37 +904,57 @@ async def backtest_portfolio(
     )
 
 
+_SKILLS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "skills"
+_SKILL_INDEX_CACHE: list[dict] | None = None
+
+
+def _load_skill_index() -> list[dict]:
+    """Filesystem-driven enumerate of every Claude Code skill folder.
+
+    Reads `.claude/skills/*/SKILL.md`, extracts the YAML-frontmatter
+    `description` (1-line), and harvests every `mcp__aifolimizer__<tool>`
+    reference in the body. Cached for process lifetime — restart MCP to pick
+    up new skills. Used to be a hard-coded 13-entry list that drifted as
+    skills were added; making it filesystem-driven prevents that recurrence.
+    """
+    import re
+
+    global _SKILL_INDEX_CACHE
+    if _SKILL_INDEX_CACHE is not None:
+        return _SKILL_INDEX_CACHE
+    out: list[dict] = []
+    if not _SKILLS_DIR.is_dir():
+        _SKILL_INDEX_CACHE = out
+        return out
+    desc_re = re.compile(
+        r"^description:\s*\|?\s*(.+?)(?=\n[a-z_]+:|\n---|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    tool_re = re.compile(r"mcp__aifolimizer__(\w+)")
+    for child in sorted(_SKILLS_DIR.iterdir()):
+        skill_md = child / "SKILL.md"
+        if not (child.is_dir() and skill_md.is_file()):
+            continue
+        text = skill_md.read_text(encoding="utf-8", errors="replace")
+        m = desc_re.search(text)
+        # Trim multi-line descriptions to a one-line summary for the table.
+        desc = (m.group(1).strip().splitlines()[0] if m else "").strip()[:200]
+        tools = sorted(set(tool_re.findall(text)))
+        out.append({
+            "name": child.name.replace("-", "_"),
+            "style": desc,
+            "tools_used": tools,
+        })
+    _SKILL_INDEX_CACHE = out
+    return out
+
+
 @mcp.tool()
 def list_analysis_modes() -> list[dict]:
-    """Lists the 13 institutional analysis frameworks available as Claude Code skills."""
-    return [
-        {"name": "daily_briefing", "style": "Morning digest composing 7 MCP tools",
-         "tools_used": ["get_profile", "get_portfolio", "get_macro_snapshot", "get_concentration_warnings", "get_triggered_alerts", "get_earnings_calendar", "get_positioning_signals"]},
-        {"name": "portfolio_health", "style": "BlackRock Portfolio Builder",
-         "tools_used": ["get_profile", "get_portfolio", "get_xray", "get_concentration_warnings"]},
-        {"name": "risk_assessment", "style": "Bridgewater Risk Assessment",
-         "tools_used": ["get_portfolio", "get_risk_metrics", "get_correlation_matrix", "get_concentration_warnings"]},
-        {"name": "stock_analysis", "style": "Goldman Sachs + Citadel TA",
-         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines", "get_positioning_signals"]},
-        {"name": "stock_compare", "style": "Head-to-head A vs B matchup",
-         "tools_used": ["get_profile", "get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines"]},
-        {"name": "macro_impact", "style": "McKinsey Macro",
-         "tools_used": ["get_portfolio", "get_macro_snapshot", "get_market_breadth"]},
-        {"name": "dividend_strategy", "style": "Harvard Endowment Dividend",
-         "tools_used": ["get_profile", "get_portfolio", "get_fundamentals"]},
-        {"name": "earnings_analyzer", "style": "JPMorgan Earnings",
-         "tools_used": ["get_portfolio", "get_earnings_calendar", "get_fundamentals"]},
-        {"name": "earnings_postmortem", "style": "Post-report EPS beat/miss analysis",
-         "tools_used": ["get_profile", "get_portfolio", "get_earnings_results", "get_fundamentals", "get_news_headlines"]},
-        {"name": "sector_rotation", "style": "Renaissance / Sector Rotation",
-         "tools_used": ["get_portfolio", "get_xray", "get_market_breadth"]},
-        {"name": "tax_loss_review", "style": "Canadian tax-loss harvesting",
-         "tools_used": ["get_tax_loss_candidates", "get_profile"]},
-        {"name": "adversarial_research", "style": "Bull/Bear/Consensus parallel agent synthesis",
-         "tools_used": ["get_portfolio", "get_fundamentals", "get_technicals", "get_news_headlines", "get_positioning_signals"]},
-        {"name": "cash_deployment", "style": "Add-to-winners cash deployment",
-         "tools_used": ["get_profile", "get_portfolio", "get_concentration_warnings", "get_fundamentals", "get_technicals", "get_positioning_signals"]},
-    ]
+    """Lists every Claude Code skill folder under .claude/skills/ — name,
+    one-line description, and the MCP tools each one references. Built from
+    the filesystem so it cannot drift as skills are added or removed."""
+    return _load_skill_index()
 
 
 @mcp.tool()
@@ -1107,12 +1127,15 @@ async def get_skill_track_record(
     fresh: bool = False,
     label: str | None = None,
 ) -> dict:
-    """Backtest all 13 skills as codified strategies over historical bars.
+    """Backtest the codified-rule skill set over historical bars.
 
-    Returns per-skill: total_return_pct, cagr_pct, sharpe, sortino,
-    max_drawdown_pct, hit_rate_pct, num_trades, alpha_vs_spy_pct,
-    alpha_vs_xeqt_pct. Honest caveat: skills are codified to deterministic
-    rules — LLM thesis nuance not replayed.
+    Covers the 13 skills with deterministic Python rules in
+    `app.services.skill_backtest.SKILL_RULES` (the LLM-driven skills like
+    pre-trade-check, weekly-mirror, momentum-scanner, etc. are not
+    rule-replayable and are not part of this backtest). Returns per-skill:
+    total_return_pct, cagr_pct, sharpe, sortino, max_drawdown_pct,
+    hit_rate_pct, num_trades, alpha_vs_spy_pct, alpha_vs_xeqt_pct. Honest
+    caveat: even within the 13, LLM thesis nuance is not replayed.
 
     If universe is None: uses current portfolio top-10 holdings (label
     "holdings") when a session exists, else the unbiased 40-name basket
