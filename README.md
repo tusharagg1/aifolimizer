@@ -13,21 +13,21 @@
 
 - Connects to Wealthsimple (MFA-aware, GraphQL via `ws-api`) — reads live holdings across TFSA / RRSP / FHSA / Non-Reg / Crypto
 - Enriches with live prices, fundamentals, technicals, macro data, crowding signals
-- Exposes everything as **32 MCP tools** so Claude Code / Claude Desktop can analyze natively
-- Ships **16 institutional analysis skills** that auto-trigger on intent
+- Exposes everything as **80 MCP tools** so Claude Code / Claude Desktop can analyze natively
+- Ships **21 institutional analysis skills** that auto-trigger on intent
 - Logs every recommendation, marks to market, builds a live track record
 - Postgres (TimescaleDB) + Redis on Docker for persistent history and caching
 
-All inference runs inside your Claude Pro subscription. Nothing goes to a cloud server.
+Primary inference runs inside your Claude Pro subscription — no API key, nothing leaves your machine. Optional free-tier LLM fallbacks are off unless you add a provider key (see [Privacy](#privacy)).
 
 ## Architecture
 
 ```
 Claude Code / Claude Desktop   (your Pro subscription)
          ↓ invokes
-   .claude/skills/*            (16 institutional analysis skills)
+   .claude/skills/*            (21 institutional analysis skills)
          ↓ calls MCP tools
-   backend/mcp_server.py       (FastMCP — 32 tools)
+   backend/mcp_server.py       (FastMCP — 80 tools)
          ↓ uses
    app/services/*              (50+ service modules)
          ↓
@@ -100,7 +100,7 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 /weekly-mirror            → Weekly portfolio review against goals
 ```
 
-## MCP tools (32)
+## MCP tools (80 total — table below highlights core 32; see `backend/mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -122,7 +122,7 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 | `get_triggered_alerts` | Recent alert events from local log | live |
 | `run_alerts_now` | Evaluate alert rules vs live portfolio | live |
 | `backtest_portfolio` | Rule-replay: buy_hold/rsi_swing/sma_cross/crowd_fade | 1h |
-| `get_skill_track_record` | Backtest 13 skills as codified rules (3-5yr) | disk |
+| `get_skill_track_record` | Backtest 13 codified-rule skills (3-5yr) | disk |
 | `log_recommendation` | Log rec with entry price, target, stop | live |
 | `score_recommendations` | Mark open recs to market, flag stops/targets hit | live |
 | `get_live_track_record` | Rolling 7/30/90d win-rate + P&L | live |
@@ -135,7 +135,7 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 | `get_crowding_shifts` | Detect symbols with crowding score shifts | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + full JSONL | live |
 | `get_positioning_signals` | Goldman/BlackRock consensus-crowding flags | 6h |
-| `list_analysis_modes` | All 16 skills with tool lists | static |
+| `list_analysis_modes` | Filesystem-driven list of all 21 skills + their MCP tools | static |
 
 ## Project layout
 
@@ -143,7 +143,7 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 aifolimizer/
 ├── backend/
 │   ├── main.py                      # FastAPI app
-│   ├── mcp_server.py                # 32 MCP tools (FastMCP)
+│   ├── mcp_server.py                # 80 MCP tools (FastMCP)
 │   ├── run.py                       # uvicorn entry point
 │   ├── requirements.txt
 │   └── app/
@@ -154,26 +154,23 @@ aifolimizer/
 │       ├── models/                  # Pydantic models
 │       └── services/                # 50+ service modules
 ├── .claude/
-│   ├── skills/                      # 16 institutional analysis skills
+│   ├── skills/                      # 21 institutional analysis skills
 │   ├── context/                     # architecture.md, changes.md, lessons.md
 │   └── agents/                      # Agent definitions
 ├── docker-compose.yml               # Postgres (TimescaleDB) + Redis
 ├── .github/                         # CI, issue/PR templates, dependabot
 ├── CLAUDE.md                        # Project rules for AI agents
+├── AGENTS.md                        # Agent-optimized project context
 ├── TRACK_RECORD.md                  # Live recommendation track record
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-├── SECURITY.md
 └── LICENSE
 ```
 
 ## Privacy
 
-- WS credentials in local `backend/.env` only — gitignored, never deployed
-- WS access token held in server RAM only, 8-hour TTL
-- `pii_filter.py` strips account IDs / names / emails before any data reaches Claude
-- Only ticker symbols, quantities, market values, weights, sectors sent through MCP
-- See [SECURITY.md](SECURITY.md) for full threat model
+- WS credentials in local `backend/.env` only — gitignored, never deployed. **Password is never written to disk.**
+- WS access + refresh token live in server RAM and are also persisted to `~/.aifolimizer/ws_session.json` (mode 0600, owner-only, **outside the repo**) so a backend restart resumes without re-entering OTP. 8-hour TTL; the file is auto-cleared when stale or rejected. Delete it to force a fresh login.
+- `pii_filter.py` strips account IDs / numbers / names / emails before any data reaches Claude. Only ticker symbols, quantities, market values, weights, and sectors are sent through MCP.
+- **Inference:** primary analysis runs inside your Claude Code / Claude Desktop Pro session (no API key, nothing leaves the machine). Optional free-tier LLM fallbacks (GitHub Models, Gemini, OpenRouter, Qwen) are used **only if you set the matching API key** in `backend/.env`. When enabled, their prompts carry symbols, **relative weights (% of NLV)**, returns %, and scores — **never absolute dollar balances, account IDs, email, name, or your WS token.** Leave the keys unset to keep all inference on-machine.
 
 ## Infrastructure
 
@@ -193,12 +190,15 @@ Data persisted in `.data/` (gitignored). Secrets in `.secrets/pg_password.txt`.
 ## Documentation
 
 - [CLAUDE.md](CLAUDE.md) — project rules for AI agents
+- [AGENTS.md](AGENTS.md) — agent-optimized condensed project context
 - [.claude/context/architecture.md](.claude/context/architecture.md) — data flow + service contracts
 - [.claude/context/changes.md](.claude/context/changes.md) — change log
 - [TRACK_RECORD.md](TRACK_RECORD.md) — live recommendation performance
-- [CHANGELOG.md](CHANGELOG.md) — version history
-- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup + standards
-- [SECURITY.md](SECURITY.md) — threat model + reporting
+
+## Contributing
+
+- Counts of MCP tools and skills cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` — runs in CI after lint, fails the build if a doc claim drifts from the real `@mcp.tool()` decorator count or `.claude/skills/` folder count. Run it locally before editing those numbers.
+- TRACK_RECORD.md is auto-generated by the `generate_trust_report` MCP tool — do not hand-edit; refresh by calling the tool.
 
 ## License
 
