@@ -365,26 +365,14 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     # MUST NOT leave the machine. Send only relative sizing — weights and % of
     # NLV — which is enough for the model to reason about allocation.
     nlv = summary.get("total_value", 0) or 0
+    # cash_available is the total CAD-equivalent cash — wealthsimple.py:369
+    # already converts USD cash and sums it into acc["cash"] before storing.
+    # cash_available_usd is the raw USD figure kept for separate display only;
+    # adding it here would double-count the USD money.
     cash_cad = summary.get("cash_available", 0) or 0
-    # cash_available_usd is RAW USD (wealthsimple.py:361 reads sec-c-usd, line
-    # 392 stores it un-converted into per_account; market_data.py:262 forwards
-    # the raw value into PortfolioSummary). Convert to CAD before mixing with
-    # cash_cad — otherwise cash_pct under-states by the FX gap (~25-35%).
-    # FOLLOW-UP: market_data.py:228 + wealthsimple.py:392 also blend raw USD
-    # with CAD; that fix is broader (touches ws.py /accounts API too).
-    cash_usd_raw = summary.get("cash_available_usd", 0) or 0
-    if cash_usd_raw:
-        from app.services.market_data import _get_cad_per_usd
-        cash_usd_cad = cash_usd_raw * _get_cad_per_usd()
-    else:
-        cash_usd_cad = 0.0
     eq_ret = summary.get("total_return_pct", 0)
     acc_ret = summary.get("account_return_pct")
-    # Guard nlv>0: a negative NLV (margin debit) would otherwise produce a
-    # negative cash_pct that ships nonsense to the LLM ("Cash: -20.0% of NLV").
-    cash_pct = (
-        round((cash_cad + cash_usd_cad) / nlv * 100, 1) if nlv > 0 else None
-    )
+    cash_pct = round(cash_cad / nlv * 100, 1) if nlv > 0 else None
 
     # Holdings table: every actual position, sorted by weight desc. Weight (% of
     # NLV) is the held-position signal — recs for watchlist/buy candidates have

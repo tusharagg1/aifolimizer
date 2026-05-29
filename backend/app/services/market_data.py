@@ -223,9 +223,11 @@ def enrich(
     reported_total = ws_account_total if ws_account_total > 0 else total_market_value_cad
 
     # Prefer WS unrealized P&L for equity-only return — covers all positions
-    # incl. crypto. NLV includes both CAD + USD cash; subtract both to get
-    # true equity-only book cost.
-    total_cash_cad = cash_balance + usd_cash_balance
+    # incl. crypto. cash_balance already holds CAD + USD-converted total
+    # (wealthsimple.py:369 sets acc["cash"] = cad_cash + usd_cash * fx before
+    # storing); usd_cash_balance is raw USD kept for per-currency display
+    # only. Adding it here would double-count the USD money.
+    total_cash_cad = cash_balance
     if unrealized_pnl_cad and ws_account_total > 0:
         equity_nlv = ws_account_total - total_cash_cad
         total_cost_cad = round(equity_nlv - unrealized_pnl_cad, 2)
