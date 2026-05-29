@@ -365,11 +365,15 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     # MUST NOT leave the machine. Send only relative sizing — weights and % of
     # NLV — which is enough for the model to reason about allocation.
     nlv = summary.get("total_value", 0) or 0
+    # cash_available_usd is already CAD-equivalent (market_data.py:228 sums it
+    # directly with cash_available for total_cash_cad), so blending is correct.
     cash_cad = summary.get("cash_available", 0) or 0
     cash_usd = summary.get("cash_available_usd", 0) or 0
     eq_ret = summary.get("total_return_pct", 0)
     acc_ret = summary.get("account_return_pct")
-    cash_pct = round((cash_cad + cash_usd) / nlv * 100, 1) if nlv else None
+    # Guard nlv>0: a negative NLV (margin debit) would otherwise produce a
+    # negative cash_pct that ships nonsense to the LLM ("Cash: -20.0% of NLV").
+    cash_pct = round((cash_cad + cash_usd) / nlv * 100, 1) if nlv > 0 else None
 
     # Holdings table: every actual position, sorted by weight desc. Weight (% of
     # NLV) is the held-position signal — recs for watchlist/buy candidates have
