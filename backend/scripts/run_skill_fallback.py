@@ -23,10 +23,15 @@ import hashlib
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_BACKEND_DIR))
 
-from app.services import agent_registry as ar
-from app.services import wealthsimple
+# Load .env before any service imports that read config at module level.
+from dotenv import load_dotenv  # noqa: E402
+load_dotenv(_BACKEND_DIR / ".env", override=False)
+
+from app.services import agent_registry as ar  # noqa: E402
+from app.services import wealthsimple  # noqa: E402
 
 
 def _render(snap: dict) -> str:
@@ -74,13 +79,13 @@ def main() -> int:
     args = ap.parse_args()
     try:
         snap, code = asyncio.run(_run(args.skill))
+        if code != 0 or not snap:
+            print(f"no free-LLM fallback available for '{args.skill}'", file=sys.stderr)
+            return 4
+        text = _render(snap)
     except Exception as e:  # noqa: BLE001 — report and signal failure
         print(f"fallback runner error: {e}", file=sys.stderr)
         return 5
-    if code != 0 or not snap:
-        print(f"no free-LLM fallback available for '{args.skill}'", file=sys.stderr)
-        return 4
-    text = _render(snap)
     if not text:
         print(f"fallback produced no content for '{args.skill}'", file=sys.stderr)
         return 4
