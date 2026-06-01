@@ -21,11 +21,20 @@
 param(
     [Parameter(Mandatory = $true)][string]$Skill,
     [Parameter(Mandatory = $true)][string]$Time,
+    [ValidateScript({
+        $valid = @('MON','TUE','WED','THU','FRI','SAT','SUN','DAILY','WEEKDAYS')
+        foreach ($d in ($_ -split ',')) {
+            if ($d.Trim().ToUpper() -notin $valid) {
+                throw "Invalid day '$d'. Allowed: $($valid -join ',') (comma-separated)."
+            }
+        }
+        $true
+    })]
     [string[]]$Days = @('MON','TUE','WED','THU','FRI'),
     [int]$RunMinutesLimit = 15
 )
 
-$Repo    = 'C:\Users\Tusha\Documents\projects\aifolimizer'
+$Repo    = if ($env:AIFOLIMIZER_ROOT) { $env:AIFOLIMIZER_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $Wrapper = Join-Path $Repo 'scripts\run-claude-skill.ps1'
 $TaskName = "aifolimizer\$Skill"
 
@@ -34,13 +43,17 @@ if (-not (Test-Path $Wrapper)) { throw "wrapper not found: $Wrapper" }
 $argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Skill {1}' -f $Wrapper, $Skill
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argLine
 
-$DaysStr = ($Days -join ',').ToUpper()
-if ($DaysStr -eq 'DAILY') {
+$DayTokens = @($Days | ForEach-Object { ($_ -split ',') } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
+$DaysStr = ($DayTokens -join ',')
+if ($DayTokens.Count -eq 1 -and $DayTokens[0] -eq 'DAILY') {
     $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 } else {
+    if ($DayTokens.Count -eq 1 -and $DayTokens[0] -eq 'WEEKDAYS') {
+        $DayTokens = @('MON','TUE','WED','THU','FRI')
+    }
     $map = @{ MON='Monday'; TUE='Tuesday'; WED='Wednesday'; THU='Thursday';
               FRI='Friday'; SAT='Saturday'; SUN='Sunday' }
-    $dow = $Days | ForEach-Object { $map[$_.Trim().ToUpper()] }
+    $dow = $DayTokens | ForEach-Object { $map[$_] } | Where-Object { $_ }
     if (-not $dow) { throw "could not parse -Days '$Days'" }
     $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek $dow -At $Time
 }

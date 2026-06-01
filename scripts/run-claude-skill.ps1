@@ -20,7 +20,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Skill
 )
 
-$Repo     = 'C:\Users\Tusha\Documents\projects\aifolimizer'
+$Repo     = if ($env:AIFOLIMIZER_ROOT) { $env:AIFOLIMIZER_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $Backend  = Join-Path $Repo 'backend'
 $Py       = Join-Path $Backend '.venv\Scripts\python.exe'
 $Send     = Join-Path $Backend 'scripts\send_telegram.py'

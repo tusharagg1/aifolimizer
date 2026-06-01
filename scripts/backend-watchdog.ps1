@@ -5,11 +5,13 @@
 
 .NOTES
   Task Scheduler action: powershell.exe -NoProfile -ExecutionPolicy Bypass -File
-    "C:\Users\Tusha\Documents\projects\aifolimizer\scripts\backend-watchdog.ps1"
+    "<REPO>\scripts\backend-watchdog.ps1"
   Trigger: repeat every 5 minutes indefinitely.
+  Set $env:AIFOLIMIZER_ROOT to override repo location; otherwise auto-detected from script path.
 #>
 
-$Backend  = 'C:\Users\Tusha\Documents\projects\aifolimizer\backend'
+$Repo     = if ($env:AIFOLIMIZER_ROOT) { $env:AIFOLIMIZER_ROOT } else { Split-Path -Parent $PSScriptRoot }
+$Backend  = Join-Path $Repo 'backend'
 $Py       = Join-Path $Backend '.venv\Scripts\python.exe'
 $Run      = Join-Path $Backend 'run.py'
 $LogDir   = Join-Path $HOME '.aifolimizer'
