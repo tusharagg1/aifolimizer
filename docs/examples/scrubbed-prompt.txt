@@ -6,7 +6,7 @@ session: 7f3a9c2e8b1d4f6a0c5e2b8d3a1f7c94
 === PROMPT ===
 You are a BlackRock-style portfolio health analyst. Apply institutional risk-budgeting and concentration discipline. Be direct, quantitative, and prioritize structural risks over noise.
 
-PORTFOLIO (PII-stripped, weights as % of NLV — no absolute dollar balances, no account IDs, no names, no email, no WS token):
+PORTFOLIO (PII-stripped, weights as % of NLV - no absolute dollar balances, no account IDs, no names, no email, no WS token):
   XEQT: 22.3% (CAD ETF, all-equity global)
   VFV: 18.1% (CAD ETF, S&P500)
   AAPL: 9.4%

@@ -1,18 +1,18 @@
-# aifolimizer — Project Context
+# aifolimizer - Project Context
 
 ## Session Startup (read every new session)
-1. Read `.claude/context/changes.md` — what built, when
-2. Read `.claude/context/architecture.md` — data flow, API contracts, file index
-3. Read `.claude/context/lessons.md` — past corrections, do-not-repeat rules
-4. Call `mcp__aifolimizer__get_profile` before analysis — never hardcode account types or capital
+1. Read `.claude/context/changes.md` - what built, when
+2. Read `.claude/context/architecture.md` - data flow, API contracts, file index
+3. Read `.claude/context/lessons.md` - past corrections, do-not-repeat rules
+4. Call `mcp__aifolimizer__get_profile` before analysis - never hardcode account types or capital
 
 ## What This Is
-AI investment advisor, Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro — no Anthropic API key.
+AI investment advisor, Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro - no Anthropic API key.
 
 ## Architecture
 
 ```
-Claude Code / Claude Desktop  (Pro subscription — no API key)
+Claude Code / Claude Desktop  (Pro subscription - no API key)
         ↓ invokes
    .claude/skills/*  (21 institutional analysis skills)
         ↓ calls MCP tool
@@ -23,7 +23,7 @@ Claude Code / Claude Desktop  (Pro subscription — no API key)
    Wealthsimple + yfinance + FRED + CoinGecko (all free, no keys required)
 ```
 
-No frontend — analysis runs in Claude Code / Claude Desktop. FastAPI is exposed for ad-hoc REST testing only.
+No frontend - analysis runs in Claude Code / Claude Desktop. FastAPI is exposed for ad-hoc REST testing only.
 
 ## How to Start
 
@@ -31,17 +31,17 @@ No frontend — analysis runs in Claude Code / Claude Desktop. FastAPI is expose
 # Backend (FastAPI + shared session store)
 cd backend && .venv/Scripts/activate && uvicorn main:app --reload --port 8000
 ```
-MCP server (`mcp_server.py`) runs as separate process managed by Claude Code — register once with:
+MCP server (`mcp_server.py`) runs as separate process managed by Claude Code - register once with:
 ```
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (80 total — table below is a curated subset; see `mcp_server.py` for full list)
+## MCP Tools (80 total - table below is a curated subset; see `mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
 |---|---|---|
-| `get_profile` | Account types, cash balances, total invested — PII stripped | session |
-| `get_portfolio` | Live enriched positions + summary — PII stripped | live |
+| `get_profile` | Account types, cash balances, total invested - PII stripped | session |
+| `get_portfolio` | Live enriched positions + summary - PII stripped | live |
 | `get_xray` | ETF exposure + sector/asset-class breakdown | live |
 | `get_concentration_warnings` | Single-position / sector over-allocation flags | live |
 | `get_tax_loss_candidates` | Underwater positions for tax-loss harvesting | live |
@@ -67,14 +67,14 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `snapshot_portfolio_equity` | Append NAV to portfolio_history.jsonl (idempotent/day) | live |
 | `get_alpha_attribution` | Alpha, beta, Sharpe, info ratio, tracking error vs benchmarks | live |
 | `get_quote_with_source` | Live quote w/ source attribution (fallback chain) | 5m |
-| `get_quotes_batch` | Batch quotes for N symbols — 13x faster than serial | 5m |
+| `get_quotes_batch` | Batch quotes for N symbols - 13x faster than serial | 5m |
 | `get_data_source_reliability` | Per-source success rate + avg latency | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + jsonl, git-commit | live |
 | `list_analysis_modes` | Filesystem-driven list of all 21 skills + their MCP tools | static |
 
 L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2.
 
-## Analysis Skills (21 in `.claude/skills/` — table below highlights core 13)
+## Analysis Skills (21 in `.claude/skills/` - table below highlights core 13)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|
@@ -98,10 +98,10 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 
 - Age 32, Canadian
 - Philosophy: growth stocks, index ETFs (XEQT/VFV), dividends, crypto
-- Risk: mixed — conservative (bonds/GIC), moderate (ETFs), aggressive (stocks, crypto)
+- Risk: mixed - conservative (bonds/GIC), moderate (ETFs), aggressive (stocks, crypto)
 - Horizons: day trading + short-term (<3yr) + long-term (10yr+)
 - Tax: TFSA (tax-free), RRSP (tax-deferred), Non-Reg (50% cap gains inclusion)
-- **Capital + balances: ALWAYS pull from `get_profile` — never hardcode**
+- **Capital + balances: ALWAYS pull from `get_profile` - never hardcode**
 - **Crowding**: before adding to name, call `get_positioning_signals`. Score ≥70 = consensus-crowded → negative expected alpha. Defer adds; favor contrarian (score ≤30) when fundamentals support.
 
 ## Tech Stack
@@ -110,7 +110,7 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 |---|---|
 | Backend API | FastAPI + uvicorn (Python 3.12) |
 | MCP server | FastMCP (shares services with FastAPI) |
-| Technical indicators | `ta>=0.11.0` (NOT pandas-ta — incompatible w/ Python 3.14) |
+| Technical indicators | `ta>=0.11.0` (NOT pandas-ta - incompatible w/ Python 3.14) |
 | Prices + fundamentals | yfinance (free, no key) |
 | Macro data | FRED public CSV API (free, no key) |
 | Crypto data | CoinGecko v3 free API (no key, 30 req/min) |
@@ -122,28 +122,28 @@ Supports Python 3.12+; pinned <3.14 due to pandas-ta lineage.
 
 <important if="touching backend/, .env, mcp_server.py, pii_filter.py, or any MCP tool response">
 - WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI. Password NEVER persisted to disk.
-- WS access + refresh token: server RAM + persisted to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; on Windows the file lives in the user profile and relies on NTFS ACL — set BitLocker / strict ACL if hardening). 8h TTL; auto-cleared when stale/rejected. Delete to force re-auth. Lives outside repo — never committed.
+- WS access + refresh token: server RAM + persisted to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; on Windows the file lives in the user profile and relies on NTFS ACL - set BitLocker / strict ACL if hardening). 8h TTL; auto-cleared when stale/rejected. Delete to force re-auth. Lives outside repo - never committed.
 - `pii_filter.py` is applied to portfolio/profile/x-ray responses (the tools that surface account-bearing payloads from `wealthsimple.py`). Other tools (technicals, fundamentals, macro, news, etc.) operate on public market data + symbol lists and do not handle PII. When adding a new MCP tool that touches WS account data, route the response through `pii_filter` before returning.
 - Account IDs, account numbers, email, full name: NEVER leave the local machine.
-- External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts carry symbols, weights (% of NLV), returns %, and scores — NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all fallback inference on-machine.
+- External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts carry symbols, weights (% of NLV), returns %, and scores - NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all fallback inference on-machine.
 - Primary inference path is your Claude Code / Claude Desktop Pro session, which sends prompts (symbols, weights, scores, public market data) to Anthropic per their normal ToS. No separate API key, no third-party LLM, no creds, no PII.
 </important>
 
 ## Environment Variables
 
 ```bash
-# backend/.env (local only — never commit)
+# backend/.env (local only - never commit)
 WS_EMAIL=...
 WS_PASSWORD=...
-# Optional: Telegram alerts, free-LLM fallback keys, Sentry — see .env.example
+# Optional: Telegram alerts, free-LLM fallback keys, Sentry - see .env.example
 ```
 
 ## Code Rules
 
-- No hardcoded capital amounts or account types — always read from `get_profile`
+- No hardcoded capital amounts or account types - always read from `get_profile`
 - No PII in logs, DB, or MCP output
 - Functions short, single-purpose
-- No comments explaining WHAT — only WHY when non-obvious
+- No comments explaining WHAT - only WHY when non-obvious
 - Append to `.claude/context/changes.md` after significant changes
 - Skills builder: `python backend/scripts/build_skills.py` lists tools + skills
 - Scaffold skill: `python backend/scripts/build_skills.py --scaffold <tool_name>`

@@ -1,6 +1,6 @@
-# Daily Briefing — Sample Output
+# Daily Briefing - Sample Output
 
-> **synthetic data** — illustrative example for a fictional Canadian Wealthsimple investor. All numbers, holdings, and signals below are fabricated.
+> **synthetic data** - illustrative example for a fictional Canadian Wealthsimple investor. All numbers, holdings, and signals below are fabricated.
 
 ---
 
@@ -32,8 +32,8 @@ Read: easing cycle continues, USD softening modestly vs CAD. Disinflation on tra
 
 ## Concentration Warnings
 
-- **NVDA — 12.4% of NLV** (single-name threshold: 10%). Position has run +38% YTD; consider trim toward 9% or pause adds.
-- **Technology sector — 41.8% of NLV** (sector threshold: 35%). XEQT + VFV underlying tech overlap with direct AAPL/NVDA holdings. X-ray to check true exposure.
+- **NVDA - 12.4% of NLV** (single-name threshold: 10%). Position has run +38% YTD; consider trim toward 9% or pause adds.
+- **Technology sector - 41.8% of NLV** (sector threshold: 35%). XEQT + VFV underlying tech overlap with direct AAPL/NVDA holdings. X-ray to check true exposure.
 
 ---
 
@@ -42,12 +42,12 @@ Read: easing cycle continues, USD softening modestly vs CAD. Disinflation on tra
 | Severity | Rule | Symbol | Detail |
 |---|---|---|---|
 | HIGH | price_drop_intraday | SHOP.TO | -6.2% intraday on guidance cut headline |
-| MED | rsi_oversold | VFV | RSI(14) = 28.4 — first oversold reading since Feb |
+| MED | rsi_oversold | VFV | RSI(14) = 28.4 - first oversold reading since Feb |
 | MED | earnings_imminent | NVDA | Reports in 6 days (2026-06-07 AMC) |
 
 ---
 
-## Earnings — Next 14 Days
+## Earnings - Next 14 Days
 
 | Date | Ticker | When | Held | Consensus EPS |
 |---|---|---|---|---:|
@@ -60,8 +60,8 @@ Read: easing cycle continues, USD softening modestly vs CAD. Disinflation on tra
 
 ## Positioning Signals
 
-- **Consensus-crowded — NVDA (score 78/100).** Inst. ownership 67%, headline velocity 7d/30d = 1.9x, sell-side 92% Buy. Adding here = late-cycle entry, negative expected alpha. Defer.
-- **Contrarian opportunity — SHOP.TO (score 24/100).** Short interest 8.4% of float, headline velocity 0.6x (quiet), sell-side mixed. If post-drop fundamentals intact, contrarian setup — but verify thesis before acting on a falling knife.
+- **Consensus-crowded - NVDA (score 78/100).** Inst. ownership 67%, headline velocity 7d/30d = 1.9x, sell-side 92% Buy. Adding here = late-cycle entry, negative expected alpha. Defer.
+- **Contrarian opportunity - SHOP.TO (score 24/100).** Short interest 8.4% of float, headline velocity 0.6x (quiet), sell-side mixed. If post-drop fundamentals intact, contrarian setup - but verify thesis before acting on a falling knife.
 
 ---
 

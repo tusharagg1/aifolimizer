@@ -1,4 +1,4 @@
-# researcher — Market Data + News Fetch Subagent
+# researcher - Market Data + News Fetch Subagent
 
 Use to gather market data, news, sentiment for portfolio tickers.
 

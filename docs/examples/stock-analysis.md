@@ -1,6 +1,6 @@
-# Stock Analysis — NVDA
+# Stock Analysis - NVDA
 
-> **SYNTHETIC SAMPLE** — illustrative output only. Numbers fabricated for demonstration. Not real market data.
+> **SYNTHETIC SAMPLE** - illustrative output only. Numbers fabricated for demonstration. Not real market data.
 
 **Framework:** Goldman fundamental + Citadel technical analysis
 **Ticker:** NVDA (NVIDIA Corporation)
@@ -10,7 +10,7 @@
 
 ## Verdict
 
-**BUY — High Conviction**
+**BUY - High Conviction**
 
 Composite score: 8.4 / 10. Fundamentals strong, technicals confirm uptrend, positioning is crowded but flow remains constructive. Entry on pullback to 20-day SMA preferred over chasing.
 
@@ -31,7 +31,7 @@ Composite score: 8.4 / 10. Fundamentals strong, technicals confirm uptrend, posi
 | Net cash | $41.2B | Fortress balance sheet |
 | ROIC | 89% | Exceptional capital efficiency |
 | Analyst target (12m) | $182 (median) | +14% from current |
-| Analyst spread | $145 — $220 | Wide dispersion = thesis contested |
+| Analyst spread | $145 - $220 | Wide dispersion = thesis contested |
 | Recommendation | 38 Buy / 6 Hold / 1 Sell | Strong consensus buy |
 
 **Earnings:** Next report in ~3 weeks. Last 4 quarters: 4 beats, average surprise +9.2%.
@@ -42,7 +42,7 @@ Composite score: 8.4 / 10. Fundamentals strong, technicals confirm uptrend, posi
 
 | Indicator | Value | Signal |
 |---|---|---|
-| Price | $159.40 | — |
+| Price | $159.40 | - |
 | SMA 20 | $154.10 | Price above |
 | SMA 50 | $146.80 | Price above |
 | SMA 200 | $128.40 | Price above |
@@ -60,9 +60,9 @@ Trend: Uptrend. Higher highs, higher lows on daily and weekly. No distribution d
 
 ## Recent News (sample headlines)
 
-1. *"NVIDIA unveils next-gen Rubin platform at GTC; hyperscaler pre-orders confirmed through 2027"* — TechWire, 2 days ago
-2. *"Sovereign AI buildouts in Saudi Arabia and UAE add est. $12B to NVDA TAM"* — Reuters (sample), 5 days ago
-3. *"Antitrust scrutiny intensifies in EU over CUDA ecosystem lock-in; investigation opened"* — FT (sample), 1 week ago
+1. *"NVIDIA unveils next-gen Rubin platform at GTC; hyperscaler pre-orders confirmed through 2027"* - TechWire, 2 days ago
+2. *"Sovereign AI buildouts in Saudi Arabia and UAE add est. $12B to NVDA TAM"* - Reuters (sample), 5 days ago
+3. *"Antitrust scrutiny intensifies in EU over CUDA ecosystem lock-in; investigation opened"* - FT (sample), 1 week ago
 
 Sentiment: Net positive. Item 3 is the live overhang to monitor.
 
@@ -76,7 +76,7 @@ Sentiment: Net positive. Item 3 is the live overhang to monitor.
 | Crowding label | consensus | Late-entry alpha decays |
 | Institutional ownership | 67.4% | Heavily institutional |
 | Short interest | 1.2% of float | Minimal bear interest |
-| Insider activity (90d) | Net selling, $42M | Routine 10b5-1 — not signal |
+| Insider activity (90d) | Net selling, $42M | Routine 10b5-1 - not signal |
 | Headline velocity (7d/30d) | 1.4x | Above-trend coverage |
 | Analyst coverage | 45 firms | Saturated |
 
@@ -88,7 +88,7 @@ Sentiment: Net positive. Item 3 is the live overhang to monitor.
 
 | Level | Price | Distance | Rationale |
 |---|---|---|---|
-| Entry (preferred) | $154 — $156 | -2% to -3% | Pullback to SMA20 |
+| Entry (preferred) | $154 - $156 | -2% to -3% | Pullback to SMA20 |
 | Entry (chase) | $159.40 | spot | Acceptable if half-size |
 | Stop loss | $144.50 | -9.4% | Below SMA50 + ATR buffer |
 | Target 1 | $182 | +14% | Analyst median |

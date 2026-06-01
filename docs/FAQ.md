@@ -6,7 +6,7 @@ The combination is the gap.
 
 OpenBB is a strong financial-data terminal and now ships its own agentic workspace and MCP support. It excels at data aggregation; live brokerage portfolio sync and forward-tested skill recommendations are not its primary focus.
 
-FinGPT is a research-grade platform of finance-domain LLMs (sentiment, NER, forecasting, RAG demos). It produces excellent model-layer output and slots into any agent stack — including this one — at the LLM tier.
+FinGPT is a research-grade platform of finance-domain LLMs (sentiment, NER, forecasting, RAG demos). It produces excellent model-layer output and slots into any agent stack - including this one - at the LLM tier.
 
 ChatGPT (and any general-purpose chat model) does not see actual holdings, cost basis, account types, or cash. It improvises positions from whatever the user pastes.
 
@@ -40,7 +40,7 @@ Depends on which LLM.
 
 | Provider | What it sees |
 |---|---|
-| Claude Code / Claude Desktop (Pro) | Tool responses for the three portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`) with PII fields stripped — symbols, weights as % of NLV, returns %, scores, and dollar values. Public-data tools (technicals, fundamentals, macro, news, crypto) carry no PII and pass through directly. |
+| Claude Code / Claude Desktop (Pro) | Tool responses for the three portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`) with PII fields stripped - symbols, weights as % of NLV, returns %, scores, and dollar values. Public-data tools (technicals, fundamentals, macro, news, crypto) carry no PII and pass through directly. |
 | Anthropic API (if configured separately) | Same as above |
 | Gemini / GitHub Models / OpenRouter / Qwen (fallback) | Hand-built %-of-NAV prompts that omit absolute dollar values. Fallback only fires if the corresponding env var is set. |
 
@@ -55,7 +55,7 @@ Leave the fallback API keys unset to keep all inference local to Claude Code or 
 
 ## Can I run this on Mac or Linux?
 
-Yes — the backend, MCP server, and skills are cross-platform Python 3.12.
+Yes - the backend, MCP server, and skills are cross-platform Python 3.12.
 
 The Windows-only bits are the convenience launchers in `AUTOMATION.md` and `scripts/aifolimizer-launch.ps1`. On Mac or Linux, start the backend and MCP server manually:
 
@@ -75,7 +75,7 @@ For live tick data, this is the wrong project.
 
 ## Is this financial advice?
 
-No. This is software that helps reason about a portfolio. It does not constitute investment, tax, or legal advice. Every trade decision belongs to the user. Skills can and do produce wrong recommendations — that is why the trade-oriented skills (`pre-trade-check`, `position-review`) log every recommendation and forward-test it, so the track record is auditable before any output gets trusted.
+No. This is software that helps reason about a portfolio. It does not constitute investment, tax, or legal advice. Every trade decision belongs to the user. Skills can and do produce wrong recommendations - that is why the trade-oriented skills (`pre-trade-check`, `position-review`) log every recommendation and forward-test it, so the track record is auditable before any output gets trusted.
 
 See the disclaimer in `README.md`.
 
@@ -89,7 +89,7 @@ A `Brokerage` interface that lets Plaid, Schwab, IBKR, and others plug in alongs
 
 Cold caches.
 
-The first run hits yfinance, FRED, CoinGecko, and the Wealthsimple API for every holding. Subsequent runs within the cache TTL hit the local diskcache (and Redis if available) and complete in 2–5 seconds.
+The first run hits yfinance, FRED, CoinGecko, and the Wealthsimple API for every holding. Subsequent runs within the cache TTL hit the local diskcache (and Redis if available) and complete in 2-5 seconds.
 
 Cache TTLs are documented in the MCP tool table in `CLAUDE.md` (5m for crypto, 1h for technicals, 6h for fundamentals, 12h for macro).
 
@@ -100,12 +100,12 @@ Yes, with quality tradeoffs.
 Set one of these in `backend/.env`:
 
 ```bash
-GITHUB_TOKEN=...        # GitHub Models — free tier
-GOOGLE_API_KEY=...      # Gemini — free tier
+GITHUB_TOKEN=...        # GitHub Models - free tier
+GOOGLE_API_KEY=...      # Gemini - free tier
 OPENROUTER_API_KEY=...  # mixed free models
 ```
 
-The fallback chain in `llm_router.py` routes inference to whichever is set. Skill output quality is meaningfully lower than Claude Opus / Sonnet — adversarial reasoning and multi-step synthesis suffer most. Use the fallback for daily briefings and basic screens; do a human review before trusting adversarial-research output.
+The fallback chain in `llm_router.py` routes inference to whichever is set. Skill output quality is meaningfully lower than Claude Opus / Sonnet - adversarial reasoning and multi-step synthesis suffer most. Use the fallback for daily briefings and basic screens; do a human review before trusting adversarial-research output.
 
 ## How do I uninstall?
 

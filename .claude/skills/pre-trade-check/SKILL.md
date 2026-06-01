@@ -1,13 +1,13 @@
 ---
 name: pre-trade-check
-description: Forced discipline gate before any discretionary buy or sell. Use BEFORE placing any trade — intraday, swing, or position. Triggers on "should I buy X?", "thinking about X", "going to enter X", "is now a good time for X?", "I want to buy X", "saw X on twitter", "X is ripping". Refuses approval when FOMO, sizing, or stop-discipline rules are violated.
+description: Forced discipline gate before any discretionary buy or sell. Use BEFORE placing any trade - intraday, swing, or position. Triggers on "should I buy X?", "thinking about X", "going to enter X", "is now a good time for X?", "I want to buy X", "saw X on twitter", "X is ripping". Refuses approval when FOMO, sizing, or stop-discipline rules are violated.
 ---
 
 # Pre-Trade Check (Behavioral Guardrail)
 
 ## Goal
 
-Stop bad trades before they happen. This skill is a **filter, not a recommender**. Output is PASS or REJECT with reasons. Most retail losses come from emotional entries — this skill makes those entries explicit and refusable.
+Stop bad trades before they happen. This skill is a **filter, not a recommender**. Output is PASS or REJECT with reasons. Most retail losses come from emotional entries - this skill makes those entries explicit and refusable.
 
 ## When to invoke
 
@@ -20,7 +20,7 @@ Any time the user is considering a buy or sell. Especially:
 
 ## How to run
 
-**Step 0 — Establish intent (REQUIRED before any tool call):**
+**Step 0 - Establish intent (REQUIRED before any tool call):**
 
 If user has not stated, ask explicitly:
 1. **Ticker?**
@@ -31,17 +31,17 @@ If user has not stated, ask explicitly:
 
 If user can't answer #5 with a specific reason that isn't "saw it on social media" → output **REJECT: no thesis** and stop. Do not run other tools.
 
-**Step 1 — Pull state (parallel):**
-1. `mcp__aifolimizer__get_profile` — total capital, per-account cash
-2. `mcp__aifolimizer__get_portfolio` — current holdings, weights, existing position in this ticker if any
+**Step 1 - Pull state (parallel):**
+1. `mcp__aifolimizer__get_profile` - total capital, per-account cash
+2. `mcp__aifolimizer__get_portfolio` - current holdings, weights, existing position in this ticker if any
 3. `mcp__aifolimizer__get_technicals` with `symbols=[TICKER]`
 4. `mcp__aifolimizer__get_fundamentals` with `symbols=[TICKER]`
 5. `mcp__aifolimizer__get_positioning_signals` with `symbols=[TICKER]`
 6. `mcp__aifolimizer__get_news_headlines` with `symbols=[TICKER]`, `limit=10`
-7. `mcp__aifolimizer__get_live_track_record` (no args) — user's own win-rate over last 30d
-8. `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER` — prior decisions on this name
+7. `mcp__aifolimizer__get_live_track_record` (no args) - user's own win-rate over last 30d
+8. `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER` - prior decisions on this name
 
-**Step 2 — Run filter gates (in order, stop at first REJECT for fatal gates):**
+**Step 2 - Run filter gates (in order, stop at first REJECT for fatal gates):**
 
 ### Fatal gates (any one fails → REJECT, stop)
 
@@ -52,22 +52,22 @@ If user can't answer #5 with a specific reason that isn't "saw it on social medi
 | **Position size sanity** | Proposed $ > 5% of total portfolio for any single BUY/ADD | REJECT. State max allowed = 5% of total NAV. |
 | **No stop plan** | User cannot answer "what price do I exit if wrong?" | REJECT. Compute ATR-based stop suggestion and require user confirm. |
 | **Concentration violation** | Position post-trade would exceed 10% single-name or sector > 35% | REJECT. State current weight + post-trade weight. |
-| **Stage 4 add** | Technical `stage == 4` AND direction is BUY/ADD | REJECT. State "downtrend + below 200SMA — do not add to losers without fundamental override". |
+| **Stage 4 add** | Technical `stage == 4` AND direction is BUY/ADD | REJECT. State "downtrend + below 200SMA - do not add to losers without fundamental override". |
 | **Recent stop-out re-entry** | `get_ticker_decision_history` shows stop hit in last 30 days AND no new thesis | REJECT. List prior stop date + price. Require explicit new bullish catalyst. |
 
 ### Warning gates (do NOT block, but list in output)
 
 | Gate | Rule |
 |---|---|
-| RSI overbought | `rsi_14 > 70` — entry late, expect pullback |
-| Below SMA50 | Price < SMA50 — counter-trend entry |
-| Earnings within 5 days | Per `get_fundamentals.next_earnings` — binary event risk |
+| RSI overbought | `rsi_14 > 70` - entry late, expect pullback |
+| Below SMA50 | Price < SMA50 - counter-trend entry |
+| Earnings within 5 days | Per `get_fundamentals.next_earnings` - binary event risk |
 | Negative news headlines | >50% of recent headlines negative tone |
-| Personal track record poor | User's 30d win rate < 40% — cooling-off recommendation |
-| Wide spread / low volume | `volume_score < 0.5` — execution risk |
-| Below-average ADX | `adx_14 < 20` — chop regime, swing setups weak |
+| Personal track record poor | User's 30d win rate < 40% - cooling-off recommendation |
+| Wide spread / low volume | `volume_score < 0.5` - execution risk |
+| Below-average ADX | `adx_14 < 20` - chop regime, swing setups weak |
 
-**Step 3 — Sizing math (only if all fatal gates PASS):**
+**Step 3 - Sizing math (only if all fatal gates PASS):**
 
 Compute and display:
 
@@ -83,7 +83,7 @@ Compute and display:
 
 If `position_%` > 5%, cap shares so position = 5% of NAV (override risk-based sizing on max-size rule).
 
-**Step 4 — Output decision card:**
+**Step 4 - Output decision card:**
 
 ```
 PRE-TRADE CHECK · <TICKER> · <DIRECTION> · <HORIZON>
@@ -112,13 +112,13 @@ Personal track record (30d):
 Next action: <log via log_recommendation if PASS, else nothing>
 ```
 
-**Step 5 — On PASS, log the intent:**
+**Step 5 - On PASS, log the intent:**
 
 Call `mcp__aifolimizer__log_recommendation` with:
 - `skill="pre-trade-check"`
 - `ticker=<TICKER>`
 - `action=<BUY/SELL>`
-- `conviction="filtered"` (this skill does not assess conviction — only rejects)
+- `conviction="filtered"` (this skill does not assess conviction - only rejects)
 - `rationale=<user's thesis sentence>`
 - `entry_price`, `stop_loss`, `target_price` from sizing math
 
@@ -126,7 +126,7 @@ This builds the forward track record for `weekly-mirror` skill.
 
 ## Investor profile
 
-- Always pull capital + accounts from `get_profile` — never hardcode
+- Always pull capital + accounts from `get_profile` - never hardcode
 - Risk budget per trade: 1.5% of total NAV (ask user to override)
 - Max single position: 5% of total NAV
 - Max sector: 35% of total NAV
@@ -134,19 +134,19 @@ This builds the forward track record for `weekly-mirror` skill.
 ## Rules
 
 - Output ≤ 250 words including decision card
-- Direct. "REJECT — crowding 82/100" not "you may want to reconsider given elevated positioning metrics"
+- Direct. "REJECT - crowding 82/100" not "you may want to reconsider given elevated positioning metrics"
 - If user argues with a REJECT, do NOT flip. Restate the rule and ask them to wait 48h or change their thesis
 - Never recommend a trade. This skill only **rejects** or **passes**. Picking is user's job
-- ATR must be present — if `atr_14` is null, REJECT with "insufficient data for risk-based stop"
+- ATR must be present - if `atr_14` is null, REJECT with "insufficient data for risk-based stop"
 - For SELL/TRIM direction: skip crowding gate, skip stage-4 gate. Apply: FOMO-panic filter (down day > -7% AND reason is "panic"), concentration unwind (good), tax-lot awareness (warn if short-term gain in non-reg)
 
 ## Gotchas
 
-- `get_live_track_record` returns empty for new users — handle null gracefully, do not block on missing history
-- `crowding_score` null for TSX (.TO) tickers — fall back to neutral, do not REJECT on null
-- `pivot_levels.s1` null for halted/new symbols — use current price as entry
-- `atr_14` requires ≥21 bars — REJECT IPOs and recently-listed tickers
+- `get_live_track_record` returns empty for new users - handle null gracefully, do not block on missing history
+- `crowding_score` null for TSX (.TO) tickers - fall back to neutral, do not REJECT on null
+- `pivot_levels.s1` null for halted/new symbols - use current price as entry
+- `atr_14` requires ≥21 bars - REJECT IPOs and recently-listed tickers
 - User-provided dollar amount overrides risk-based sizing only DOWNWARD (smaller is always allowed). If user wants larger than risk-based size, REJECT with the math
-- "Friend's tip" / "X said" — counts as no thesis. REJECT at Step 0
+- "Friend's tip" / "X said" - counts as no thesis. REJECT at Step 0
 - After REJECT, do NOT auto-rerun if user retypes. Require explicit "override" + written justification
-- This skill is the user asking themselves to be disciplined. Honor that — do not soften output to be "nicer"
+- This skill is the user asking themselves to be disciplined. Honor that - do not soften output to be "nicer"

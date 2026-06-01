@@ -1,15 +1,15 @@
-# aifolimizer — Architecture Reference
+# aifolimizer - Architecture Reference
 
 ## Data Flow
 
 ```
-User (Claude Code / Claude Desktop — Pro subscription)
+User (Claude Code / Claude Desktop - Pro subscription)
     │
     ├─ invokes skill  →  .claude/skills/<skill>/SKILL.md
     │                    └─ instructions tell Claude which MCP tools to call
     │
     ▼
-MCP Server  (backend/mcp_server.py — FastMCP, stdio transport)
+MCP Server  (backend/mcp_server.py - FastMCP, stdio transport)
     │
     ├─ get_profile()              → wealthsimple.py → pii_filter.py
     ├─ get_portfolio()            → wealthsimple.py → market_data.py → pii_filter.py
@@ -43,12 +43,12 @@ MCP Server  (backend/mcp_server.py — FastMCP, stdio transport)
     ├─ generate_trust_report()     → trust_report.py → TRACK_RECORD.md + JSONL
     └─ list_analysis_modes()       → filesystem-driven list of all 21 skills
 
-FastAPI REST API  (backend/main.py — port 8000)
+FastAPI REST API  (backend/main.py - port 8000)
     ├─ app/api/ws.py              → portfolio, profile, fundamentals, technicals, alerts, crypto
     ├─ app/api/agents.py          → agent execution endpoints
     └─ app/api/ops.py             → ops / health / metrics endpoints
 
-Postgres (TimescaleDB)  +  Redis  (docker-compose.yml — local Docker)
+Postgres (TimescaleDB)  +  Redis  (docker-compose.yml - local Docker)
     ├─ app/db/pool.py             → asyncpg connection pool
     ├─ app/db/repositories/       → alerts, changes, crowding, equity, recommendations, signals, snapshots, weights
     ├─ app/cache/redis_client.py  → L2 cross-process cache (shared by MCP + FastAPI)
@@ -78,7 +78,7 @@ Login flow:
 Token lifecycle:
   - Stored in Python dict (server RAM) AND persisted to ~/.aifolimizer/ws_session.json
     (mode 0600, outside repo) so a backend restart resumes without re-OTP. Password
-    never persisted — only access+refresh token + email + timestamp.
+    never persisted - only access+refresh token + email + timestamp.
   - TTL: 8 hours from login; persisted file auto-cleared when stale or rejected by WS
   - Evicted on 401 from WS or manual logout
   - MCP server shares same session store as FastAPI
@@ -89,7 +89,7 @@ Token lifecycle:
 Every MCP tool response passes `pii_filter.filter_portfolio()` before return to Claude.
 
 **Stripped:** account_id, account_number, email, full name, WS internal IDs, phone
-**Kept:** symbol, name (company), quantity, book_cost, market_value, weight, day_change_pct, total_return_pct, asset_class, sector, cash_balance (aggregate only), account_type label (TFSA/RRSP — NOT ID)
+**Kept:** symbol, name (company), quantity, book_cost, market_value, weight, day_change_pct, total_return_pct, asset_class, sector, cash_balance (aggregate only), account_type label (TFSA/RRSP - NOT ID)
 
 ## Key Service Contracts
 
@@ -134,16 +134,16 @@ Example: `mcp__aifolimizer__get_portfolio` → `backend/mcp_server.py::get_portf
 ## Environment Variables
 
 ```
-# backend/.env (LOCAL ONLY — never committed, never deployed to cloud)
+# backend/.env (LOCAL ONLY - never committed, never deployed to cloud)
 WS_EMAIL=...
 WS_PASSWORD=...
 SUPABASE_URL=...        # optional
 SUPABASE_SERVICE_KEY=...  # optional
-TELEGRAM_BOT_TOKEN=...  # optional — Telegram bot token for alert push (BotFather)
-TELEGRAM_CHAT_ID=...    # optional — Telegram chat/channel ID receiving alerts
+TELEGRAM_BOT_TOKEN=...  # optional - Telegram bot token for alert push (BotFather)
+TELEGRAM_CHAT_ID=...    # optional - Telegram chat/channel ID receiving alerts
 ```
 
-No frontend — analysis runs in Claude Code / Claude Desktop.
+No frontend - analysis runs in Claude Code / Claude Desktop.
 
 ## File Index
 

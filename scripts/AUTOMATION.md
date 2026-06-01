@@ -1,4 +1,4 @@
-# aifolimizer — Automation Runbook
+# aifolimizer - Automation Runbook
 
 Run analysis skills **automatically, by Claude**, with output pushed to Telegram,
 surviving reboots. Free-LLM backend route is the fallback if Claude Pro is lost.
@@ -25,7 +25,7 @@ the backend. Token refreshes silently for the full refresh-token lifetime
 (days/weeks); MFA is only needed on first login and when Wealthsimple forces
 re-auth.
 
-## Phase 0 — one-time setup (do this first)
+## Phase 0 - one-time setup (do this first)
 
 > Replace `<REPO>` below with your absolute repo path (e.g. `C:\src\aifolimizer`). Set `$env:AIFOLIMIZER_ROOT = '<REPO>'` once and subsequent scripts auto-detect.
 
@@ -38,12 +38,12 @@ re-auth.
    cd <REPO>\backend
    .venv\Scripts\python mcp_login.py      # enter the MFA code when prompted
    ```
-3. **Smoke test** the skill path — restart Claude Code, then in chat: `get my profile`
+3. **Smoke test** the skill path - restart Claude Code, then in chat: `get my profile`
    or `/daily-briefing`. Live data = working.
 
 ## Backend service (keeps the session warm + fallback engine)
 
-Elevated PowerShell (NSSM required — `choco install nssm`):
+Elevated PowerShell (NSSM required - `choco install nssm`):
 ```powershell
 <REPO>\scripts\install-backend-service.ps1
 curl http://127.0.0.1:8000/health      # -> {"status":"ok"}
@@ -88,7 +88,7 @@ type the MFA code. Optional future upgrade: reply to Telegram with the code
   free key in `backend\.env`: `GITHUB_TOKEN` / `GOOGLE_API_KEY` /
   `OPENROUTER_API_KEY` / `DASHSCOPE_API_KEY`.
 - New composer skills (`top-trades-today`, `position-review`) have **no** free-LLM
-  runner — they only run under Claude. The wrapper reports this and exits non-zero.
+  runner - they only run under Claude. The wrapper reports this and exits non-zero.
 
 ## Troubleshooting
 
@@ -108,10 +108,10 @@ type the MFA code. Optional future upgrade: reply to Telegram with the code
 ## POSIX equivalents (macOS / Linux)
 
 WS session file path is identical: `~/.aifolimizer/ws_session.json` (mode 0600).
-The PowerShell wrapper `run-claude-skill.ps1` has no POSIX twin yet — minimal
+The PowerShell wrapper `run-claude-skill.ps1` has no POSIX twin yet - minimal
 bash equivalent below.
 
-### macOS — launchd
+### macOS - launchd
 
 `~/Library/LaunchAgents/com.aifolimizer.daily-briefing.plist`:
 
@@ -148,7 +148,7 @@ launchctl load ~/Library/LaunchAgents/com.aifolimizer.daily-briefing.plist
 launchctl start com.aifolimizer.daily-briefing   # test now
 ```
 
-### Linux — systemd --user
+### Linux - systemd --user
 
 `~/.config/systemd/user/aifolimizer-daily-briefing.service`:
 

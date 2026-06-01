@@ -14,7 +14,7 @@ The point: most retail traders never measure their real win rate. They remember 
 ## State check (BEFORE any tool calls)
 
 Read `.claude/context/STATE.md`. If `last_mirror_date` is within the last 6 days, output:
-> "Weekly mirror ran on `last_mirror_date` — only N days ago. Run again? (yes to proceed)"
+> "Weekly mirror ran on `last_mirror_date` - only N days ago. Run again? (yes to proceed)"
 Wait for user confirmation before continuing. If user says yes or forced, proceed normally.
 
 ## When to invoke
@@ -26,18 +26,18 @@ Wait for user confirmation before continuing. If user says yes or forced, procee
 
 ## How to run
 
-**Step 1 — Pull state (parallel):**
-1. `mcp__aifolimizer__get_profile` — total NAV per account, cash balances
-2. `mcp__aifolimizer__get_portfolio` — current holdings + day/total returns
-3. `mcp__aifolimizer__score_recommendations` — mark-to-market all open recs from `pre-trade-check` and other skills, mark stops/targets hit
-4. `mcp__aifolimizer__get_live_track_record` with `lookback_days=7`, `lookback_days=30`, `lookback_days=90` (3 separate calls) — win rate + P&L per window
-5. `mcp__aifolimizer__get_alpha_attribution` with `benchmarks=["SPY","XEQT.TO","QQQ"]` — am I beating the index?
-6. `mcp__aifolimizer__snapshot_portfolio_equity` — append today's NAV to history (idempotent per day)
-7. `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=5` — recurring patterns from prior stop-outs
+**Step 1 - Pull state (parallel):**
+1. `mcp__aifolimizer__get_profile` - total NAV per account, cash balances
+2. `mcp__aifolimizer__get_portfolio` - current holdings + day/total returns
+3. `mcp__aifolimizer__score_recommendations` - mark-to-market all open recs from `pre-trade-check` and other skills, mark stops/targets hit
+4. `mcp__aifolimizer__get_live_track_record` with `lookback_days=7`, `lookback_days=30`, `lookback_days=90` (3 separate calls) - win rate + P&L per window
+5. `mcp__aifolimizer__get_alpha_attribution` with `benchmarks=["SPY","XEQT.TO","QQQ"]` - am I beating the index?
+6. `mcp__aifolimizer__snapshot_portfolio_equity` - append today's NAV to history (idempotent per day)
+7. `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=5` - recurring patterns from prior stop-outs
 
 ## Investor profile
 
-- Always pull capital from `get_profile` — never hardcode
+- Always pull capital from `get_profile` - never hardcode
 - Boring-core tickers default: `["XEQT.TO", "VFV.TO", "VTI", "QQQ", "XIC.TO", "ZSP.TO"]`. Treat as passive bucket.
 - Trading tickers = everything else in portfolio. Treat as discretionary bucket.
 
@@ -74,14 +74,14 @@ vs XEQT.TO this week:  ±H.H%
 Interpret R-multiple:
 - R ≥ 2.0 → entries+exits are working (rare for retail)
 - 1.0 ≤ R < 2.0 → break-even after costs, need higher win rate
-- R < 1.0 → losers larger than winners — classic discipline failure
+- R < 1.0 → losers larger than winners - classic discipline failure
 - Win rate < 40% + R < 1.5 → **STOP**
 
 ### 3. Open positions snapshot (from `score_recommendations`)
 - Open recs count, total at-risk capital, total floating P&L
 - Stops hit but not exited (action: close now)
 - Targets hit but not trimmed (action: trim 50% now)
-- Time-decay positions (>30 days open without resolution — review thesis)
+- Time-decay positions (>30 days open without resolution - review thesis)
 
 ### 4. Recurring patterns (from cross-ticker lessons)
 List up to 3 repeat-mistake patterns the user is making. Examples:
@@ -89,7 +89,7 @@ List up to 3 repeat-mistake patterns the user is making. Examples:
 - "All 4 losing trades in last 30d had crowding_score >70 at entry"
 - "Average hold time on winners: 2.1 days. On losers: 14.8 days. Holding losers too long."
 
-This is the most valuable section — repeated mistakes are the only fixable thing.
+This is the most valuable section - repeated mistakes are the only fixable thing.
 
 ### 5. Boring-core check
 - Total in boring-core (XEQT/VFV/etc): $X (Y% of NAV)
@@ -98,7 +98,7 @@ This is the most valuable section — repeated mistakes are the only fixable thi
 - Discretionary YTD return: ±%
 - **Honest math: would moving 100% to XEQT 1 year ago have outperformed?** Compute using boring-core return and apply to total NAV.
 
-### 6. Verdict (REQUIRED — no soft language)
+### 6. Verdict (REQUIRED - no soft language)
 
 One of:
 
@@ -120,7 +120,7 @@ Output: "Stop discretionary trading for 30 days. Allocate next 4 weeks of contri
 - Example: "Move $2,000 settled cash → XEQT.TO biweekly DCA"
 - Example: "Skip next 5 swing-trade temptations. Journal them but do not enter."
 
-## After output — write STATE.md
+## After output - write STATE.md
 
 After completing the mirror review, update `.claude/context/STATE.md`:
 - `last_mirror_date`: today's date (YYYY-MM-DD)
@@ -139,11 +139,11 @@ After completing the mirror review, update `.claude/context/STATE.md`:
 ## Gotchas
 
 - `score_recommendations` only sees recs that were logged via `log_recommendation`. If user trades without invoking `pre-trade-check`, this skill is blind to those trades. Recommend: enforce `pre-trade-check` on every entry
-- `get_live_track_record` cached per session — for fresh stats, call `score_recommendations` first to mark-to-market open positions
-- `get_alpha_attribution` needs `snapshot_portfolio_equity` history. New users with <30 days of history will see "insufficient history" — note in output
-- Wealthsimple Managed account returns are not user-controlled — exclude from discretionary attribution. Only attribute self-directed accounts (TFSA-self-directed, RRSP-self-directed, Non-Reg-self-directed)
+- `get_live_track_record` cached per session - for fresh stats, call `score_recommendations` first to mark-to-market open positions
+- `get_alpha_attribution` needs `snapshot_portfolio_equity` history. New users with <30 days of history will see "insufficient history" - note in output
+- Wealthsimple Managed account returns are not user-controlled - exclude from discretionary attribution. Only attribute self-directed accounts (TFSA-self-directed, RRSP-self-directed, Non-Reg-self-directed)
 - Day-trade P&L: if user has intraday closes, `score_recommendations` may not see them because rec was opened+closed same session. Document this as known blind spot until intraday-rec logging exists
-- Boring-core tickers list is configurable — if user holds different ETFs (e.g. VOO, SCHD), update the default list in Step "Investor profile"
-- Crypto P&L (CADC, BTC, etc.) — treat as separate bucket, not boring-core, not discretionary. Volatility skews trade stats
+- Boring-core tickers list is configurable - if user holds different ETFs (e.g. VOO, SCHD), update the default list in Step "Investor profile"
+- Crypto P&L (CADC, BTC, etc.) - treat as separate bucket, not boring-core, not discretionary. Volatility skews trade stats
 - Do NOT recommend specific replacement trades in this skill. This is a mirror, not an advisor. Trade picking belongs in cash-deployment or stock-analysis
 - Verdict thresholds calibrated for typical retail. For users with prop-trading background, ask if they want tighter thresholds

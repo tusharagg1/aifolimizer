@@ -39,7 +39,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # Phase 14: RQ worker — opt-in. Run from container only if you don't
+  # Phase 14: RQ worker - opt-in. Run from container only if you don't
   # already run `python scripts/worker.py` locally in a terminal.
   # Uncomment when ready, OR run the worker on the host venv (no docker
   # python image rebuild needed for dev).

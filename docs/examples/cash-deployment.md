@@ -1,6 +1,6 @@
-# Cash Deployment — SYNTHETIC SAMPLE
+# Cash Deployment - SYNTHETIC SAMPLE
 
-> **SYNTHETIC SAMPLE** — Illustrative only. Numbers, tickers, and signals are fabricated for demonstration. Do not act on this output.
+> **SYNTHETIC SAMPLE** - Illustrative only. Numbers, tickers, and signals are fabricated for demonstration. Do not act on this output.
 
 **Date:** 2026-06-01
 **Account:** TFSA (synthetic)
@@ -28,27 +28,27 @@
 | 2 | **GOOGL** | 3.2% | 4.5% | $2,500 | MED | 58 (neutral) | Add |
 | 3 | **BN.TO** | 2.8% | 4.0% | $2,000 | MED | 35 (contrarian-lean) | Add |
 
-**Total deployed:** $7,500 / $8,500 — $1,000 reserved.
+**Total deployed:** $7,500 / $8,500 - $1,000 reserved.
 
 ### Rationale
 
-- **CSU.TO** — uptrend across SMA20/50/200, RSI 58 (room to run), recent FCF beat. Crowding 42 = consensus not yet stretched.
-- **GOOGL** — pullback to SMA50, RSI 44, AI capex narrative intact. Crowding 58 — borderline; small add only.
-- **BN.TO** — alt-asset manager, Q1 fee-related earnings ahead of consensus. Crowding 35 = under-owned vs peers.
+- **CSU.TO** - uptrend across SMA20/50/200, RSI 58 (room to run), recent FCF beat. Crowding 42 = consensus not yet stretched.
+- **GOOGL** - pullback to SMA50, RSI 44, AI capex narrative intact. Crowding 58 - borderline; small add only.
+- **BN.TO** - alt-asset manager, Q1 fee-related earnings ahead of consensus. Crowding 35 = under-owned vs peers.
 
 ---
 
-## Skipped — Crowding Guard Triggered
+## Skipped - Crowding Guard Triggered
 
 | Ticker | Current Weight | Crowding Score | Reason |
 |--------|----------------|----------------|--------|
 | **NVDA** | 5.8% | **78 (consensus-crowded)** | Score >= 70. Late-entry alpha negative per Goldman 2025 positioning study. Defer add until score < 60 OR pullback >= 8% from ATH. |
 
-Existing position retained — no trim signal. Just no fresh capital.
+Existing position retained - no trim signal. Just no fresh capital.
 
 ---
 
-## Watchlist — Contrarian Alternatives
+## Watchlist - Contrarian Alternatives
 
 Two under-owned names with constructive setups (not held; surfaced for diligence).
 
@@ -61,9 +61,9 @@ Two under-owned names with constructive setups (not held; surfaced for diligence
 
 ---
 
-## Trade Tickets — Top Picks
+## Trade Tickets - Top Picks
 
-### 1. CSU.TO — BUY (HIGH conviction)
+### 1. CSU.TO - BUY (HIGH conviction)
 
 | Field | Value |
 |---|---|
@@ -77,7 +77,7 @@ Two under-owned names with constructive setups (not held; surfaced for diligence
 | Order type | LIMIT, GTC |
 | Account | TFSA |
 
-### 2. GOOGL — ADD (MED conviction)
+### 2. GOOGL - ADD (MED conviction)
 
 | Field | Value |
 |---|---|
@@ -91,7 +91,7 @@ Two under-owned names with constructive setups (not held; surfaced for diligence
 | Order type | LIMIT, GTC |
 | Account | TFSA |
 
-### 3. BN.TO — ADD (MED conviction)
+### 3. BN.TO - ADD (MED conviction)
 
 | Field | Value |
 |---|---|
@@ -116,4 +116,4 @@ Two under-owned names with constructive setups (not held; surfaced for diligence
 
 ---
 
-*This output is educational only and does not constitute financial advice. Synthetic data — not derived from any live portfolio or market prices. Always verify signals, fees, and tax implications before trading.*
+*This output is educational only and does not constitute financial advice. Synthetic data - not derived from any live portfolio or market prices. Always verify signals, fees, and tax implications before trading.*

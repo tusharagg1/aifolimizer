@@ -1,4 +1,4 @@
-# analyst — Deep Financial Analysis Subagent
+# analyst - Deep Financial Analysis Subagent
 
 Use for complex financial analysis requiring multi-step reasoning:
 DCF modeling, risk assessment, earnings analysis, multi-agent adversarial research.

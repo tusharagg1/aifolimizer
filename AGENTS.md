@@ -1,22 +1,22 @@
-# aifolimizer — Agent Context
+# aifolimizer - Agent Context
 
-> Agent-optimized minimal context. Architecture, tech stack, MCP tool table, privacy rules, and code/workflow rules live in [CLAUDE.md](CLAUDE.md) — read that first. This file lists only what's unique for an agent navigating the repo.
+> Agent-optimized minimal context. Architecture, tech stack, MCP tool table, privacy rules, and code/workflow rules live in [CLAUDE.md](CLAUDE.md) - read that first. This file lists only what's unique for an agent navigating the repo.
 
 ## Entry Points
 
-- `backend/main.py` — FastAPI app
-- `backend/mcp_server.py` — MCP server (80 tools)
-- `backend/mcp_login.py` — interactive WS MFA login (run once)
-- `backend/run.py` — uvicorn entry point
-- `.claude/skills/` — 21 analysis skills
+- `backend/main.py` - FastAPI app
+- `backend/mcp_server.py` - MCP server (80 tools)
+- `backend/mcp_login.py` - interactive WS MFA login (run once)
+- `backend/run.py` - uvicorn entry point
+- `.claude/skills/` - 21 analysis skills
 
 ## Important Folders
 
-- `backend/app/services/` — all data/compute logic
-- `backend/app/api/ws.py` — REST API routes
-- `.claude/context/` — session state (changes.md, architecture.md, lessons.md, STATE.md)
-- `scripts/` — automation (Telegram push, scheduled tasks, NSSM service)
-- `docs/` — FAQ + sample skill outputs
+- `backend/app/services/` - all data/compute logic
+- `backend/app/api/ws.py` - REST API routes
+- `.claude/context/` - session state (changes.md, architecture.md, lessons.md, STATE.md)
+- `scripts/` - automation (Telegram push, scheduled tasks, NSSM service)
+- `docs/` - FAQ + sample skill outputs
 
 ## Commands
 
@@ -52,15 +52,15 @@ MCP tool names use the `mcp__aifolimizer__<tool>` convention when invoked from C
 - `backend/.pytest_tmp*/`
 - `*.log`
 - `backend/data/*.jsonl` (runtime data, not source)
-- `.data/` (Docker volumes — Postgres/Redis state)
+- `.data/` (Docker volumes - Postgres/Redis state)
 
 Override with explicit path when triaging (specific log line, jsonl row).
 
 ## Known Gotchas
 
-- Use `ta` lib for technicals — NOT `pandas-ta` (Python 3.14 incompatible; project pins 3.12).
-- MCP + FastAPI share L2 diskcache — cold MCP restart hits L2 if FastAPI warmed within TTL.
-- Always call `get_profile` first in any analysis — never hardcode account types or capital.
-- Single-letter `l` (lowercase L) is ruff E741 — rename to `lo` in candlestick code.
+- Use `ta` lib for technicals - NOT `pandas-ta` (Python 3.14 incompatible; project pins 3.12).
+- MCP + FastAPI share L2 diskcache - cold MCP restart hits L2 if FastAPI warmed within TTL.
+- Always call `get_profile` first in any analysis - never hardcode account types or capital.
+- Single-letter `l` (lowercase L) is ruff E741 - rename to `lo` in candlestick code.
 - `.mcp.json` at repo root is gitignored (contains absolute paths). Use `.mcp.example.json` as template.
-- `.secrets/pg_password.txt` must exist before `docker compose up` — gitignored, create on first clone.
+- `.secrets/pg_password.txt` must exist before `docker compose up` - gitignored, create on first clone.
