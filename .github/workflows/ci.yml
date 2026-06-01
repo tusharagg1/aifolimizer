@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [master]
 
+# Default to read-only; jobs that need write declare it explicitly. Stops a
+# rogue dependency from creating PRs / pushing commits with the workflow token.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -30,19 +35,22 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt ruff pyright pytest pytest-cov
 
-      - name: Lint (ruff)
+      - name: Lint (ruff check)
         run: ruff check . --output-format=github
+
+      - name: Lint (ruff format)
+        run: ruff format --check .
 
       - name: Doc count drift guard
         run: python scripts/check_doc_counts.py
 
-      - name: Pyright (advisory)
+      - name: Pyright
         run: pyright --pythonversion 3.12
-        continue-on-error: true
 
       - name: Tests
+        # tests/ is committed; explicit guard removed so a deleted suite fails
+        # CI loudly instead of silently skipping (audit P2).
         run: pytest tests/ -v --tb=short --cov=app --cov-report=term
-        if: hashFiles('backend/tests/**/*.py') != ''
 
   security:
     name: Security audit
@@ -62,7 +70,18 @@ jobs:
       - name: pip-audit (backend/requirements.txt)
         run: pip-audit -r backend/requirements.txt --strict
 
+      # TODO(supply-chain): pin to a 40-char commit SHA after verifying the
+      # exact release we want from https://github.com/gitleaks/gitleaks-action/releases.
+      # Floating @v2 lets the action's owner move the tag; SHA pinning makes
+      # the version auditable.
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Forbid placeholder addresses in SECURITY.md / CODEOWNERS
+        run: |
+          if grep -RIn "example\.invalid\|<CITE_URL_HERE>\|<DATE>" SECURITY.md TRACK_RECORD.md 2>/dev/null; then
+            echo "::error::Found placeholder strings in published docs"
+            exit 1
+          fi
