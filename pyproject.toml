@@ -1,0 +1,42 @@
+# Python project metadata. Runtime deps live in backend/requirements.txt (unchanged for backwards-compat with existing scripts). pip install -e .[dev] for development.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aifolimizer"
+version = "0.1.0"
+description = "Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 80 analysis tools, and ships 21 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies."
+license = {text = "MIT"}
+requires-python = ">=3.12,<3.14"
+authors = [{name = "Tushar Aggarwal"}]
+readme = "README.md"
+# Runtime dependencies are pinned in backend/requirements.txt for now (lockable separately).
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff", "pyright", "pytest", "pytest-cov", "pip-audit", "pre-commit"]
+
+[project.urls]
+Homepage = "https://github.com/tusharagg1/aifolimizer"
+Issues = "https://github.com/tusharagg1/aifolimizer/issues"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/mcp_server.py" = ["E402"]
+"backend/mcp_login.py" = ["E402"]
+"backend/run_mcp_tools.py" = ["E402"]
+"backend/tests/test_kpi_suite.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+reportMissingImports = "error"
