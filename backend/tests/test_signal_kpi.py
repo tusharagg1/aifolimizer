@@ -451,7 +451,7 @@ class TestConvergenceLift:
 class TestBacktestBenchmarks:
     """Validate backtest KPI values from known historical results.
 
-    Numbers from .claude/context/backtest_results.md (3yr, 5-stock universe).
+    Numbers from historical backtest runs (3yr, 5-stock universe).
     Tests enforce that key claimed metrics are structurally possible given
     the backtest math (not a live fetch — guard regression in metric logic).
     """

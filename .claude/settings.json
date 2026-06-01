@@ -61,7 +61,26 @@
       "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\"; .\\\\.venv\\\\Scripts\\\\Activate.ps1; uvicorn main:app --reload --port 8000)",
       "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\"; npm run dev)",
       "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\sync_coordinator.py\" *)",
-      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\" *)"
+      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\" *)",
+      "WebFetch(domain:www.cmegroup.com)",
+      "WebFetch(domain:ycharts.com)",
+      "WebFetch(domain:www.fiercehealthcare.com)",
+      "WebFetch(domain:www.taxtips.ca)",
+      "WebFetch(domain:www.cibc.com)",
+      "WebFetch(domain:www.bmo.com)",
+      "WebFetch(domain:www.kff.org)",
+      "WebFetch(domain:www.sunlife.ca)",
+      "WebFetch(domain:www.bdo.ca)",
+      "WebFetch(domain:www.fidelity.ca)",
+      "WebFetch(domain:www.thestar.com)",
+      "WebFetch(domain:www.cppinvestments.com)",
+      "WebFetch(domain:retirehappy.ca)",
+      "WebFetch(domain:www.scotiabank.com)",
+      "WebFetch(domain:www.justwealth.com)",
+      "WebFetch(domain:www.theglobeandmail.com)",
+      "Bash(powershell -Command \"Get-Item ~/.aifolimizer/ws_session.json | Select-Object Name, LastWriteTime, Length\")",
+      "Bash(rm -f CONTRIBUTING.md CHANGELOG.md FAQ.md KNOWN_ISSUES.md .pre-commit-config.yaml .python-version .github/CODEOWNERS .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml)",
+      "Bash(rmdir .github/ISSUE_TEMPLATE)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
