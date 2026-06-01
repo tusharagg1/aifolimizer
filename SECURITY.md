@@ -13,7 +13,7 @@ The application **trusts the OS user** running it. Anyone with read access to th
 
 ## Reporting a Vulnerability
 
-Email: **tushar.aggarwal@example.invalid** *(owner: replace with real address before publishing)*
+**Preferred:** open a [GitHub Private Vulnerability Report](https://github.com/tusharagg1/aifolimizer/security/advisories/new) — encrypted, ties to a tracking ID, no email required.
 
 **Do NOT open public GitHub issues for security bugs.** Public disclosure before a fix is available puts other self-hosted users at risk.
 
@@ -58,6 +58,14 @@ The following are upstream services or third-party software outside this project
 - Issues only reproducible on **modified forks**
 
 Report upstream issues directly to the upstream vendor.
+
+## Known Advisories (defense-in-depth notes)
+
+| CVE | Package | Status | Mitigation |
+|---|---|---|---|
+| CVE-2025-69872 (CVSS 9.8) | `diskcache` ≤ 5.6.3 | No upstream patch as of writing | `cache_layer.py` forces `JSONDisk` serialization (no pickle on read) and tightens the cache directory to mode `0700` on POSIX. The threat model (single-user / local-machine) means a co-resident attacker is already trusted, but defense-in-depth blocks the gadget vector if the cache directory is ever shared. |
+
+If you see other advisories surfaced by `pip-audit -r backend/requirements.txt`, evaluate against this threat model first — many remote-execution vectors require a network-exposed service this project does not run.
 
 ## Wealthsimple API Note
 

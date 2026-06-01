@@ -92,7 +92,13 @@ app = FastAPI(title="aifolimizer API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://*.vercel.app"],
+    # FastAPI's CORSMiddleware does NOT expand `*` in allow_origins —
+    # the previous `https://*.vercel.app` entry was a dead literal that
+    # never matched. The frontend was removed; the only legitimate browser
+    # caller is a local dev server. Vercel-preview support, if needed
+    # again, must use `allow_origin_regex=...` instead.
+    allow_origins=["http://localhost:3000"],
+    allow_origin_regex=r"^https://[a-zA-Z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
