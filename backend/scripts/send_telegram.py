@@ -18,8 +18,6 @@ from pathlib import Path
 # Run from anywhere — put backend/ on path so app.core.config resolves.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import httpx
-
 from app.core.config import settings
 from app.services.http_helpers import request_with_retry_after
 

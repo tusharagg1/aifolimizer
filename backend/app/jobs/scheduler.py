@@ -19,6 +19,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timezone, timedelta
+from pathlib import Path as _Path
 
 from app.services import paper_trade
 from app.services import skill_runner
@@ -43,10 +44,9 @@ _LAST_SCORE_RESULT: dict | None = None
 _LAST_SENTRY_TS: float | None = None
 _LAST_SENTRY_DIGEST: dict | None = None
 
-# Persisted state — survives restart so a host that was asleep / down at the
+# Persisted state - survives restart so a host that was asleep / down at the
 # usual run hour catches up on wake instead of waiting for the next normal
 # tick. Path is gitignored alongside other runtime caches.
-from pathlib import Path as _Path  # local alias to avoid touching other imports
 _STATE_DIR = _Path(__file__).resolve().parents[2] / ".cache"
 _STATE_FILE = _STATE_DIR / "scheduler_state.json"
 
