@@ -1,0 +1,51 @@
+{
+  "_INSTRUCTIONS": "Fill any subset of these fields and submit via /profile-setup or pass to set_personal_context_bulk. ALL FIELDS OPTIONAL. Leave a field as null (or omit it) to skip. Never put real names, emails, account numbers, or counterparty identities here — use anonymized labels.",
+
+  "age": null,
+  "province": null,
+
+  "gross_salary_cad": null,
+  "employer_match_pct": null,
+  "bonus_target_cad": null,
+
+  "monthly_expenses_cad": null,
+  "monthly_savings_target_cad": null,
+
+  "fthb_yes": null,
+  "home_horizon_years": null,
+  "mortgage_planned": null,
+  "dependents_count": null,
+  "spouse_present": null,
+
+  "room_rrsp_cad": null,
+  "room_tfsa_cad": null,
+  "room_fhsa_cad": null,
+
+  "risk_tier_per_account": {
+    "_help": "map account-type -> conservative|moderate|aggressive. e.g. {\"TFSA\":\"aggressive\",\"RRSP\":\"moderate\"}",
+    "TFSA": null,
+    "RRSP": null,
+    "FHSA": null,
+    "Non-Reg": null
+  },
+
+  "espp_employer_label": null,
+  "espp_discount_pct": null,
+  "espp_cycle_months": null,
+  "espp_monthly_contrib_pct": null,
+  "espp_qualifying_hold_months": null,
+
+  "iou_receivable_cad": null,
+  "debts": [
+    {"_example_only": true, "type": "student_loan", "balance_cad": 0, "rate_pct": 0}
+  ],
+
+  "institutions": [],
+  "external_cash_cad": null,
+
+  "insurance_tier": null,
+
+  "external_crypto": [
+    {"_example_only": true, "symbol": "BTC", "qty": 0, "cost_basis_cad": 0, "platform_label": "PlatformA"}
+  ]
+}

@@ -10,7 +10,7 @@ FinGPT is a research-grade platform of finance-domain LLMs (sentiment, NER, fore
 
 ChatGPT (and any general-purpose chat model) does not see actual holdings, cost basis, account types, or cash. It improvises positions from whatever the user pastes.
 
-aifolimizer plugs a live Wealthsimple portfolio into Claude through MCP, runs 21 analysis skills against it, and forward-tests the trade-oriented skills (`pre-trade-check`, `position-review`) by logging every recommendation with entry / stop / target and marking them to market on a nightly schedule. The track record is auditable.
+aifolimizer plugs a live Wealthsimple portfolio into Claude through MCP, runs 22 analysis skills against it, and forward-tests the trade-oriented skills (`pre-trade-check`, `position-review`) by logging every recommendation with entry / stop / target and marking them to market on a nightly schedule. The track record is auditable.
 
 ## Do you store my Wealthsimple password?
 
