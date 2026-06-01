@@ -87,6 +87,10 @@ def restore_session() -> Optional[str]:
 
     Skips restore if the file is missing, malformed, older than _TOKEN_TTL_HOURS,
     or if the stored token is no longer accepted by Wealthsimple.
+
+    NOTE: 8h ceiling forces MFA every cycle even when WS refresh-token would
+    accept the session for weeks. Lifting the gate (let WS reject naturally)
+    is a future option — security trade-off vs. unattended-run convenience.
     """
     if not _PERSIST_FILE.exists():
         return None
