@@ -1,6 +1,8 @@
 # aifolimizer
 
-> Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 80 analysis tools, and ships 21 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Reference brokerage today is Wealthsimple; the market-data layer (yfinance, FRED, CoinGecko, plus 10 more adapters) sits behind a shared interface so paid feeds drop in one file at a time.
+> Local-first MCP portfolio brain — your brokerage, your machine, your Claude Pro session, **no Anthropic API key**. 80 analysis tools, 21 skills, 12 swappable data adapters, walk-forward backtests, forward-tested track record.
+
+> Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 80 analysis tools, and ships 21 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Reference brokerage today is Wealthsimple; the market-data layer (yfinance, FRED, CoinGecko, plus 9 more adapters) sits behind a shared interface so paid feeds drop in one file at a time.
 >
 > Runs locally, uses an existing Claude Pro subscription, **no Anthropic API key required**.
 
@@ -23,7 +25,7 @@
 ## What it does
 
 - **Live brokerage portfolio.** Reference Wealthsimple integration ships in-box (MFA-aware, GraphQL via `ws-api`, TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side. Plaid / Schwab / IBKR are on the roadmap behind a `Brokerage` interface.
-- **13 market-data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, plus a Wealthsimple cross-check) share a clean abstract base at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
+- **12 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, Massive cross-check, plus the Wealthsimple broker adapter) share a clean abstract base at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
 - **80 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Any MCP client — Claude Desktop, Claude Code, Cursor — picks them up the moment the server is registered.
 - **21 analysis skills** styled after public investing traditions: Graham / Buffett / Lynch fundamental lenses, Dalio All-Weather risk concepts, allocation health, sector rotation, endowment-style income, pre-earnings, technical analysis, top-down macro, plus quant anomaly skills (PEAD, momentum). Auto-trigger on natural-language intent. (Firm names indicate stylistic inspiration drawn from public writing.)
 - **Forward-tested where it matters.** Trade-oriented skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution` once the daily NAV pipeline (`snapshot_portfolio_equity`) has ~30 days of history. Other skills are read-only analysis surfaces — they inform decisions without carrying forward-tracked predictions.
@@ -120,9 +122,14 @@ Skills auto-trigger on intent in Claude. Or invoke directly:
 /pre-trade-check TSLA     → Risk gate before entering a position
 /auto-rebalance           → Drift-based rebalance recommendations
 /weekly-mirror            → Weekly portfolio review against goals
+/momentum-scanner         → 12-month momentum + breakout scan (scheduler-driven)
+/pead-tracker             → Post-earnings drift tracker (scheduler-driven)
+/position-review          → Open-position health gate (scheduler-driven)
+/top-trades-today         → Highest-conviction tradeable ideas (scheduler-driven)
+/perf-optimizer           → Rolling weights tuner reflection (scheduler-driven)
 ```
 
-Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
+The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/scheduler.py`; they are also invocable on demand. Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
 
 ## MCP tools (80 total — table below highlights core 32; see `backend/mcp_server.py` for the full list)
 

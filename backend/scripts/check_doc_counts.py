@@ -34,6 +34,7 @@ from pathlib import Path
 _ROOT = Path(__file__).parent.parent.parent
 _MCP = _ROOT / "backend" / "mcp_server.py"
 _SKILLS_DIR = _ROOT / ".claude" / "skills"
+_ADAPTERS_DIR = _ROOT / "backend" / "app" / "services" / "data_sources"
 
 # Each entry: (filename, regex, kind). The regex MUST capture the count in
 # group 1. Kinds: "tools" or "skills". Patterns are matched case-insensitive
@@ -55,6 +56,13 @@ _TOOL_PATTERNS: list[str] = [
     # docstring form: '"""... 80 institutional analysis frameworks'
     # NOT a tool count by itself — but mcp_server.py used "13 institutional
     # analysis frameworks" when it should match skills, handled below.
+]
+
+_ADAPTER_PATTERNS: list[str] = [
+    # README + CLAUDE styles
+    r"\*\*(\d+)\s+(?:data|market[- ]data)\s+adapters?\*\*",
+    r"\((\d+)\s+(?:data|market[- ]data)\s+adapters?\)",
+    r"(\d+)\s+(?:data|market[- ]data)\s+adapters?\b",
 ]
 
 _SKILL_PATTERNS: list[str] = [
@@ -91,6 +99,8 @@ for filename in (
         _TARGETS.append((full, pat, "tools"))
     for pat in _SKILL_PATTERNS:
         _TARGETS.append((full, pat, "skills"))
+    for pat in _ADAPTER_PATTERNS:
+        _TARGETS.append((full, pat, "adapters"))
 
 
 # Allow-list: prefixes that, when they appear immediately before THIS captured
@@ -125,6 +135,21 @@ def count_skills() -> int:
     )
 
 
+def count_adapters() -> int:
+    """Files matching `*_src.py` under `data_sources/` are the adapters.
+
+    Excludes base.py / circuit_breaker.py / symbol_classifier.py / __init__.py
+    by construction. README and CLAUDE.md cite this number; drift breaks user
+    trust in the rest of the doc.
+    """
+    if not _ADAPTERS_DIR.is_dir():
+        return 0
+    return sum(
+        1 for child in _ADAPTERS_DIR.iterdir()
+        if child.is_file() and child.name.endswith("_src.py")
+    )
+
+
 def _line_for(text: str, start: int) -> tuple[int, str]:
     line_no = text.count("\n", 0, start) + 1
     line_start = text.rfind("\n", 0, start) + 1
@@ -135,8 +160,15 @@ def _line_for(text: str, start: int) -> tuple[int, str]:
 
 
 def main() -> int:
-    actual = {"tools": count_mcp_tools(), "skills": count_skills()}
-    print(f"actual: tools={actual['tools']}  skills={actual['skills']}")
+    actual = {
+        "tools": count_mcp_tools(),
+        "skills": count_skills(),
+        "adapters": count_adapters(),
+    }
+    print(
+        f"actual: tools={actual['tools']}  skills={actual['skills']}  "
+        f"adapters={actual['adapters']}"
+    )
 
     failures: list[str] = []
     seen: set[tuple[str, int, int]] = set()  # dedupe overlapping regex hits
