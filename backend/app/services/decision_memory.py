@@ -144,6 +144,15 @@ def resolve_outcomes(price_map: dict[str, float], days_expiry: int = 90) -> dict
     return {"resolved": resolved, "total_open_remaining": sum(1 for r in records if r.get("outcome") == "open")}
 
 
+def get_open_decisions() -> list[dict]:
+    """Return every decision still in 'open' state.
+
+    Used by the nightly scheduler to know which tickers to mark-to-market.
+    Cheap (loads the JSONL once); idempotent.
+    """
+    return [r for r in _load_all() if r.get("outcome") == "open"]
+
+
 def get_ticker_history(ticker: str, max_decisions: int = 5) -> list[dict]:
     """Phase C — last N decisions for a ticker, newest first.
 

@@ -30,6 +30,8 @@ _W_MIN_LEGACY, _W_MAX_LEGACY = 0.5, 1.5
 _W_MIN_SKILL, _W_MAX_SKILL = 0.1, 1.5
 _BUMP = 1.05
 _CUT = 0.95
+_BUMP_OVERCONFIDENT = 1.02   # half-step when calibration says we're overconfident
+_CUT_OVERCONFIDENT = 0.92    # heavier cut when overconfident
 _N_MIN = 20
 
 Objective = Literal["accuracy", "expectancy"]
@@ -47,28 +49,35 @@ def _adjust(
     *,
     source: str,
     objective: Objective,
+    overconfident: bool = False,
 ) -> float:
     lo, hi = _bounds_for(source)
     n = int(stats.get("n") or 0)
     if n < _N_MIN:
         return w_old
 
+    # When the most recent calibration verdict is "overconfident" the model's
+    # win-prob is systematically optimistic. Smaller bumps and bigger cuts
+    # damp future overshoot without freezing the tuner.
+    bump = _BUMP_OVERCONFIDENT if overconfident else _BUMP
+    cut = _CUT_OVERCONFIDENT if overconfident else _CUT
+
     if objective == "accuracy":
         hit = float(stats.get("win_rate") or 0)
         avg = float(stats.get("avg_return") or 0)
         if hit >= 0.55 and avg > 0.005:
-            return min(round(w_old * _BUMP, 2), hi)
+            return min(round(w_old * bump, 2), hi)
         if hit <= 0.45 or avg < 0:
-            return max(round(w_old * _CUT, 2), lo)
+            return max(round(w_old * cut, 2), lo)
         return w_old
 
     # Phase 11 objective: expectancy + profit factor.
     exp = float(stats.get("after_cost_expectancy_pct") or 0)
     pf = float(stats.get("profit_factor") or 0)
     if exp > 0.005 and pf > 1.1:
-        return min(round(w_old * _BUMP, 2), hi)
+        return min(round(w_old * bump, 2), hi)
     if exp < 0 or pf < 0.9:
-        return max(round(w_old * _CUT, 2), lo)
+        return max(round(w_old * cut, 2), lo)
     return w_old
 
 
@@ -107,6 +116,18 @@ async def recalibrate(
         )
         objective = "expectancy" if max_n >= _N_MIN else "accuracy"
 
+    # Calibration check: if the model is currently overconfident, damp the
+    # tuner step so a streak of optimistic predictions doesn't ratchet
+    # weights up further. `overconfident` flag flows into _adjust below.
+    overconfident = False
+    try:
+        from app.services.calibration import calibration_verdict
+        cal = await calibration_verdict(horizon_days=horizon_days)
+        if isinstance(cal, dict) and cal.get("verdict") == "overconfident":
+            overconfident = True
+    except Exception as e:
+        log.debug("calibration probe in tuner failed: %s", e)
+
     current = await weights_repo.current()
     proposed = {
         k: float(current.get(k) or 0)
@@ -119,6 +140,7 @@ async def recalibrate(
         key = f"w_{src}"
         proposed[key] = _adjust(
             proposed[key], stats, source=src, objective=objective,
+            overconfident=overconfident,
         )
 
     changed = {

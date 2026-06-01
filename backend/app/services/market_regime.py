@@ -207,10 +207,51 @@ def fetch_inputs() -> dict[str, float | None]:
 
 
 def multiplier_for(skill: str, composite: str) -> float:
-    """Get the (skill, regime) multiplier. Falls back to 1.0."""
+    """Get the (skill, regime) multiplier.
+
+    Resolution order:
+      1. Adaptive multipliers learned from per-(skill, regime) attribution
+         (`.cache/regime_multipliers.json` written by adaptive_regime job).
+      2. The static `_INITIAL_MULTIPLIERS` table.
+      3. `_DEFAULT_MULTIPLIER` (1.0).
+    """
+    learned = _load_learned_multipliers()
+    if learned:
+        skill_tbl = learned.get(skill) or {}
+        if composite in skill_tbl:
+            return float(skill_tbl[composite])
     return _INITIAL_MULTIPLIERS.get(skill, {}).get(
         composite, _DEFAULT_MULTIPLIER,
     )
+
+
+def _load_learned_multipliers() -> dict[str, dict[str, float]] | None:
+    """Read JSON written by `adaptive_regime.recalibrate_multipliers`.
+
+    File schema: {"updated_ts": float, "multipliers": {skill: {regime: float}}}.
+    Returns the inner `multipliers` dict, or None on first run / missing
+    file / decode error so callers fall back to the static table.
+    """
+    try:
+        from pathlib import Path
+        path = (
+            Path(__file__).resolve().parents[2]
+            / ".cache" / "regime_multipliers.json"
+        )
+        if not path.is_file():
+            return None
+        import json
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            inner = payload.get("multipliers")
+            if isinstance(inner, dict):
+                return inner
+            # Fallback: old flat format (skill → {regime: float}).
+            if all(isinstance(v, dict) for v in payload.values()):
+                return payload
+        return None
+    except Exception:
+        return None
 
 
 def initial_multipliers_for(composite: str) -> dict[str, float]:

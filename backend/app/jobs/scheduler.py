@@ -43,6 +43,87 @@ _LAST_SCORE_RESULT: dict | None = None
 _LAST_SENTRY_TS: float | None = None
 _LAST_SENTRY_DIGEST: dict | None = None
 
+# Persisted state — survives restart so a host that was asleep / down at the
+# usual run hour catches up on wake instead of waiting for the next normal
+# tick. Path is gitignored alongside other runtime caches.
+from pathlib import Path as _Path  # local alias to avoid touching other imports
+_STATE_DIR = _Path(__file__).resolve().parents[2] / ".cache"
+_STATE_FILE = _STATE_DIR / "scheduler_state.json"
+
+
+def _load_scheduler_state() -> None:
+    """Hydrate `_LAST_*` globals from disk on process start."""
+    global _LAST_SCORE_DATE, _LAST_SENTRY_TS
+    try:
+        if not _STATE_FILE.is_file():
+            return
+        import json
+        payload = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            d = payload.get("last_score_date")
+            if isinstance(d, str):
+                _LAST_SCORE_DATE = d
+            ts = payload.get("last_sentry_ts")
+            if isinstance(ts, (int, float)):
+                _LAST_SENTRY_TS = float(ts)
+    except Exception as e:
+        _LOG.warning("scheduler: load state failed: %s", e)
+
+
+def _save_scheduler_state() -> None:
+    """Persist the run-once-per-day cursor + Sentry timestamp."""
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        import json
+        _STATE_FILE.write_text(
+            json.dumps({
+                "last_score_date": _LAST_SCORE_DATE,
+                "last_sentry_ts": _LAST_SENTRY_TS,
+                "saved_ts": time.time(),
+            }),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        _LOG.warning("scheduler: save state failed: %s", e)
+
+
+def _last_due_score_date() -> str:
+    """Return the most recent ET weekday whose post-close window has passed.
+
+    A run is "due" once the clock crosses 4pm ET on a weekday. If today is
+    pre-close or a weekend, the most recent due date is the prior weekday.
+    """
+    et_now = _now_eastern()
+    candidate = et_now.date()
+    # Step back until we land on a weekday whose 4pm ET has already passed.
+    while True:
+        is_weekday = candidate.weekday() < 5
+        crossed_close = (
+            candidate < et_now.date()
+            or (candidate == et_now.date() and et_now.hour >= _SCORE_HOUR_ET)
+        )
+        if is_weekday and crossed_close:
+            return candidate.isoformat()
+        candidate = candidate - timedelta(days=1)
+
+
+async def catch_up_missed_runs() -> dict | None:
+    """Fire the nightly score immediately if it's overdue at startup.
+
+    Without this, a machine that was asleep / off at 4pm ET would wait
+    until the next 4pm ET to score yesterday's signals, leaving a one-day
+    gap in the audit chain.
+    """
+    last = _LAST_SCORE_DATE
+    due = _last_due_score_date()
+    if last == due:
+        return None
+    _LOG.info(
+        "scheduler: catch-up — last_score=%s due=%s, firing now",
+        last, due,
+    )
+    return await _score_once_if_due(force=True)
+
 # Sentry digest — hourly poll for live errors.
 _SENTRY_LOOP_INTERVAL_S = 60 * 60
 
@@ -463,22 +544,29 @@ async def _loop():
             continue
 
 
-async def _score_once_if_due() -> dict | None:
+async def _score_once_if_due(force: bool = False) -> dict | None:
     """Run paper_trade.score_recommendations once per UTC date after market close.
 
     Runs independent of any active Wealthsimple session — open recs may exist
     even if no user is currently logged in. Idempotent: only fires the first
     eligible tick per day.
+
+    `force=True` bypasses the time-of-day + weekday guards. Callers (e.g.
+    `catch_up_missed_runs` on host wakeup / restart) use this to fill a
+    missed slot the moment the process is back, rather than waiting for the
+    next 4pm ET tick. The same-date dedupe guard still applies, so calling
+    it twice in a row is a no-op.
     """
     global _LAST_SCORE_DATE, _LAST_SCORE_RESULT
     now_et = _now_eastern()
     today = now_et.date().isoformat()
     if _LAST_SCORE_DATE == today:
         return None
-    if now_et.weekday() >= 5:
-        return None
-    if now_et.hour < _SCORE_HOUR_ET:
-        return None
+    if not force:
+        if now_et.weekday() >= 5:
+            return None
+        if now_et.hour < _SCORE_HOUR_ET:
+            return None
     try:
         result = await asyncio.to_thread(paper_trade.score_recommendations)
         _LAST_SCORE_DATE = today
@@ -697,21 +785,85 @@ async def _score_once_if_due() -> dict | None:
         except Exception as e:
             _LOG.warning("live KPI snapshot failed: %s", e)
 
+        # Self-improvement loop, Step 1: score every directional signal at
+        # the standard 7 forward horizons. Without this nightly call, the
+        # decay-curve / accuracy / source-attribution endpoints stay empty.
+        try:
+            from app.services import signal_history as signal_history_svc
+            score_horizons_result = await asyncio.to_thread(
+                signal_history_svc.score_horizons,
+                signal_history_svc._DEFAULT_HORIZONS,
+            )
+            _LAST_SCORE_RESULT["signal_horizons"] = score_horizons_result
+            _LOG.info(
+                "scheduler: signal horizons scored — %s rows",
+                (score_horizons_result or {}).get("scored_new", "?"),
+            )
+        except Exception as e:
+            _LOG.warning("signal horizons score failed: %s", e)
+
+        # Step 2: resolve open trade decisions to target_hit / stop_hit /
+        # expired so the reflection loop has fresh outcomes to inject into
+        # tomorrow's analyses.
+        try:
+            from app.services import decision_memory
+            from app.services import data_router as _dr
+            open_decisions = decision_memory.get_open_decisions()
+            symbols = sorted({d.get("ticker") for d in open_decisions if d.get("ticker")})
+            price_map: dict[str, float] = {}
+            if symbols:
+                quotes = await asyncio.to_thread(_dr.get_quotes_batch, symbols)
+                for sym, q in (quotes or {}).items():
+                    p = q.get("price") if isinstance(q, dict) else None
+                    if p is not None:
+                        price_map[sym] = float(p)
+            outcomes_result = await asyncio.to_thread(
+                decision_memory.resolve_outcomes, price_map
+            )
+            _LAST_SCORE_RESULT["decision_outcomes"] = outcomes_result
+            _LOG.info(
+                "scheduler: decision outcomes — %s",
+                outcomes_result,
+            )
+        except Exception as e:
+            _LOG.warning("decision outcome resolution failed: %s", e)
+
         # Phase 9: compute calibration on logged probs vs realized outcomes.
+        # Loop over multiple horizons so 5d/63d skills aren't measured by
+        # a single 21d snapshot.
         try:
             from app.services.calibration import calibration_verdict
-            cal_result = await calibration_verdict(horizon_days=21)
+            cal_results: dict[int, dict] = {}
+            for horizon in (5, 21, 63):
+                try:
+                    cal_results[horizon] = await calibration_verdict(
+                        horizon_days=horizon
+                    )
+                except Exception as e:
+                    _LOG.warning(
+                        "calibration horizon=%s failed: %s", horizon, e
+                    )
+            primary = cal_results.get(21) or {}
             _LAST_SCORE_RESULT["calibration"] = {
-                "brier": cal_result.get("brier_score"),
-                "ece": cal_result.get("ece"),
-                "verdict": cal_result.get("verdict"),
-                "n": cal_result.get("n_samples"),
+                "brier": primary.get("brier_score"),
+                "ece": primary.get("ece"),
+                "verdict": primary.get("verdict"),
+                "n": primary.get("n_samples"),
+                "by_horizon": {
+                    str(h): {
+                        "brier": v.get("brier_score"),
+                        "ece": v.get("ece"),
+                        "verdict": v.get("verdict"),
+                        "n": v.get("n_samples"),
+                    }
+                    for h, v in cal_results.items()
+                },
             }
             _LOG.info(
-                "scheduler: calibration — Brier=%s ECE=%s verdict=%s",
-                cal_result.get("brier_score"),
-                cal_result.get("ece"),
-                cal_result.get("verdict"),
+                "scheduler: calibration (h=21) — Brier=%s ECE=%s verdict=%s",
+                primary.get("brier_score"),
+                primary.get("ece"),
+                primary.get("verdict"),
             )
         except Exception as e:
             _LOG.warning("calibration failed: %s", e)
@@ -730,6 +882,47 @@ async def _score_once_if_due() -> dict | None:
         except Exception as e:
             _LOG.warning("weights tuner failed: %s", e)
 
+        # Phase 11b: learn (skill, regime) multipliers from realized data.
+        try:
+            from app.services.adaptive_regime import recalibrate_multipliers
+            adaptive = await recalibrate_multipliers()
+            _LAST_SCORE_RESULT["adaptive_regime"] = adaptive
+        except Exception as e:
+            _LOG.warning("adaptive regime recalibration failed: %s", e)
+
+        # Threshold tuner — promote calibrated buy/sell thresholds.
+        try:
+            from app.services.threshold_tuner import recalibrate as thr_recal
+            thr_result = await asyncio.to_thread(thr_recal)
+            _LAST_SCORE_RESULT["threshold_tuner"] = thr_result
+        except Exception as e:
+            _LOG.warning("threshold tuner failed: %s", e)
+
+        # Skill-health gate (live forward-tested hit-rate / profit-factor).
+        try:
+            from app.services.skill_health import enforce as skill_health_enforce
+            health = await asyncio.to_thread(skill_health_enforce)
+            _LAST_SCORE_RESULT["skill_health"] = health
+        except Exception as e:
+            _LOG.warning("skill health gate failed: %s", e)
+
+        # Backtest gate (deflated Sharpe over walk-forward runs).
+        try:
+            from app.services.backtest_gate import enforce_dsr_gate
+            bt_gate = await asyncio.to_thread(enforce_dsr_gate)
+            _LAST_SCORE_RESULT["backtest_gate"] = bt_gate
+        except Exception as e:
+            _LOG.warning("backtest gate failed: %s", e)
+
+        # Source drift detector (data-router auto-rerank).
+        try:
+            from app.services.source_drift import detect_and_demote
+            drift = await asyncio.to_thread(detect_and_demote)
+            _LAST_SCORE_RESULT["source_drift"] = drift
+        except Exception as e:
+            _LOG.warning("source drift failed: %s", e)
+
+        _save_scheduler_state()
         return _LAST_SCORE_RESULT
     except Exception as e:
         _LOG.exception("scheduler: nightly score failed")
@@ -870,6 +1063,9 @@ def start_scheduler() -> None:
     global _TASK, _SCORE_TASK, _SENTRY_TASK, _REGISTRY_TASK, _STOP_EVENT
     if _TASK and not _TASK.done():
         return
+    # Hydrate persisted run cursor first; the catch-up coroutine below
+    # uses it to decide whether the host missed a window while asleep.
+    _load_scheduler_state()
     _STOP_EVENT = asyncio.Event()
     _TASK = asyncio.create_task(_loop(), name="skill-scheduler")
     _SCORE_TASK = asyncio.create_task(_score_loop(), name="rec-scorer")
@@ -877,8 +1073,15 @@ def start_scheduler() -> None:
     _REGISTRY_TASK = asyncio.create_task(
         _registry_cron_loop(), name="agent-registry-cron",
     )
+    # Fire-and-forget catch-up. The coroutine no-ops when the cursor is
+    # already current; otherwise it forces a single overdue score so a
+    # host that was asleep at 4pm ET doesn't leave a gap until tomorrow.
+    asyncio.create_task(
+        catch_up_missed_runs(), name="rec-scorer-catchup",
+    )
     _LOG.info(
-        "scheduler: started (skill loop + scorer + sentry + registry-cron)"
+        "scheduler: started "
+        "(skill loop + scorer + sentry + registry-cron + catch-up)"
     )
 
 
