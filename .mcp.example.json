@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy to .mcp.json and replace <REPO_ROOT> with absolute path. Windows uses double-backslash, POSIX uses forward slash. .mcp.json is gitignored.",
+  "mcpServers": {
+    "aifolimizer": {
+      "command": "<REPO_ROOT>/backend/.venv/Scripts/python.exe",
+      "args": [
+        "<REPO_ROOT>/backend/mcp_server.py"
+      ]
+    }
+  }
+}
