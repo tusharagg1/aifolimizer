@@ -75,6 +75,7 @@ def main() -> None:
         sys.exit(1)
 
     from app.services.wealthsimple import _atomic_write_json
+
     _atomic_write_json(
         SESSION_FILE,
         {

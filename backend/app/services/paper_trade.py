@@ -244,6 +244,7 @@ def _mirror_to_postgres(rec: dict) -> None:
     """
     try:
         from app.core.config import settings
+
         dsn = settings.postgres_dsn
     except Exception:
         return

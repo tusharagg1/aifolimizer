@@ -71,6 +71,7 @@ NOTIFY_FILE = Path.home() / ".aifolimizer" / ".mfa-notify.last"
 
 def _persist(session: WSAPISession, email: str) -> None:
     from app.services.wealthsimple import _atomic_write_json
+
     _atomic_write_json(
         SESSION_FILE,
         {

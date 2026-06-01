@@ -101,6 +101,7 @@ def _session_file_mtime() -> float:
     except OSError:
         return 0.0
 
+
 _MAX_SYMBOLS = 100
 _VALID_ACCOUNT_TYPES = {"TFSA", "RRSP", "RESP", "Non-Reg", "Crypto", "LIRA", "FHSA", "Cash", ""}
 
