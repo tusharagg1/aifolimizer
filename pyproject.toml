@@ -32,6 +32,7 @@ line-length = 120
 "backend/mcp_server.py" = ["E402"]
 "backend/mcp_login.py" = ["E402"]
 "backend/run_mcp_tools.py" = ["E402"]
+"backend/app/services/llm_router.py" = ["E402"]
 "backend/tests/test_kpi_suite.py" = ["E402"]
 
 [tool.pytest.ini_options]
