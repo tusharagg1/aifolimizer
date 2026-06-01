@@ -41,7 +41,7 @@ MCP Server  (backend/mcp_server.py - FastMCP, stdio transport)
     ├─ get_alpha_attribution()     → alpha_attribution.py vs SPY/XEQT/TSX/QQQ
     ├─ get_skill_track_record()    → skill_backtest.py 3-5yr rule replay
     ├─ generate_trust_report()     → trust_report.py → TRACK_RECORD.md + JSONL
-    └─ list_analysis_modes()       → filesystem-driven list of all 22 skills
+    └─ list_analysis_modes()       → filesystem-driven list of all 21 skills
 
 FastAPI REST API  (backend/main.py - port 8000)
     ├─ app/api/ws.py              → portfolio, profile, fundamentals, technicals, alerts, crypto
@@ -197,7 +197,7 @@ No frontend - analysis runs in Claude Code / Claude Desktop.
 | `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
 | `backend/app/services/skill_llm_runner.py` | Runs skills via LLM router |
 | `docker-compose.yml` | Postgres (TimescaleDB pg16) + Redis 7 |
-| `.claude/skills/*/SKILL.md` | 22 skills |
+| `.claude/skills/*/SKILL.md` | 21 skills |
 | `.claude/context/changes.md` | Change log |
 | `.claude/context/architecture.md` | This file |
 | `supabase_schema.sql` | Optional snapshot history schema |

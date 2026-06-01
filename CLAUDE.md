@@ -14,7 +14,7 @@ AI investment advisor for Canadian Wealthsimple retail investors (growth+income+
 ```
 Claude Code / Claude Desktop  (Pro subscription - no API key)
         ↓ invokes
-   .claude/skills/*  (22 institutional analysis skills)
+   .claude/skills/*  (21 institutional analysis skills)
         ↓ calls MCP tool
    backend/mcp_server.py  (FastMCP, 84 tools)
         ↓ uses
@@ -70,11 +70,11 @@ claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 | `get_quotes_batch` | Batch quotes for N symbols - 13x faster than serial | 5m |
 | `get_data_source_reliability` | Per-source success rate + avg latency | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + jsonl, git-commit | live |
-| `list_analysis_modes` | Filesystem-driven list of all 22 skills + their MCP tools | static |
+| `list_analysis_modes` | Filesystem-driven list of all 21 skills + their MCP tools | static |
 
 L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2.
 
-## Analysis Skills (22 in `.claude/skills/` - table below highlights core 13)
+## Analysis Skills (21 in `.claude/skills/` - table below highlights core 13)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|

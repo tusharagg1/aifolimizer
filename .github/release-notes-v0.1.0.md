@@ -3,7 +3,7 @@ First public tag of aifolimizer. Alpha software, single-user, no warranty - read
 ## What is in the box
 
 - **84 MCP tools** exposed via FastMCP, organized by service (Wealthsimple session, market data, fundamentals, technicals, news, macro, quant, portfolio analytics, health score, crypto data, alerts, recommendations).
-- **22 analysis skills** under `.claude/skills/` covering portfolio health, risk, adversarial research, earnings (pre + post), macro impact, dividend strategy, sector rotation, tax-loss review, cash deployment, daily briefing, position review, pre-trade check, momentum scanner, PEAD tracker, top trades today, weekly mirror and more.
+- **21 analysis skills** under `.claude/skills/` covering portfolio health, risk, adversarial research, earnings (pre + post), macro impact, dividend strategy, sector rotation, tax-loss review, cash deployment, daily briefing, position review, pre-trade check, momentum scanner, PEAD tracker, top trades today, weekly mirror and more.
 - **12 free data adapters** with no required API keys: yfinance, FRED, CoinGecko, Finnhub, Tiingo, Twelve Data, EODHD, Stooq, Binance, Frankfurter, Alpha Vantage, plus the Wealthsimple unofficial API (via `gboudreau/ws-api`).
 - **Validation infrastructure**: walk-forward OOS backtesting per skill, deflated-Sharpe gate, Brier score + ECE calibration tracking, per-source data reliability metrics, and a `generate_trust_report` tool that writes a public TRACK_RECORD.md.
 - **MCP-native** - runs locally in Claude Code or Claude Desktop Pro. No Anthropic API key needed; no cloud LLM call is required for analysis.
