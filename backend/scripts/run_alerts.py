@@ -35,7 +35,7 @@ from app.services import positioning as positioning_svc  # noqa: E402
 
 
 def _load_session() -> str:
-    session_file = _BACKEND / ".ws_session.json"
+    session_file = Path.home() / ".aifolimizer" / "ws_session.json"
     if not session_file.exists():
         raise RuntimeError("No cached WS session. Run mcp_login.py first.")
     payload = json.loads(session_file.read_text(encoding="utf-8"))

@@ -32,7 +32,27 @@ from app.security import get_logger
 _LOG = get_logger("aifolimizer.services.wealthsimple")
 
 
-_TOKEN_TTL_HOURS = 8
+def _resolve_token_ttl_hours() -> int:
+    """Absolute ceiling on persisted-session age before forced re-MFA.
+
+    Override via WS_TOKEN_TTL_HOURS env var. Default 336h (14d) balances
+    unattended scheduled-task convenience against stolen-laptop blast
+    radius. ws-api auto-rotates the access token via _persist_session
+    inside this window; WS-side revocation (password change, manual
+    logout) still kicks in immediately on the next call regardless of
+    this ceiling. Min clamped to 1h, max to 720h (30d).
+    """
+    raw = os.environ.get("WS_TOKEN_TTL_HOURS", "").strip()
+    if not raw:
+        return 336
+    try:
+        n = int(raw)
+    except ValueError:
+        return 336
+    return max(1, min(720, n))
+
+
+_TOKEN_TTL_HOURS = _resolve_token_ttl_hours()
 _PENDING_TTL_SECONDS = 300  # OTP must be entered within 5 minutes of starting login
 
 # {session_id: {state: "pending"|"authed", session: WSAPISession?, email, password?, profile, accounts_raw, expires_at}}
@@ -51,6 +71,31 @@ def _debug(msg: str) -> None:
         print(msg, flush=True)
 
 
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON atomically: temp-file in same dir, fsync, os.replace.
+
+    Without this, concurrent readers (MCP server, FastAPI backend, scheduled
+    skill runs) can observe a half-written file mid-rotation and fall back
+    to a fresh login. os.replace is atomic on both POSIX and Windows when
+    src and dst are on the same filesystem.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}")
+    data = json.dumps(payload).encode("utf-8")
+    with open(tmp, "wb") as f:
+        f.write(data)
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except OSError:
+            pass
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass  # chmod is a no-op on Windows but try-anyway is harmless
+
+
 def _persist_session(session: WSAPISession, email: Optional[str] = None) -> None:
     """Write the live WSAPISession to disk so a backend restart can resume.
 
@@ -61,19 +106,16 @@ def _persist_session(session: WSAPISession, email: Optional[str] = None) -> None
     if email is None:
         return  # ws-api may invoke without username during token refresh — skip
     try:
-        _PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "email": email,
-            "session_json": session.to_json(),
-            "saved_utc": time.time(),
-        }
-        _PERSIST_FILE.write_text(json.dumps(payload), encoding="utf-8")
-        try:
-            os.chmod(_PERSIST_FILE, 0o600)
-        except OSError:
-            pass  # chmod is a no-op on Windows but try-anyway is harmless
+        _atomic_write_json(
+            _PERSIST_FILE,
+            {
+                "email": email,
+                "session_json": session.to_json(),
+                "saved_utc": time.time(),
+            },
+        )
     except Exception as e:
-        _LOG.warning(f"[WS] persist failed: {type(e).__name__}")
+        _LOG.warning(f"[WS] persist failed: {type(e).__name__}: {e}")
 
 
 def _clear_persisted_session() -> None:
@@ -89,9 +131,10 @@ def restore_session() -> Optional[str]:
     Skips restore if the file is missing, malformed, older than _TOKEN_TTL_HOURS,
     or if the stored token is no longer accepted by Wealthsimple.
 
-    NOTE: 8h ceiling forces MFA every cycle even when WS refresh-token would
-    accept the session for weeks. Lifting the gate (let WS reject naturally)
-    is a future option — security trade-off vs. unattended-run convenience.
+    Default ceiling = 14d (override via WS_TOKEN_TTL_HOURS env var, range 1..720h).
+    WS-side revocation still kicks in immediately on the next call regardless of
+    this ceiling, so password change / manual logout invalidate the persisted
+    session right away. The ceiling only bounds the local stolen-laptop window.
     """
     if not _PERSIST_FILE.exists():
         return None

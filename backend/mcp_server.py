@@ -12,6 +12,7 @@ import asyncio
 import importlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -87,27 +88,54 @@ from ws_api import WSAPISession
 
 mcp = FastMCP("aifolimizer")
 
-_state: dict[str, Any] = {"session_id": None}
+_state: dict[str, Any] = {"session_id": None, "file_mtime": 0.0}
+_session_lock = asyncio.Lock()
 # Unified WS session file — same path _persist_session rewrites on token
 # refresh, so headless runs survive rotation for the full refresh-token life.
 _SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
+
+
+def _session_file_mtime() -> float:
+    try:
+        return _SESSION_FILE.stat().st_mtime
+    except OSError:
+        return 0.0
 
 _MAX_SYMBOLS = 100
 _VALID_ACCOUNT_TYPES = {"TFSA", "RRSP", "RESP", "Non-Reg", "Crypto", "LIRA", "FHSA", "Cash", ""}
 
 
 def _load_cached_session() -> str | None:
-    """Try to restore a session from the file written by mcp_login.py."""
+    """Try to restore a session from the file written by mcp_login.py.
+
+    Reads the persisted ws_session.json with bounded retries so a writer
+    mid-rotation (mfa_popup, _persist_session) is given a small window to
+    finish before we declare the file corrupt and force a full re-login.
+    Atomic-rename writers make a partial-read window unlikely, but slow
+    disks + AV scanners can still race.
+    """
     if not _SESSION_FILE.exists():
         return None
+    payload = None
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            payload = json.loads(_SESSION_FILE.read_text(encoding="utf-8"))
+            break
+        except (json.JSONDecodeError, OSError) as e:
+            last_err = e
+            time.sleep(0.05 * (attempt + 1))
+    if payload is None:
+        print(f"[MCP] session file unreadable after retries: {type(last_err).__name__}: {last_err}", flush=True)
+        return None
     try:
-        payload = json.loads(_SESSION_FILE.read_text(encoding="utf-8"))
         ws_session = WSAPISession.from_json(payload["session_json"])
         email = payload["email"]
         result = wealthsimple._finalize_session(ws_session, email)
+        _state["file_mtime"] = _session_file_mtime()
         return result["session_id"]
     except Exception as e:
-        print(f"[MCP] cached session load failed: {e}", flush=True)
+        print(f"[MCP] cached session load failed: {type(e).__name__}: {e}", flush=True)
         return None
 
 
@@ -129,27 +157,61 @@ def _validate_symbols(symbols: list[str]) -> list[str]:
 
 
 async def _ensure_session() -> str:
-    """Login lazily on first tool call. Re-login on session expiry."""
-    if _state["session_id"] and wealthsimple.get_session(_state["session_id"]):
+    """Login lazily on first tool call. Re-login on session expiry.
+
+    Serialized via _session_lock so concurrent tool calls don't double-load
+    the session file or fire two _finalize_session sweeps against WS at the
+    same time (rotates the access token mid-flight, which used to surface
+    as random 401s and "MFA required" errors).
+
+    If ws_session.json has been rewritten since our last load (e.g.
+    aifolimizer-launch.ps1 ran mfa_popup, or user re-ran mcp_login.py),
+    discard the in-memory session and reload from disk so the running
+    MCP process picks up the fresh token without a VSCode restart.
+    """
+    async with _session_lock:
+        current_mtime = _session_file_mtime()
+        if current_mtime and current_mtime > _state["file_mtime"]:
+            _state["session_id"] = None
+
+        if _state["session_id"] and wealthsimple.get_session(_state["session_id"]):
+            return _state["session_id"]
+
+        # Try cached session from mcp_login.py first. Retry once on transient
+        # failure (network blip during _finalize_session) before declaring
+        # the file dead and demanding an MFA re-login.
+        sid = await asyncio.to_thread(_load_cached_session)
+        if not sid:
+            await asyncio.sleep(0.5)
+            sid = await asyncio.to_thread(_load_cached_session)
+        if sid:
+            _state["session_id"] = sid
+            return sid
+
+        # Fall back to .env credentials (no-MFA accounts)
+        email = os.getenv("WS_EMAIL", "")
+        password = os.getenv("WS_PASSWORD", "")
+        if not email or not password:
+            raise RuntimeError(
+                "No cached WS session and no WS_EMAIL/WS_PASSWORD in env. "
+                "Run: cd backend && .venv/Scripts/python mcp_login.py"
+            )
+
+        try:
+            result = await asyncio.to_thread(wealthsimple.login, email, password)
+        except Exception as e:
+            raise RuntimeError(
+                f"WS login failed ({type(e).__name__}: {e}). "
+                "If WS rejected the token (password change / revoked), run: "
+                "cd backend && .venv/Scripts/python mcp_login.py"
+            ) from e
+        if result.get("needs_otp"):
+            raise RuntimeError(
+                "WS requires MFA. Run: cd backend && .venv/Scripts/python mcp_login.py "
+                "and enter the 6-digit code from your email/authenticator."
+            )
+        _state["session_id"] = result["session_id"]
         return _state["session_id"]
-
-    # Try cached session from mcp_login.py first
-    sid = await asyncio.to_thread(_load_cached_session)
-    if sid:
-        _state["session_id"] = sid
-        return sid
-
-    # Fall back to .env credentials (no-MFA accounts)
-    email = os.getenv("WS_EMAIL", "")
-    password = os.getenv("WS_PASSWORD", "")
-    if not email or not password:
-        raise RuntimeError("No cached session found. Run: cd backend && .venv/Scripts/python mcp_login.py")
-
-    result = await asyncio.to_thread(wealthsimple.login, email, password)
-    if result.get("needs_otp"):
-        raise RuntimeError("MFA required. Run: cd backend && .venv/Scripts/python mcp_login.py")
-    _state["session_id"] = result["session_id"]
-    return _state["session_id"]
 
 
 async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
@@ -1757,12 +1819,19 @@ async def list_skill_snapshots() -> dict:
 
 
 def _active_tenant_hash() -> str | None:
-    sid = _state.get("session_id")
-    if not sid:
-        return None
+    """Stable per-tenant hash for DB lookups.
+
+    Single-user system: derived from session_id when available, else falls back
+    to a stable "legacy" hash so DB-backed read tools work even before WS
+    auth refreshes. Same fallback used by migrate_jsonl_to_postgres + paper_trade
+    dual-write so all writes/reads share one tenant.
+    """
     import hashlib
 
-    return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+    sid = _state.get("session_id")
+    if sid:
+        return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(b"legacy").hexdigest()[:16]
 
 
 @mcp.tool()

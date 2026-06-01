@@ -2,7 +2,7 @@
 Interactive MFA login helper for aifolimizer MCP server.
 
 Run once to authenticate with Wealthsimple (including MFA) and cache the
-session token to backend/.ws_session.json. The MCP server reloads this file
+session token to ~/.aifolimizer/ws_session.json. The MCP server reloads this file
 on each tool call so you only need to re-run when the session expires (~8h).
 
 Usage:
@@ -11,7 +11,6 @@ Usage:
 """
 
 import getpass
-import json
 import os
 import sys
 import time
@@ -75,17 +74,15 @@ def main() -> None:
         print(f"ERROR: Login failed — {e}")
         sys.exit(1)
 
-    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "email": email,
-        "session_json": session.to_json(),
-        "saved_utc": time.time(),
-    }
-    SESSION_FILE.write_text(json.dumps(payload), encoding="utf-8")
-    try:
-        os.chmod(SESSION_FILE, 0o600)
-    except OSError:
-        pass
+    from app.services.wealthsimple import _atomic_write_json
+    _atomic_write_json(
+        SESSION_FILE,
+        {
+            "email": email,
+            "session_json": session.to_json(),
+            "saved_utc": time.time(),
+        },
+    )
     print(f"\nSession cached to {SESSION_FILE}")
     print("MCP server + backend share this file; it auto-refreshes on use.")
     print("Re-run this script only when Wealthsimple forces re-auth (MFA).")

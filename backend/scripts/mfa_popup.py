@@ -46,7 +46,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -71,17 +70,15 @@ NOTIFY_FILE = Path.home() / ".aifolimizer" / ".mfa-notify.last"
 
 
 def _persist(session: WSAPISession, email: str) -> None:
-    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "email": email,
-        "session_json": session.to_json(),
-        "saved_utc": time.time(),
-    }
-    SESSION_FILE.write_text(json.dumps(payload), encoding="utf-8")
-    try:
-        os.chmod(SESSION_FILE, 0o600)
-    except OSError:
-        pass
+    from app.services.wealthsimple import _atomic_write_json
+    _atomic_write_json(
+        SESSION_FILE,
+        {
+            "email": email,
+            "session_json": session.to_json(),
+            "saved_utc": time.time(),
+        },
+    )
 
 
 def _ask_otp() -> str | None:
