@@ -72,6 +72,10 @@ For each `ride` or `trim` action that conflicts with current portfolio weight:
 - Which account to act in (TFSA > Non-Reg for gains, Non-Reg for harvesting losses)
 - Max position cap: if adding via PEAD signal, cap at 5% incremental add - this is a momentum overlay, not a conviction change
 
+## After output - log decisions
+
+For each Active play with action `ride` (ADD) or `trim`/`exit soon` (TRIM/EXIT), call `mcp__aifolimizer__log_recommendation` with action (ADD/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW per surprise magnitude + days remaining), entry/target/stop %, 1-line thesis citing surprise % + drift days remaining, `skill_used="pead-tracker"`. Skip `flat` (no edge). Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Always use `get_profile` first - never hardcode accounts or capital

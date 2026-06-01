@@ -26,6 +26,10 @@ description: Run a JPMorgan-style pre-earnings analysis on a specific ticker. Us
 9. **Options-implied move** for earnings day (search for recent IV)
 10. **Recommended play:** Buy before / Trim before / Hold through / Wait for post-earnings dip
 
+## After output - log decision
+
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing the play (buy before / trim before / hold through / wait), `skill_used="earnings-analyzer"`. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Decision summary at very top (one paragraph)

@@ -59,6 +59,10 @@ Below table: one sentence on pattern (improving beats, deteriorating, choppy).
 - Account placement (TFSA / RRSP / Non-Reg) - same framework as stock-analysis
 - For Non-Reg trims, flag capital gains realization explicitly
 
+## After output - log decision
+
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing thesis-change verdict (confirmed / weakened / broken), `skill_used="earnings-postmortem"`. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Decision summary at very top

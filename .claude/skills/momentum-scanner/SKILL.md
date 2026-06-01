@@ -77,6 +77,10 @@ For TFSA positions at a loss: trim - no tax benefit for waiting, capital better 
 If total weight in Strong Momentum names < 40% of portfolio: "Momentum tilt underweight - consider trimming bottom-quintile laggards and rotating into top-quintile names."
 If total weight in Weak names > 30%: "Drag risk - laggards consuming capital that momentum names would compound faster."
 
+## After output - log decisions
+
+For each Strong Momentum name flagged ADD and each Laggard flagged TRIM/EXIT, call `mcp__aifolimizer__log_recommendation` with action (ADD/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing composite score + 52wk-high proximity, `skill_used="momentum-scanner"`. Skip pure HOLDs in mid-band. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Always call `get_profile` first - never hardcode accounts or capital

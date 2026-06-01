@@ -75,6 +75,10 @@ Rows (minimum):
   - High-growth no-div → TFSA (tax-free gains)
   - Canadian dividend payers → Non-Reg (dividend tax credit) or TFSA
 
+## After output - log decision
+
+For winner ticker (and loser if user holds it), call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing the head-to-head edge, `skill_used="stock-compare"`. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Under 700 words

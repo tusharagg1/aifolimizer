@@ -33,6 +33,10 @@ description: Run a Harvard Endowment dividend income analysis. Use when the user
 7. **Projected annual dividend income** from current + recommended adds
 8. **Ranked list** from safest to highest-yield
 
+## After output - log decisions
+
+For each new ticker recommended (initiate) AND any existing holding flagged unsustainable (TRIM/EXIT), call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis (yield + safety + tax placement), `skill_used="dividend-strategy"`. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Format as dividend blueprint with income projection table

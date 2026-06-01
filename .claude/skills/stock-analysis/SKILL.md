@@ -71,6 +71,10 @@ Lens selection guide (use as default, override with judgment):
 21. **Contrarian opportunity flag** - if `contrarian_flag=True` AND fundamentals + technicals strong, upgrade confidence by 1 notch
 22. Headline velocity ratio - `>2.0` = retail attention surge, late-cycle; `<0.5` = forgotten name, potential setup
 
+## After output - log decision
+
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis, `skill_used="stock-analysis"`. Feeds forward win-rate / track-record loop.
+
 ## Rules
 
 - Under 600 words
