@@ -9,6 +9,7 @@ All portfolio data passed through pii_filter before returning to Claude.
 """
 
 import asyncio
+import importlib
 import json
 import os
 from pathlib import Path
@@ -19,34 +20,57 @@ from mcp.server.fastmcp import FastMCP
 
 load_dotenv()
 
-from app.services import (
-    wealthsimple, market_data, macro, portfolio_analytics, quant,
-    fundamentals as fundamentals_svc,
-    technicals as technicals_svc,
-    technicals_intraday as technicals_intraday_svc,
-    news as news_svc,
-    crypto_data as crypto_svc,
-    alerts as alerts_svc,
-    backtest as backtest_svc,
-    positioning as positioning_svc,
-    data_router,
-    skill_backtest as skill_bt_svc,
-    paper_trade as paper_trade_svc,
-    signal_history as signal_history_svc,
-    alpha_attribution as alpha_svc,
-    trust_report as trust_svc,
-    community as community_svc,
-    options as options_svc,
-    trade_ticket as trade_ticket_svc,
-    memory as memory_svc,
-    decision_memory as decision_mem_svc,
-    shadow_account as shadow_svc,
-    run_card as run_card_svc,
-    skill_runner as skill_runner_svc,
-    geopolitical as geopolitical_svc,
-    recommendations as recommendations_svc,
-    watchlist as watchlist_svc,
-)
+
+class _LazyModule:
+    """Defer import until first attribute access.
+
+    MCP handshake requires fast cold-start: top-level eager imports of all
+    service modules (yfinance/ta/pandas) push startup past Claude Code's
+    schema-fetch window, leaving aifolimizer tools absent from the session.
+    """
+    __slots__ = ("_target", "_mod")
+
+    def __init__(self, target: str) -> None:
+        self._target = target
+        self._mod = None
+
+    def __getattr__(self, attr: str) -> Any:
+        if self._mod is None:
+            self._mod = importlib.import_module(self._target)
+        return getattr(self._mod, attr)
+
+
+wealthsimple = _LazyModule("app.services.wealthsimple")
+market_data = _LazyModule("app.services.market_data")
+macro = _LazyModule("app.services.macro")
+portfolio_analytics = _LazyModule("app.services.portfolio_analytics")
+quant = _LazyModule("app.services.quant")
+fundamentals_svc = _LazyModule("app.services.fundamentals")
+technicals_svc = _LazyModule("app.services.technicals")
+technicals_intraday_svc = _LazyModule("app.services.technicals_intraday")
+news_svc = _LazyModule("app.services.news")
+crypto_svc = _LazyModule("app.services.crypto_data")
+alerts_svc = _LazyModule("app.services.alerts")
+backtest_svc = _LazyModule("app.services.backtest")
+positioning_svc = _LazyModule("app.services.positioning")
+data_router = _LazyModule("app.services.data_router")
+skill_bt_svc = _LazyModule("app.services.skill_backtest")
+paper_trade_svc = _LazyModule("app.services.paper_trade")
+signal_history_svc = _LazyModule("app.services.signal_history")
+alpha_svc = _LazyModule("app.services.alpha_attribution")
+trust_svc = _LazyModule("app.services.trust_report")
+community_svc = _LazyModule("app.services.community")
+options_svc = _LazyModule("app.services.options")
+trade_ticket_svc = _LazyModule("app.services.trade_ticket")
+memory_svc = _LazyModule("app.services.memory")
+decision_mem_svc = _LazyModule("app.services.decision_memory")
+shadow_svc = _LazyModule("app.services.shadow_account")
+run_card_svc = _LazyModule("app.services.run_card")
+skill_runner_svc = _LazyModule("app.services.skill_runner")
+geopolitical_svc = _LazyModule("app.services.geopolitical")
+recommendations_svc = _LazyModule("app.services.recommendations")
+watchlist_svc = _LazyModule("app.services.watchlist")
+
 from app.services.pii_filter import filter_portfolio, filter_user_context
 from app.models.portfolio import PortfolioResponse
 from ws_api import WSAPISession

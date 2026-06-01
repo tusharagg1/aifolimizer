@@ -1,7 +1,9 @@
 import asyncio
 import re
+import subprocess
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -38,6 +40,23 @@ def _origin_allowed(origin: str | None) -> bool:
     return bool(_ALLOWED_ORIGIN_PATTERN.match(origin))
 
 
+def _fire_mfa_notify() -> None:
+    """Spawn mfa_notify.py in the background. Cooldown lives inside the
+    script (6h) so calling this on every restore failure is safe."""
+    script = Path(__file__).parent / "scripts" / "mfa_notify.py"
+    if not script.exists():
+        return
+    try:
+        subprocess.Popen(
+            [sys.executable, str(script)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=str(Path(__file__).parent),
+        )
+    except Exception:
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_pool()
@@ -52,8 +71,13 @@ async def lifespan(app: FastAPI):
     # Re-seed the WS session from disk so the scheduler keeps the token warm
     # across restarts (its ticks refresh it) instead of idling until a manual
     # login. Failure is non-fatal — falls back to lazy login on first use.
+    # If restore returns None (no file / stale / WS rejected), fire a single
+    # Telegram heads-up via mfa_notify.py. Event-driven: no polling watchdog
+    # required — user gets one message per real expiry event.
     try:
-        await asyncio.to_thread(wealthsimple.restore_session)
+        sid = await asyncio.to_thread(wealthsimple.restore_session)
+        if sid is None:
+            asyncio.create_task(asyncio.to_thread(_fire_mfa_notify))
     except Exception:
         pass
     scheduler.start_scheduler()
