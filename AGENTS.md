@@ -5,10 +5,10 @@
 ## Entry Points
 
 - `backend/main.py` - FastAPI app
-- `backend/mcp_server.py` - MCP server (80 tools)
+- `backend/mcp_server.py` - MCP server (84 tools)
 - `backend/mcp_login.py` - interactive WS MFA login (run once)
 - `backend/run.py` - uvicorn entry point
-- `.claude/skills/` - 21 analysis skills
+- `.claude/skills/` - 22 analysis skills
 
 ## Important Folders
 
