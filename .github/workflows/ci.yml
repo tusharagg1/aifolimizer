@@ -75,7 +75,7 @@ jobs:
       # Floating @v2 lets the action's owner move the tag; SHA pinning makes
       # the version auditable.
       - name: Gitleaks secret scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
