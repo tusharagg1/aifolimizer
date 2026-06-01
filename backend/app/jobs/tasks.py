@@ -10,6 +10,7 @@ ON CONFLICT DO NOTHING; Phase 5+ tasks gate on date markers).
 Tasks log every run + outcome to Postgres via the standard repos so
 operators can audit via /ops endpoints (Phase 14 surface).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -49,6 +50,7 @@ def run_nightly_scorer() -> dict:
     """Mark open recs to market, fill realized return horizons."""
     try:
         from app.services import paper_trade
+
         result = paper_trade.score_recommendations()
         return {"status": "ok", "summary": result}
     except Exception as e:
@@ -60,8 +62,12 @@ def run_alerts_for_tenant(sid: str) -> dict:
     """Evaluate alerts.py rules for one tenant + push via Telegram if triggered."""
     try:
         from app.services import alerts
-        return alerts.run_for_session(sid) if hasattr(alerts, "run_for_session") \
+
+        return (
+            alerts.run_for_session(sid)
+            if hasattr(alerts, "run_for_session")
             else {"status": "noop", "reason": "alerts.run_for_session not implemented"}
+        )
     except Exception as e:
         log.exception("run_alerts_for_tenant failed (sid=%s): %s", sid[:8], e)
         raise
@@ -70,6 +76,7 @@ def run_alerts_for_tenant(sid: str) -> dict:
 # Phase 5/9/11/12/13 placeholders — keep import-safe so worker doesn't
 # crash before those phases ship. Each replaced with real impl in its
 # phase.
+
 
 def run_weights_tuner() -> dict:
     """Phase 5+11: nightly weights tune.
@@ -138,7 +145,10 @@ def run_discovery_scan(sid: str) -> dict:
                 if session:
                     try:
                         portfolio = await _get_portfolio(
-                            sid, session, "", max_age_s=300,
+                            sid,
+                            session,
+                            "",
+                            max_age_s=300,
                         )
                     except Exception:
                         portfolio = None
@@ -175,7 +185,10 @@ def run_llm_skills_for_tenant(sid: str) -> dict:
                 if not session:
                     return {"status": "skip", "reason": "no_session"}
                 portfolio = await _get_portfolio(
-                    sid, session, "", max_age_s=300,
+                    sid,
+                    session,
+                    "",
+                    max_age_s=300,
                 )
                 if not portfolio or not portfolio.positions:
                     return {"status": "skip", "reason": "empty_portfolio"}
@@ -194,7 +207,8 @@ def run_llm_skills_for_tenant(sid: str) -> dict:
                 )
                 thash = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
                 return await skill_llm_runner.run_nightly_llm_skills(
-                    thash, top,
+                    thash,
+                    top,
                 )
             finally:
                 await close_redis()

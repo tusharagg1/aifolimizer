@@ -13,6 +13,7 @@ Usage:
   cd backend && .venv/Scripts/activate
   python scripts/migrate_jsonl_to_postgres.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -79,7 +80,8 @@ async def _ensure_tenant(tenant_hash: str) -> None:
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
             """,
-            "legacy", tenant_hash,
+            "legacy",
+            tenant_hash,
         )
 
 
@@ -131,10 +133,8 @@ async def import_recommendations(tenant_hash: str) -> int:
                     r.get("account"),
                     r.get("sector_etf"),
                     r.get("benchmark_symbol"),
-                    json.dumps(r.get("benchmarks_entry"))
-                      if r.get("benchmarks_entry") is not None else None,
-                    json.dumps(r.get("features"))
-                      if r.get("features") is not None else None,
+                    json.dumps(r.get("benchmarks_entry")) if r.get("benchmarks_entry") is not None else None,
+                    json.dumps(r.get("features")) if r.get("features") is not None else None,
                     r.get("rationale_hash"),
                     r.get("status", "open"),
                     r.get("exit_price"),
@@ -165,10 +165,14 @@ async def import_alerts(tenant_hash: str) -> int:
                       title, body, pushed, dedup_key
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """,
-                    tenant_hash, _parse_ts(r.get("ts")),
-                    r.get("rule", "legacy"), r.get("symbol"),
-                    r.get("severity"), r.get("title"),
-                    r.get("body"), bool(r.get("pushed", False)),
+                    tenant_hash,
+                    _parse_ts(r.get("ts")),
+                    r.get("rule", "legacy"),
+                    r.get("symbol"),
+                    r.get("severity"),
+                    r.get("title"),
+                    r.get("body"),
+                    bool(r.get("pushed", False)),
                     r.get("dedup_key"),
                 )
                 count += 1
@@ -233,9 +237,11 @@ async def import_signal_history(tenant_hash: str) -> int:
                     )
                     ON CONFLICT (tenant_hash, symbol, ts) DO NOTHING
                     """,
-                    tenant_hash, r.get("symbol", ""),
+                    tenant_hash,
+                    r.get("symbol", ""),
                     _parse_ts(r.get("ts") or r.get("date")),
-                    r.get("action", "HOLD"), r.get("conviction"),
+                    r.get("action", "HOLD"),
+                    r.get("conviction"),
                     float(r.get("score", 0)),
                     features.get("tech_score"),
                     features.get("fund_score"),
@@ -243,13 +249,16 @@ async def import_signal_history(tenant_hash: str) -> int:
                     features.get("sentiment"),
                     features.get("skill_consensus"),
                     features.get("skill_confidence"),
-                    json.dumps(features.get("skill_evidence"))
-                      if features.get("skill_evidence") is not None else None,
-                    features.get("rsi"), features.get("stage"),
+                    json.dumps(features.get("skill_evidence")) if features.get("skill_evidence") is not None else None,
+                    features.get("rsi"),
+                    features.get("stage"),
                     features.get("market_regime"),
-                    features.get("analyst_upside_pct"), features.get("weight"),
-                    features.get("signal_quality"), features.get("risk_reward"),
-                    features.get("kelly_pct"), features.get("win_prob"),
+                    features.get("analyst_upside_pct"),
+                    features.get("weight"),
+                    features.get("signal_quality"),
+                    features.get("risk_reward"),
+                    features.get("kelly_pct"),
+                    features.get("win_prob"),
                     features.get("earnings_risk"),
                 )
                 count += 1
@@ -276,7 +285,10 @@ async def main() -> None:
 
         log.info(
             "migration complete: recs=%d alerts=%d crowding=%d signals=%d",
-            n_recs, n_alerts, n_crowd, n_sig,
+            n_recs,
+            n_alerts,
+            n_crowd,
+            n_sig,
         )
     finally:
         await close_pool()

@@ -135,10 +135,7 @@ def log_recommendation(
     entry_price, source = _safe_quote(ticker)
 
     sector_upper = sector_etf.upper() if sector_etf else None
-    primary_bench = (
-        benchmark_symbol.upper() if benchmark_symbol
-        else (sector_upper or DEFAULT_PRIMARY_BENCHMARK)
-    )
+    primary_bench = benchmark_symbol.upper() if benchmark_symbol else (sector_upper or DEFAULT_PRIMARY_BENCHMARK)
 
     bench_symbols = DEFAULT_BENCHMARKS + ((sector_upper,) if sector_upper else ())
     if primary_bench not in bench_symbols:
@@ -296,20 +293,22 @@ def score_recommendations(max_age_days: int = 180) -> dict:
         primary_alpha = alpha.get(primary_bench)
 
         scored_rec = dict(rec)
-        scored_rec.update({
-            "current_price": round(current, 4),
-            "unrealized_pct": round(ret_pct, 2),
-            "benchmark_returns_pct": {k: round(v, 2) for k, v in bench_rets.items()},
-            "alpha_pct": alpha,
-            "primary_benchmark_alpha_pct": primary_alpha,
-            "beat_primary_benchmark": primary_alpha > 0 if primary_alpha is not None else None,
-            "win": ret_pct > 0,
-            "beat_spy": alpha.get("SPY", 0) > 0 if "SPY" in alpha else None,
-            "beat_xeqt": alpha.get("XEQT.TO", 0) > 0 if "XEQT.TO" in alpha else None,
-            "age_days": round(age_days, 1),
-            "status": status,
-            "scored_at": time.time(),
-        })
+        scored_rec.update(
+            {
+                "current_price": round(current, 4),
+                "unrealized_pct": round(ret_pct, 2),
+                "benchmark_returns_pct": {k: round(v, 2) for k, v in bench_rets.items()},
+                "alpha_pct": alpha,
+                "primary_benchmark_alpha_pct": primary_alpha,
+                "beat_primary_benchmark": primary_alpha > 0 if primary_alpha is not None else None,
+                "win": ret_pct > 0,
+                "beat_spy": alpha.get("SPY", 0) > 0 if "SPY" in alpha else None,
+                "beat_xeqt": alpha.get("XEQT.TO", 0) > 0 if "XEQT.TO" in alpha else None,
+                "age_days": round(age_days, 1),
+                "status": status,
+                "scored_at": time.time(),
+            }
+        )
         if status in ("stopped_out", "target_hit", "horizon_closed"):
             scored_rec["exit_price"] = round(current, 4)
             scored_rec["exit_date"] = date.today().isoformat()
@@ -348,8 +347,7 @@ def get_track_record(windows: list[int] | None = None) -> dict:
 
 
 def _bucket_init() -> dict:
-    return {"count": 0, "wins": 0, "returns": [], "alpha_spy": [], "alpha_xeqt": [],
-            "target_hits": 0, "stop_hits": 0}
+    return {"count": 0, "wins": 0, "returns": [], "alpha_spy": [], "alpha_xeqt": [], "target_hits": 0, "stop_hits": 0}
 
 
 def _bucket_finalize(d: dict) -> dict:
@@ -491,11 +489,7 @@ def batch_log_recommendations(
             price_source = r.get("price_source") or "rec_cycle"
 
             sector_etf = sector_etf_by_symbol.get(ticker)
-            primary_bench = (
-                benchmark_by_symbol.get(ticker)
-                or sector_etf
-                or DEFAULT_PRIMARY_BENCHMARK
-            )
+            primary_bench = benchmark_by_symbol.get(ticker) or sector_etf or DEFAULT_PRIMARY_BENCHMARK
 
             bench_entry = dict(benchmarks_entry)
             for aux in {sector_etf, primary_bench}:
@@ -572,16 +566,18 @@ def get_ticker_history(symbol: str, n: int = 3) -> list[dict]:
         if r.get("return_pct") is None and r.get("status") == "open":
             # include open recs without return yet
             pass
-        rows.append({
-            "date": r.get("date", ""),
-            "action": r.get("action", ""),
-            "conviction": r.get("conviction", ""),
-            "entry_price": r.get("entry_price"),
-            "return_pct": r.get("return_pct"),
-            "alpha_xeqt": (r.get("alpha") or {}).get("XEQT.TO"),
-            "status": r.get("status", "open"),
-            "rationale": (r.get("rationale") or "")[:120],
-        })
+        rows.append(
+            {
+                "date": r.get("date", ""),
+                "action": r.get("action", ""),
+                "conviction": r.get("conviction", ""),
+                "entry_price": r.get("entry_price"),
+                "return_pct": r.get("return_pct"),
+                "alpha_xeqt": (r.get("alpha") or {}).get("XEQT.TO"),
+                "status": r.get("status", "open"),
+                "rationale": (r.get("rationale") or "")[:120],
+            }
+        )
         if len(rows) >= n:
             break
     return rows

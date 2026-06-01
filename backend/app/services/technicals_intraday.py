@@ -11,6 +11,7 @@ Use cases:
 
 NOT for swing/position — those stay on daily bars (technicals.py).
 """
+
 from __future__ import annotations
 
 import time
@@ -116,10 +117,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
 
         # VWAP — institutional magnet
         vwap_val = _vwap(today)
-        vwap_dist_pct = (
-            round((current_price - vwap_val) / vwap_val * 100, 3)
-            if current_price and vwap_val else None
-        )
+        vwap_dist_pct = round((current_price - vwap_val) / vwap_val * 100, 3) if current_price and vwap_val else None
 
         # Opening range (first 30 min)
         or_high, or_low = _opening_range(today)
@@ -136,10 +134,16 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         rsi2 = ta.momentum.RSIIndicator(close, window=2).rsi() if len(close) >= 3 else None
         rsi2_val = _safe(rsi2)
         rsi2_signal = (
-            "oversold" if rsi2_val is not None and rsi2_val < 10
-            else "overbought" if rsi2_val is not None and rsi2_val > 90
-            else "neutral"
-        ) if rsi2_val is not None else None
+            (
+                "oversold"
+                if rsi2_val is not None and rsi2_val < 10
+                else "overbought"
+                if rsi2_val is not None and rsi2_val > 90
+                else "neutral"
+            )
+            if rsi2_val is not None
+            else None
+        )
 
         # RSI(14) on 5-min — context
         rsi14 = ta.momentum.RSIIndicator(close, window=14).rsi() if len(close) >= 15 else None
@@ -148,13 +152,11 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         # ATR(14) on 5-min — intraday stop sizing
         atr_series = (
             ta.volatility.AverageTrueRange(high, low, close, window=14).average_true_range()
-            if len(close) >= 15 else None
+            if len(close) >= 15
+            else None
         )
         atr_val = _safe(atr_series)
-        atr_pct = (
-            round(atr_val / current_price * 100, 4)
-            if atr_val and current_price else None
-        )
+        atr_pct = round(atr_val / current_price * 100, 4) if atr_val and current_price else None
 
         # EMA(9/20) — intraday trend
         ema9 = ta.trend.EMAIndicator(close, window=9).ema_indicator() if len(close) >= 10 else None
@@ -169,10 +171,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         vol_sma = volume.rolling(20).mean() if len(volume) >= 20 else None
         vol_avg = _safe(vol_sma)
         cur_vol = float(volume.iloc[-1]) if not volume.empty else None
-        vol_spike = (
-            round(cur_vol / vol_avg, 2)
-            if cur_vol is not None and vol_avg and vol_avg > 0 else None
-        )
+        vol_spike = round(cur_vol / vol_avg, 2) if cur_vol is not None and vol_avg and vol_avg > 0 else None
 
         # Cumulative volume today vs 5-day avg session volume
         session_vol = float(volume.sum()) if not volume.empty else None
@@ -188,7 +187,8 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             pass
         rel_session_vol = (
             round(session_vol / full_5d_daily_vol, 2)
-            if session_vol and full_5d_daily_vol and full_5d_daily_vol > 0 else None
+            if session_vol and full_5d_daily_vol and full_5d_daily_vol > 0
+            else None
         )
 
         # Pre-market / overnight gap from yesterday's close
@@ -213,26 +213,19 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         # Volume spike (>1.5x): 20%
         # Gap-with-trend confluence: 10%
         vwap_pos = 1.0 if (vwap_dist_pct is not None and vwap_dist_pct > 0) else 0.0
-        or_pos = (
-            1.0 if or_break == "above"
-            else 0.5 if or_break == "inside"
-            else 0.0 if or_break == "below"
-            else 0.5
-        )
+        or_pos = 1.0 if or_break == "above" else 0.5 if or_break == "inside" else 0.0 if or_break == "below" else 0.5
         ema_pos = 1.0 if ema_trend == "uptrend" else 0.0 if ema_trend == "downtrend" else 0.5
-        rsi2_pos = (
-            1.0 if rsi2_val is not None and (rsi2_val < 10 or rsi2_val > 90)
-            else 0.5
-        )
+        rsi2_pos = 1.0 if rsi2_val is not None and (rsi2_val < 10 or rsi2_val > 90) else 0.5
         vol_pos = min((vol_spike or 0) / 2.0, 1.0)
         gap_pos = (
-            1.0 if (gap_pct or 0) > 1.0 and ema_trend == "uptrend"
-            else 1.0 if (gap_pct or 0) < -1.0 and ema_trend == "downtrend"
+            1.0
+            if (gap_pct or 0) > 1.0 and ema_trend == "uptrend"
+            else 1.0
+            if (gap_pct or 0) < -1.0 and ema_trend == "downtrend"
             else 0.5
         )
         intraday_score = round(
-            vwap_pos * 0.25 + or_pos * 0.20 + ema_pos * 0.15
-            + rsi2_pos * 0.10 + vol_pos * 0.20 + gap_pos * 0.10, 3
+            vwap_pos * 0.25 + or_pos * 0.20 + ema_pos * 0.15 + rsi2_pos * 0.10 + vol_pos * 0.20 + gap_pos * 0.10, 3
         )
 
         return {
@@ -258,9 +251,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             "gap_pct": gap_pct,
             "intraday_score": intraday_score,
             "bars_analyzed": len(today),
-            "session_start_et": (
-                today.index[0].isoformat() if not today.empty else None
-            ),
+            "session_start_et": (today.index[0].isoformat() if not today.empty else None),
         }
     except Exception as e:
         _LOG.warning(f"[technicals_intraday] compute error: {e}")
@@ -311,7 +302,7 @@ def get_technicals_intraday(symbols: list[str]) -> dict[str, dict]:
             interval="5m",
             progress=False,
             auto_adjust=False,  # keep raw intraday for VWAP integrity
-            prepost=True,        # include extended hours for gap calc
+            prepost=True,  # include extended hours for gap calc
             group_by="ticker",
             threads=True,
         )

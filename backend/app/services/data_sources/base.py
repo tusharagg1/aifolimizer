@@ -27,7 +27,7 @@ class SourceUnavailable(Exception):
 @dataclass
 class PriceBar:
     symbol: str
-    date: str            # ISO YYYY-MM-DD (EOD) or full ISO timestamp (intraday)
+    date: str  # ISO YYYY-MM-DD (EOD) or full ISO timestamp (intraday)
     open: float
     high: float
     low: float
@@ -93,9 +93,7 @@ class DataSource(abc.ABC):
     def get_quote(self, symbol: str) -> Quote:
         raise SourceUnavailable(f"{self.name} does not provide quotes")
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         raise SourceUnavailable(f"{self.name} does not provide history")
 
     def get_fundamentals(self, symbol: str) -> Fundamentals:

@@ -57,20 +57,19 @@ def extract_tools(filepath: Path) -> list[dict]:
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for dec in node.decorator_list:
-            is_tool = (
-                (isinstance(dec, ast.Attribute) and dec.attr == "tool")
-                or (isinstance(dec, ast.Call)
-                    and isinstance(dec.func, ast.Attribute)
-                    and dec.func.attr == "tool")
+            is_tool = (isinstance(dec, ast.Attribute) and dec.attr == "tool") or (
+                isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr == "tool"
             )
             if is_tool:
                 doc = ast.get_docstring(node) or ""
                 args = [a.arg for a in node.args.args if a.arg != "self"]
-                tools.append({
-                    "name": node.name,
-                    "doc": doc,
-                    "args": args,
-                })
+                tools.append(
+                    {
+                        "name": node.name,
+                        "doc": doc,
+                        "args": args,
+                    }
+                )
     return tools
 
 

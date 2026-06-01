@@ -5,6 +5,7 @@ mispaired scale-in / scale-out flows. The fix tracks remaining qty per
 buy lot and consumes `min(buy_rem, sell_rem)` per slice. These tests
 lock that behaviour in.
 """
+
 from __future__ import annotations
 
 from app.services.shadow_account import _fifo_pair
@@ -26,7 +27,7 @@ def _trades(*rows: tuple[str, str, str, float, float]) -> list[dict]:
 def test_one_to_one_pair_uses_full_qty() -> None:
     rt = _fifo_pair(
         _trades(
-            ("AAA", "buy",  "2024-01-01", 100.0, 5.0),
+            ("AAA", "buy", "2024-01-01", 100.0, 5.0),
             ("AAA", "sell", "2024-01-10", 110.0, 5.0),
         )
     )
@@ -39,7 +40,7 @@ def test_partial_sell_leaves_remainder_for_next_sell() -> None:
     """Buy 10 → sell 4 → sell 6. Should produce two roundtrips, qty 4 and 6."""
     rt = _fifo_pair(
         _trades(
-            ("AAA", "buy",  "2024-01-01", 100.0, 10.0),
+            ("AAA", "buy", "2024-01-01", 100.0, 10.0),
             ("AAA", "sell", "2024-01-05", 110.0, 4.0),
             ("AAA", "sell", "2024-01-10", 120.0, 6.0),
         )
@@ -56,8 +57,8 @@ def test_scale_in_then_single_sell_consumes_lots_in_order() -> None:
     """Buy 3, buy 4 → sell 5. First three from lot 1, next two from lot 2."""
     rt = _fifo_pair(
         _trades(
-            ("AAA", "buy",  "2024-01-01", 100.0, 3.0),
-            ("AAA", "buy",  "2024-01-02", 105.0, 4.0),
+            ("AAA", "buy", "2024-01-01", 100.0, 3.0),
+            ("AAA", "buy", "2024-01-02", 105.0, 4.0),
             ("AAA", "sell", "2024-01-10", 120.0, 5.0),
         )
     )
@@ -80,10 +81,8 @@ def test_zero_quantity_falls_back_to_one() -> None:
     """Defensive: malformed inputs with qty=0 still produce a roundtrip."""
     rt = _fifo_pair(
         [
-            {"symbol": "AAA", "side": "buy",
-             "date": "2024-01-01T10:00:00", "price": 100.0, "quantity": 0},
-            {"symbol": "AAA", "side": "sell",
-             "date": "2024-01-10T10:00:00", "price": 110.0, "quantity": 0},
+            {"symbol": "AAA", "side": "buy", "date": "2024-01-01T10:00:00", "price": 100.0, "quantity": 0},
+            {"symbol": "AAA", "side": "sell", "date": "2024-01-10T10:00:00", "price": 110.0, "quantity": 0},
         ]
     )
     assert len(rt) == 1

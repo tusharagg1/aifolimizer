@@ -9,6 +9,7 @@ Usage:
     echo "the brief" | python scripts/send_telegram.py --title "aifolimizer · daily-briefing"
 Exit codes: 0 ok · 1 send error · 2 not configured · 3 empty input.
 """
+
 from __future__ import annotations
 
 import argparse

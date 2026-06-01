@@ -20,6 +20,7 @@ brute force.
 `configure_logging()` installs a JSON-line formatter when STRUCTURED_LOGS=1,
 otherwise a friendly text format. `get_logger(name)` returns a stdlib logger.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,6 +40,7 @@ SESSION_TTL_SECONDS = 8 * 60 * 60  # match WS access-token TTL
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
+
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: dict = {
@@ -52,11 +54,28 @@ class _JsonFormatter(logging.Formatter):
         for k, v in record.__dict__.items():
             if k in payload or k.startswith("_"):
                 continue
-            if k in {"args", "msg", "exc_info", "exc_text", "stack_info",
-                     "lineno", "filename", "module", "pathname", "funcName",
-                     "msecs", "relativeCreated", "thread", "threadName",
-                     "processName", "process", "levelno", "levelname",
-                     "name", "created"}:
+            if k in {
+                "args",
+                "msg",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "filename",
+                "module",
+                "pathname",
+                "funcName",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "levelno",
+                "levelname",
+                "name",
+                "created",
+            }:
                 continue
             try:
                 json.dumps(v)
@@ -76,9 +95,7 @@ def configure_logging(level: str = "INFO") -> None:
     if os.environ.get("STRUCTURED_LOGS") == "1":
         handler.setFormatter(_JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
-        ))
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
@@ -88,6 +105,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 # ── Session cookie helpers ───────────────────────────────────────────────────
+
 
 def _secure_flag() -> bool:
     return os.environ.get("SESSION_COOKIE_SECURE") == "1"
@@ -107,8 +125,10 @@ def set_session_cookie(response: Response, session_id: str) -> None:
 
 def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(
-        key=SESSION_COOKIE_NAME, path="/",
-        samesite="lax", secure=_secure_flag(),
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        samesite="lax",
+        secure=_secure_flag(),
     )
 
 
@@ -128,6 +148,7 @@ def session_from_request(
 
 
 # ── In-memory sliding-window rate limiter ────────────────────────────────────
+
 
 class RateLimiter:
     """Threadsafe sliding-window rate limiter, keyed by (scope, identity).
@@ -184,12 +205,12 @@ def enforce_rate_limit(
     Identity defaults to client IP. Pass `identity_override` (e.g. email) for
     user-tier limits when the request body carries a stable identifier.
     """
-    identity = identity_override or (
-        (request.client.host if request.client else "unknown")
-    )
+    identity = identity_override or (request.client.host if request.client else "unknown")
     allowed, _remaining, retry = _LIMITER.hit(
-        scope, identity,
-        max_hits=max_hits, window_seconds=window_seconds,
+        scope,
+        identity,
+        max_hits=max_hits,
+        window_seconds=window_seconds,
     )
     if not allowed:
         raise HTTPException(

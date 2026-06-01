@@ -30,14 +30,25 @@ from app.services.data_sources.base import (
 _BASE = "https://api.twelvedata.com"
 
 _INTERVAL_MAP = {
-    "1d": "1day", "1h": "1h", "30m": "30min",
-    "15m": "15min", "5m": "5min", "1m": "1min",
+    "1d": "1day",
+    "1h": "1h",
+    "30m": "30min",
+    "15m": "15min",
+    "5m": "5min",
+    "1m": "1min",
 }
 
 _PERIOD_OUTPUTSIZE = {
-    "1mo": 31, "3mo": 93, "6mo": 186, "1y": 365,
-    "2y": 730, "3y": 1095, "5y": 1825, "10y": 3650,
-    "ytd": 365, "max": 5000,
+    "1mo": 31,
+    "3mo": 93,
+    "6mo": 186,
+    "1y": 365,
+    "2y": 730,
+    "3y": 1095,
+    "5y": 1825,
+    "10y": 3650,
+    "ytd": 365,
+    "max": 5000,
 }
 
 
@@ -104,7 +115,9 @@ class TwelveDataSource(DataSource):
         params.update(_td_extra_params(symbol))
         try:
             resp = httpx.get(
-                f"{_BASE}/quote", params=params, timeout=10.0,
+                f"{_BASE}/quote",
+                params=params,
+                timeout=10.0,
             )
             resp.raise_for_status()
             data = resp.json() or {}
@@ -116,9 +129,7 @@ class TwelveDataSource(DataSource):
             price = float(data.get("close") or data.get("price") or 0.0)
             prev = float(data.get("previous_close") or 0.0)
         except (TypeError, ValueError) as e:
-            raise SourceUnavailable(
-                f"twelve_data bad payload {symbol}: {e}"
-            ) from e
+            raise SourceUnavailable(f"twelve_data bad payload {symbol}: {e}") from e
         if price <= 0:
             raise SourceUnavailable(f"twelve_data: zero price for {symbol}")
         ccy = (data.get("currency") or "").upper() or None
@@ -133,16 +144,12 @@ class TwelveDataSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if not self.is_configured():
             raise SourceUnavailable("twelve_data: no key")
         td_int = _INTERVAL_MAP.get(interval)
         if td_int is None:
-            raise SourceUnavailable(
-                f"twelve_data: unsupported interval {interval}"
-            )
+            raise SourceUnavailable(f"twelve_data: unsupported interval {interval}")
         outputsize = min(_PERIOD_OUTPUTSIZE.get(period, 365), 5000)
         sym = _td_symbol(symbol)
         params = {
@@ -155,7 +162,9 @@ class TwelveDataSource(DataSource):
         params.update(_td_extra_params(symbol))
         try:
             resp = httpx.get(
-                f"{_BASE}/time_series", params=params, timeout=15.0,
+                f"{_BASE}/time_series",
+                params=params,
+                timeout=15.0,
             )
             resp.raise_for_status()
             data = resp.json() or {}
@@ -169,22 +178,22 @@ class TwelveDataSource(DataSource):
         bars: list[PriceBar] = []
         for v in values:
             try:
-                bars.append(PriceBar(
-                    symbol=symbol,
-                    date=str(v.get("datetime") or "")[:10],
-                    open=float(v.get("open") or 0.0),
-                    high=float(v.get("high") or 0.0),
-                    low=float(v.get("low") or 0.0),
-                    close=float(v.get("close") or 0.0),
-                    volume=float(v.get("volume") or 0.0),
-                    adj_close=float(v.get("close") or 0.0),
-                    source=self.name,
-                    as_of=time.time(),
-                ))
+                bars.append(
+                    PriceBar(
+                        symbol=symbol,
+                        date=str(v.get("datetime") or "")[:10],
+                        open=float(v.get("open") or 0.0),
+                        high=float(v.get("high") or 0.0),
+                        low=float(v.get("low") or 0.0),
+                        close=float(v.get("close") or 0.0),
+                        volume=float(v.get("volume") or 0.0),
+                        adj_close=float(v.get("close") or 0.0),
+                        source=self.name,
+                        as_of=time.time(),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         if not bars:
-            raise SourceUnavailable(
-                f"twelve_data: parsed zero bars for {symbol}"
-            )
+            raise SourceUnavailable(f"twelve_data: parsed zero bars for {symbol}")
         return bars

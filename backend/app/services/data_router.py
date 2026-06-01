@@ -208,15 +208,11 @@ def get_quote(
     errors: list[str] = []
 
     for src in _quote_chain(symbol):
-        ok, payload, err, latency = _try_source(
-            src, lambda s: s.get_quote(symbol)
-        )
+        ok, payload, err, latency = _try_source(src, lambda s: s.get_quote(symbol))
         if ok and isinstance(payload, Quote):
             d = payload.to_dict()
             if not _validate_currency(d, info.asset_class):
-                errors.append(
-                    f"{src.name}: currency mismatch ({d.get('currency')})"
-                )
+                errors.append(f"{src.name}: currency mismatch ({d.get('currency')})")
                 continue
             if not d.get("currency") and info.currency:
                 d["currency"] = info.currency
@@ -226,9 +222,7 @@ def get_quote(
             if primary is None:
                 primary, primary_latency = d, latency
                 continue
-            merged = _merge_verified(
-                primary, d, primary_latency, latency, info.asset_class
-            )
+            merged = _merge_verified(primary, d, primary_latency, latency, info.asset_class)
             return _augment_with_ws_verification(merged, info.asset_class)
         if err:
             errors.append(f"{src.name}: {err}")
@@ -237,10 +231,7 @@ def get_quote(
         primary["_verify_status"] = "single_source_only"
         return _augment_with_ws_verification(primary, info.asset_class)
 
-    raise DataRouterError(
-        f"all sources failed for quote {symbol} "
-        f"({info.asset_class}): {'; '.join(errors)}"
-    )
+    raise DataRouterError(f"all sources failed for quote {symbol} ({info.asset_class}): {'; '.join(errors)}")
 
 
 def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
@@ -271,15 +262,11 @@ def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
     out = dict(payload)
     out["_ws_verify_price"] = p_ws
     out["_ws_verify_delta_pct"] = round(delta_pct, 3)
-    out["_ws_verify_status"] = (
-        "agreement" if delta_pct <= threshold else "broker_disagreement"
-    )
+    out["_ws_verify_status"] = "agreement" if delta_pct <= threshold else "broker_disagreement"
     return out
 
 
-def _merge_verified(
-    a: dict, b: dict, lat_a: float, lat_b: float, asset_class: str
-) -> dict:
+def _merge_verified(a: dict, b: dict, lat_a: float, lat_b: float, asset_class: str) -> dict:
     """Combine two source quotes into a verified payload."""
     pa = float(a.get("price") or 0)
     pb = float(b.get("price") or 0)
@@ -314,9 +301,7 @@ def get_history(
     max_age_s: float = 86400,
 ) -> list[dict]:
     for src in _history_chain(symbol):
-        cached = cache.get_history(
-            symbol, src.name, period, interval, max_age_s
-        )
+        cached = cache.get_history(symbol, src.name, period, interval, max_age_s)
         if cached:
             return cached
     errors: list[str] = []
@@ -326,17 +311,12 @@ def get_history(
             lambda s: s.get_history(symbol, period=period, interval=interval),
         )
         if ok and isinstance(payload, list) and payload:
-            bars = [
-                b.to_dict() if isinstance(b, PriceBar) else b
-                for b in payload
-            ]
+            bars = [b.to_dict() if isinstance(b, PriceBar) else b for b in payload]
             cache.put_history(symbol, src.name, period, interval, bars)
             return bars
         if err:
             errors.append(f"{src.name}: {err}")
-    raise DataRouterError(
-        f"all sources failed for history {symbol}: {'; '.join(errors)}"
-    )
+    raise DataRouterError(f"all sources failed for history {symbol}: {'; '.join(errors)}")
 
 
 def get_fundamentals(symbol: str, max_age_s: float = 21600) -> dict:
@@ -346,27 +326,21 @@ def get_fundamentals(symbol: str, max_age_s: float = 21600) -> dict:
             return cached
     errors: list[str] = []
     for src in _fundamentals_chain(symbol):
-        ok, payload, err, _ = _try_source(
-            src, lambda s: s.get_fundamentals(symbol)
-        )
+        ok, payload, err, _ = _try_source(src, lambda s: s.get_fundamentals(symbol))
         if ok and isinstance(payload, Fundamentals):
             d = payload.to_dict()
             cache.put_fundamentals(symbol, src.name, d)
             return d
         if err:
             errors.append(f"{src.name}: {err}")
-    raise DataRouterError(
-        f"all sources failed for fundamentals {symbol}: {'; '.join(errors)}"
-    )
+    raise DataRouterError(f"all sources failed for fundamentals {symbol}: {'; '.join(errors)}")
 
 
 def get_source_reliability(since_s: float = 86400 * 7) -> list[dict]:
     return cache.source_stats_summary(since_s=since_s)
 
 
-def get_quotes_batch(
-    symbols: list[str], max_age_s: float | None = None
-) -> dict[str, dict]:
+def get_quotes_batch(symbols: list[str], max_age_s: float | None = None) -> dict[str, dict]:
     """Batched fetch — yfinance batch path for US/CA equities, per-symbol
     fallback for crypto/fx/index since they need different providers.
 
@@ -390,10 +364,7 @@ def get_quotes_batch(
     to_fetch: list[str] = []
     for sym in batch_eligible:
         info = classify_asset(sym)
-        budget = (
-            max_age_s if max_age_s is not None
-            else staleness_budget_s(info.asset_class)
-        )
+        budget = max_age_s if max_age_s is not None else staleness_budget_s(info.asset_class)
         cached = cache.get_quote(sym, "yfinance", budget)
         if cached and _validate_currency(cached, info.asset_class):
             out[sym] = cached
@@ -418,13 +389,9 @@ def get_quotes_batch(
                 close_df = df["Close"]
             else:
                 if len(to_fetch) == 1:
-                    close_df = df[["Close"]].rename(
-                        columns={"Close": to_fetch[0]}
-                    )
+                    close_df = df[["Close"]].rename(columns={"Close": to_fetch[0]})
                 else:
-                    raise ValueError(
-                        "unexpected flat columns for multi-symbol"
-                    )
+                    raise ValueError("unexpected flat columns for multi-symbol")
 
             for sym in to_fetch:
                 if sym not in close_df.columns:
@@ -439,19 +406,17 @@ def get_quotes_batch(
                 info = classify_asset(sym)
                 ccy = info.currency
                 q = Quote(
-                    symbol=sym, price=price, prev_close=prev,
+                    symbol=sym,
+                    price=price,
+                    prev_close=prev,
                     currency=ccy,
-                    day_change_pct=(
-                        (price - prev) / prev * 100 if prev else None
-                    ),
+                    day_change_pct=((price - prev) / prev * 100 if prev else None),
                     source="yfinance_batch",
                     as_of=time.time(),
                 )
                 d = q.to_dict()
                 cache.put_quote(sym, "yfinance", d)
-                cache.log_source_call(
-                    "yfinance_batch", True, latency / len(to_fetch)
-                )
+                cache.log_source_call("yfinance_batch", True, latency / len(to_fetch))
                 out[sym] = d
         except Exception as e:
             latency = (time.perf_counter() - start) * 1000
@@ -467,11 +432,10 @@ def get_quotes_batch(
                 per_symbol.append(sym)
             if len(spillover) > _MAX_FALLBACK_SYMBOLS:
                 cache.log_source_call(
-                    "yfinance_batch", False, 0,
-                    (
-                        f"fallback capped at {_MAX_FALLBACK_SYMBOLS} "
-                        f"of {len(spillover)}"
-                    ),
+                    "yfinance_batch",
+                    False,
+                    0,
+                    (f"fallback capped at {_MAX_FALLBACK_SYMBOLS} of {len(spillover)}"),
                 )
 
     # Per-symbol path for crypto/fx/index/anything that missed the batch

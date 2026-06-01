@@ -1,4 +1,5 @@
 """signal_changes repository."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,11 +9,18 @@ from app.db.pool import get_pool
 
 
 async def insert(
-    tenant_hash: str, symbol: str, ts: datetime,
-    prev_action: Optional[str], new_action: str,
-    prev_conviction: Optional[str], new_conviction: Optional[str],
-    prev_score: Optional[float], new_score: float,
-    reasons: list[str], pushed: bool, dedup_key: str,
+    tenant_hash: str,
+    symbol: str,
+    ts: datetime,
+    prev_action: Optional[str],
+    new_action: str,
+    prev_conviction: Optional[str],
+    new_conviction: Optional[str],
+    prev_score: Optional[float],
+    new_score: float,
+    reasons: list[str],
+    pushed: bool,
+    dedup_key: str,
 ) -> None:
     pool = get_pool()
     if pool is None:
@@ -29,9 +37,18 @@ async def insert(
             )
             ON CONFLICT (tenant_hash, symbol, ts) DO NOTHING
             """,
-            tenant_hash, symbol, ts,
-            prev_action, new_action, prev_conviction, new_conviction,
-            prev_score, new_score, reasons, pushed, dedup_key,
+            tenant_hash,
+            symbol,
+            ts,
+            prev_action,
+            new_action,
+            prev_conviction,
+            new_conviction,
+            prev_score,
+            new_score,
+            reasons,
+            pushed,
+            dedup_key,
         )
 
 
@@ -59,6 +76,7 @@ async def recent(tenant_hash: str, hours: int = 24) -> list[dict[str, Any]]:
               AND ts > now() - ($2::TEXT || ' hours')::INTERVAL
             ORDER BY ts DESC
             """,
-            tenant_hash, str(hours),
+            tenant_hash,
+            str(hours),
         )
     return [dict(r) for r in rows]

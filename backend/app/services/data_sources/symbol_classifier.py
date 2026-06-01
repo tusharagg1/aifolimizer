@@ -21,33 +21,108 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-CRYPTO_TICKERS = frozenset({
-    "BTC", "ETH", "SOL", "ADA", "DOT", "AVAX", "LINK", "MATIC", "DOGE", "XRP",
-    "LTC", "BCH", "ATOM", "UNI", "ALGO", "NEAR", "FTM", "SAND", "MANA", "AAVE",
-    "USDC", "USDT", "TON", "TRX", "SHIB", "INJ", "ARB", "OP", "FIL", "APT",
-})
+CRYPTO_TICKERS = frozenset(
+    {
+        "BTC",
+        "ETH",
+        "SOL",
+        "ADA",
+        "DOT",
+        "AVAX",
+        "LINK",
+        "MATIC",
+        "DOGE",
+        "XRP",
+        "LTC",
+        "BCH",
+        "ATOM",
+        "UNI",
+        "ALGO",
+        "NEAR",
+        "FTM",
+        "SAND",
+        "MANA",
+        "AAVE",
+        "USDC",
+        "USDT",
+        "TON",
+        "TRX",
+        "SHIB",
+        "INJ",
+        "ARB",
+        "OP",
+        "FIL",
+        "APT",
+    }
+)
 
-KNOWN_CANADIAN = frozenset({
-    "XEQT", "VFV", "XIC", "XIU", "ZSP", "XUS", "ZEB", "VDY", "CDZ", "XRE",
-    "VCN", "ZCN", "XSP", "HXT", "HGRO", "VEQT", "VGRO", "VBAL", "VCIP",
-    "XBAL", "ZGQ", "ZAG", "XBB", "ZSB", "XLB", "VAB", "ZGB", "VSB",
-})
+KNOWN_CANADIAN = frozenset(
+    {
+        "XEQT",
+        "VFV",
+        "XIC",
+        "XIU",
+        "ZSP",
+        "XUS",
+        "ZEB",
+        "VDY",
+        "CDZ",
+        "XRE",
+        "VCN",
+        "ZCN",
+        "XSP",
+        "HXT",
+        "HGRO",
+        "VEQT",
+        "VGRO",
+        "VBAL",
+        "VCIP",
+        "XBAL",
+        "ZGQ",
+        "ZAG",
+        "XBB",
+        "ZSB",
+        "XLB",
+        "VAB",
+        "ZGB",
+        "VSB",
+    }
+)
 
 CA_SUFFIXES = (".TO", ".V", ".TSX", ".NE", ".CN")
 UK_SUFFIXES = (".L",)
 EU_SUFFIXES = (".PA", ".DE", ".MI", ".AS", ".MC", ".SW", ".BR", ".LS", ".VI", ".HE", ".CO", ".OL", ".ST")
 
 EU_CCY_BY_SUFFIX = {
-    ".PA": "EUR", ".DE": "EUR", ".MI": "EUR", ".AS": "EUR",
-    ".MC": "EUR", ".SW": "CHF", ".BR": "EUR", ".LS": "EUR",
-    ".VI": "EUR", ".HE": "EUR", ".CO": "DKK", ".OL": "NOK", ".ST": "SEK",
+    ".PA": "EUR",
+    ".DE": "EUR",
+    ".MI": "EUR",
+    ".AS": "EUR",
+    ".MC": "EUR",
+    ".SW": "CHF",
+    ".BR": "EUR",
+    ".LS": "EUR",
+    ".VI": "EUR",
+    ".HE": "EUR",
+    ".CO": "DKK",
+    ".OL": "NOK",
+    ".ST": "SEK",
 }
 
 INDEX_CCY = {
-    "^GSPC": "USD", "^IXIC": "USD", "^DJI": "USD", "^VIX": "USD", "^RUT": "USD",
-    "^GSPTSE": "CAD", "^GSPTSE60": "CAD",
-    "^FTSE": "GBP", "^FCHI": "EUR", "^GDAXI": "EUR", "^STOXX50E": "EUR",
-    "^N225": "JPY", "^HSI": "HKD",
+    "^GSPC": "USD",
+    "^IXIC": "USD",
+    "^DJI": "USD",
+    "^VIX": "USD",
+    "^RUT": "USD",
+    "^GSPTSE": "CAD",
+    "^GSPTSE60": "CAD",
+    "^FTSE": "GBP",
+    "^FCHI": "EUR",
+    "^GDAXI": "EUR",
+    "^STOXX50E": "EUR",
+    "^N225": "JPY",
+    "^HSI": "HKD",
 }
 
 
@@ -102,8 +177,7 @@ def classify_asset(symbol: str) -> AssetInfo:
 
     for suf in CA_SUFFIXES:
         if upper.endswith(suf):
-            ex = {".TO": "TSX", ".V": "TSXV", ".NE": "NEO",
-                  ".CN": "CSE", ".TSX": "TSX"}[suf]
+            ex = {".TO": "TSX", ".V": "TSXV", ".NE": "NEO", ".CN": "CSE", ".TSX": "TSX"}[suf]
             return AssetInfo(s, "ca_equity", "CAD", ex)
 
     if upper in KNOWN_CANADIAN:

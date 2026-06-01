@@ -1,10 +1,12 @@
 """Unit tests for live_metrics (Phase 10). Pure helpers only."""
+
 from __future__ import annotations
 
 from app.services import live_metrics as lm
 
 
 # ── profit factor ───────────────────────────────────────────────────────────
+
 
 def test_pf_basic():
     assert lm._profit_factor([2, 4, -1, -1]) == 3.0  # 6 / 2
@@ -23,6 +25,7 @@ def test_pf_empty_zero():
 
 
 # ── sharpe / sortino ────────────────────────────────────────────────────────
+
 
 def test_sharpe_constant_returns_zero():
     # Zero std → sharpe undefined → 0.
@@ -45,6 +48,7 @@ def test_sortino_single_return_zero():
 
 # ── max drawdown ────────────────────────────────────────────────────────────
 
+
 def test_max_drawdown_no_drop():
     assert lm._max_drawdown([100, 105, 110, 115]) == 0.0
 
@@ -60,6 +64,7 @@ def test_max_drawdown_empty():
 
 # ── compute_from_closed_recs ────────────────────────────────────────────────
 
+
 def _rec(return_pct, regime="trend_up_low_vol"):
     return {
         "return_pct": return_pct,
@@ -70,7 +75,10 @@ def _rec(return_pct, regime="trend_up_low_vol"):
 
 def test_compute_basic_kpis():
     recs = [
-        _rec(0.05), _rec(0.03), _rec(-0.02), _rec(0.01),
+        _rec(0.05),
+        _rec(0.03),
+        _rec(-0.02),
+        _rec(0.01),
     ]
     k = lm.compute_from_closed_recs(recs, equity_curve=[100, 105, 103, 107])
     assert k.n_trades == 4
@@ -90,8 +98,7 @@ def test_compute_no_closed_recs_returns_zero_block():
 
 def test_regime_breakdown_only_includes_buckets_with_three():
     recs = (
-        [_rec(0.02, "trend_up_low_vol")] * 5
-        + [_rec(-0.01, "sideways_high_vol")] * 2  # n=2 → excluded
+        [_rec(0.02, "trend_up_low_vol")] * 5 + [_rec(-0.01, "sideways_high_vol")] * 2  # n=2 → excluded
     )
     k = lm.compute_from_closed_recs(recs)
     assert "trend_up_low_vol" in k.regime_breakdown

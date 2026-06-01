@@ -15,6 +15,7 @@ Exit: 0 produced output · 4 no runner / no session · 5 runner error.
 Usage:
     python scripts/run_skill_fallback.py daily-briefing
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,6 +41,7 @@ except (AttributeError, OSError):
 # instead of crashing the scheduled fallback with ModuleNotFoundError.
 try:
     from dotenv import load_dotenv  # noqa: E402
+
     load_dotenv(_BACKEND_DIR / ".env", override=False)
 except ImportError:
     pass

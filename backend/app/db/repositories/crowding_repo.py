@@ -1,4 +1,5 @@
 """crowding_history repository."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,13 +20,14 @@ async def upsert_day(ts: datetime, symbol: str, score: float, label: str) -> Non
             ON CONFLICT (ts, symbol) DO UPDATE
               SET score = EXCLUDED.score, label = EXCLUDED.label
             """,
-            ts, symbol, float(score), label,
+            ts,
+            symbol,
+            float(score),
+            label,
         )
 
 
-async def series_for_symbols(
-    symbols: list[str], days: int = 30
-) -> dict[str, list[dict[str, Any]]]:
+async def series_for_symbols(symbols: list[str], days: int = 30) -> dict[str, list[dict[str, Any]]]:
     pool = get_pool()
     if pool is None or not symbols:
         return {}
@@ -38,7 +40,8 @@ async def series_for_symbols(
               AND ts > now() - ($2::TEXT || ' days')::INTERVAL
             ORDER BY symbol, ts ASC
             """,
-            symbols, str(days),
+            symbols,
+            str(days),
         )
     out: dict[str, list[dict[str, Any]]] = {s: [] for s in symbols}
     for r in rows:

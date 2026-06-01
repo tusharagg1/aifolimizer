@@ -21,7 +21,7 @@ class AnalysisRequest(BaseModel):
     session_id: str
     account_id: str
     analysis_type: str
-    ticker: Optional[str] = None    # for stock_analysis and earnings_analyzer
+    ticker: Optional[str] = None  # for stock_analysis and earnings_analyzer
 
 
 class AnalysisResponse(BaseModel):

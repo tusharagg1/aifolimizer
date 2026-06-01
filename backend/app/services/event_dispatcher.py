@@ -16,6 +16,7 @@ Snapshots are persisted to skill_snapshots via the same upsert path used by
 the nightly orchestrator, so dashboards + signal_evidence pick them up
 identically.
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,6 +39,7 @@ async def _claim_dedup(key: str) -> bool:
     """Return True if this is the first claim today, False if already fired."""
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             ok = await r.set(key, "1", ex=_DEDUP_TTL_S, nx=True)
@@ -57,24 +59,29 @@ def _today() -> str:
 async def _persist(tenant_hash: str, snapshot: dict) -> None:
     try:
         from app.db.repositories import snapshots_repo
+
         await snapshots_repo.upsert(tenant_hash, snapshot["skill"], snapshot)
     except Exception as e:
         log.warning(
             "event_dispatcher: persist failed (%s): %s",
-            snapshot.get("skill"), e,
+            snapshot.get("skill"),
+            e,
         )
 
 
 def _push_telegram(title: str, body: str, severity: str = "medium") -> None:
     try:
         from app.core.config import settings
+
         if not settings.telegram_bot_token or not settings.telegram_chat_id:
             return
         from app.services.alerts import _push_telegram as tg_send
+
         tg_send(
             settings.telegram_bot_token,
             settings.telegram_chat_id,
-            title=title, body=body,
+            title=title,
+            body=body,
             severity=severity,
         )
     except Exception as e:
@@ -82,6 +89,7 @@ def _push_telegram(title: str, body: str, severity: str = "medium") -> None:
 
 
 # ── Public event handlers ──────────────────────────────────────────────────
+
 
 def _regime_is_material(prev: Any, new: Any) -> bool:
     if prev is None:
@@ -93,7 +101,10 @@ def _regime_is_material(prev: Any, new: Any) -> bool:
 
 
 async def on_regime_flip(
-    prev_regime: Any, new_regime: Any, *, tenant_hashes: list[str],
+    prev_regime: Any,
+    new_regime: Any,
+    *,
+    tenant_hashes: list[str],
 ) -> dict[str, Any]:
     """Material regime change → run macro + risk + health LLM skills for all
     tenants. Dedup per composite per day so VIX wiggle does not spam.
@@ -106,6 +117,7 @@ async def on_regime_flip(
         return {"status": "skip", "reason": "deduped"}
 
     from app.services import skill_llm_runner
+
     ctx = {
         "regime_composite": new_regime.composite,
         "vix": new_regime.vix,
@@ -123,16 +135,10 @@ async def on_regime_flip(
         await _persist(thash, risk_snap)
         await _persist(thash, health_snap)
 
-    prev_label = (
-        getattr(prev_regime, "composite", "n/a") if prev_regime else "n/a"
-    )
+    prev_label = getattr(prev_regime, "composite", "n/a") if prev_regime else "n/a"
     _push_telegram(
         title=f"Regime flip: {prev_label} → {new_regime.composite}",
-        body=(
-            f"VIX {new_regime.vix} · "
-            f"SPY-SMA200 {new_regime.spy_vs_sma200_pct}%. "
-            "Risk/health/macro skills re-run."
-        ),
+        body=(f"VIX {new_regime.vix} · SPY-SMA200 {new_regime.spy_vs_sma200_pct}%. Risk/health/macro skills re-run."),
         severity="high",
     )
 
@@ -161,6 +167,7 @@ async def on_earnings_surprise(
         return {"status": "skip", "reason": "deduped"}
 
     from app.services import skill_llm_runner
+
     ctx = dict(context or {})
     ctx.update({"surprise_pct": surprise_pct, "earnings_date": _today()})
     snap = await skill_llm_runner.run_earnings_postmortem(ticker, ctx)
@@ -199,16 +206,14 @@ async def on_drawdown_breach(
         return {"status": "skip", "reason": "deduped"}
 
     from app.services import skill_llm_runner
+
     ctx = dict(context or {})
     snap = await skill_llm_runner.run_risk_assessment(ctx)
     await _persist(tenant_hash, snap)
 
     _push_telegram(
         title=f"Risk gate → {new_status.upper()}",
-        body=(
-            f"Drawdown/vol breach (prev={prev_status or 'trade'}). "
-            "Risk assessment skill re-run."
-        ),
+        body=(f"Drawdown/vol breach (prev={prev_status or 'trade'}). Risk assessment skill re-run."),
         severity="high",
     )
 
@@ -238,6 +243,7 @@ async def on_crowding_flip(
         return {"status": "skip", "reason": "deduped"}
 
     from app.services import skill_llm_runner
+
     ctx = dict(context or {})
     ctx.update({"crowding_score": new_score, "crowding_delta": delta})
     snap = await skill_llm_runner.run_adversarial_research(ticker, ctx)

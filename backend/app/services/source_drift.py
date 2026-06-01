@@ -24,12 +24,10 @@ from app.services import data_cache
 
 _LOG = get_logger("aifolimizer.services.source_drift")
 
-_AUDIT_FILE = (
-    Path(__file__).resolve().parents[2] / ".cache" / "source_drift_audit.jsonl"
-)
+_AUDIT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "source_drift_audit.jsonl"
 
 DRIFT_THRESHOLD_PP = 10.0  # percentage-point delta that trips the gate
-MIN_CALLS = 30             # don't react to a 5-call sample
+MIN_CALLS = 30  # don't react to a 5-call sample
 
 
 def _stats(window_s: float) -> dict[str, dict[str, float]]:
@@ -70,18 +68,21 @@ def detect_and_demote(
             continue
         baseline = long_.get(source, {}).get("success_rate_pct", 0.0)
         delta = baseline - s["success_rate_pct"]
-        inspected.append({
-            "source": source,
-            "short_success_pct": round(s["success_rate_pct"], 2),
-            "long_success_pct": round(baseline, 2),
-            "delta_pp": round(delta, 2),
-        })
+        inspected.append(
+            {
+                "source": source,
+                "short_success_pct": round(s["success_rate_pct"], 2),
+                "long_success_pct": round(baseline, 2),
+                "delta_pp": round(delta, 2),
+            }
+        )
         if delta < threshold_pp:
             continue
         # Demote in-process — restart resets ordering. Cheap signal that
         # the next call should prefer a different source first.
         try:
             from app.services import data_router
+
             order = list(data_router._ORDER)
             if source in order:
                 order.remove(source)
@@ -101,7 +102,10 @@ def detect_and_demote(
         drifted.append(row)
         _LOG.warning(
             "source_drift: demoted %s (delta=%.1fpp short=%.1f%% long=%.1f%%)",
-            source, delta, s["success_rate_pct"], baseline,
+            source,
+            delta,
+            s["success_rate_pct"],
+            baseline,
         )
 
     return {

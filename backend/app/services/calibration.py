@@ -17,6 +17,7 @@ Phase 10 surfaces them in the dashboard.
 Phase 11 weights tuner may consult `verdict` to throttle weight bumps
 when the model is overconfident.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,15 +29,15 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
-_BRIER_OK_THRESHOLD = 0.20         # below this → well_calibrated
-_ECE_OVERCONFIDENT_THR = 0.15      # ECE above + actual<predicted = overconf
+_BRIER_OK_THRESHOLD = 0.20  # below this → well_calibrated
+_ECE_OVERCONFIDENT_THR = 0.15  # ECE above + actual<predicted = overconf
 
 
 @dataclass
 class Bin:
-    bin_center: float        # 0.05, 0.15, ... 0.95
-    predicted_avg: float     # mean predicted prob in this bin
-    actual_rate: float       # share of wins in this bin
+    bin_center: float  # 0.05, 0.15, ... 0.95
+    predicted_avg: float  # mean predicted prob in this bin
+    actual_rate: float  # share of wins in this bin
     count: int
 
     def to_dict(self) -> dict[str, Any]:
@@ -88,9 +89,13 @@ def compute(
     n = len(pairs)
     if n == 0:
         return CalibrationReport(
-            horizon_days=horizon_days, n_samples=0,
-            brier_score=0.0, ece=0.0, verdict="no_data",
-            bins=[], ts=datetime.now(tz=timezone.utc),
+            horizon_days=horizon_days,
+            n_samples=0,
+            brier_score=0.0,
+            ece=0.0,
+            verdict="no_data",
+            bins=[],
+            ts=datetime.now(tz=timezone.utc),
         )
 
     # Brier
@@ -111,12 +116,14 @@ def compute(
         bin_center = (i + 0.5) / n_bins
         predicted_avg = sum(p for p, _ in group) / len(group)
         actual_rate = sum(o for _, o in group) / len(group)
-        bins.append(Bin(
-            bin_center=round(bin_center, 3),
-            predicted_avg=round(predicted_avg, 4),
-            actual_rate=round(actual_rate, 4),
-            count=len(group),
-        ))
+        bins.append(
+            Bin(
+                bin_center=round(bin_center, 3),
+                predicted_avg=round(predicted_avg, 4),
+                actual_rate=round(actual_rate, 4),
+                count=len(group),
+            )
+        )
         gap = predicted_avg - actual_rate
         ece_sum += (len(group) / n) * abs(gap)
         if gap > 0.05:
@@ -134,21 +141,21 @@ def compute(
         verdict = "underconfident"
     else:
         # Calibrated enough not to label, but not perfect.
-        verdict = (
-            "well_calibrated"
-            if brier < _BRIER_OK_THRESHOLD
-            else "noisy"
-        )
+        verdict = "well_calibrated" if brier < _BRIER_OK_THRESHOLD else "noisy"
 
     return CalibrationReport(
-        horizon_days=horizon_days, n_samples=n,
-        brier_score=round(brier, 4), ece=ece,
-        verdict=verdict, bins=bins,
+        horizon_days=horizon_days,
+        n_samples=n,
+        brier_score=round(brier, 4),
+        ece=ece,
+        verdict=verdict,
+        bins=bins,
         ts=datetime.now(tz=timezone.utc),
     )
 
 
 # ── Data fetch + persistence ────────────────────────────────────────────────
+
 
 async def _fetch_pairs(horizon_days: int) -> list[tuple[float, int]]:
     """Read (win_prob_at_signal_time, realized_outcome) from signal_history.
@@ -157,13 +164,16 @@ async def _fetch_pairs(horizon_days: int) -> list[tuple[float, int]]:
     """
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return []
         col = f"realized_return_{horizon_days}d"
         if col not in {
-            "realized_return_1d", "realized_return_5d",
-            "realized_return_21d", "realized_return_63d",
+            "realized_return_1d",
+            "realized_return_5d",
+            "realized_return_21d",
+            "realized_return_63d",
         }:
             return []
         async with pool.acquire() as conn:
@@ -199,6 +209,7 @@ async def calibration_verdict(horizon_days: int = 21) -> dict[str, Any]:
 async def _persist(report: CalibrationReport) -> None:
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return
@@ -210,8 +221,11 @@ async def _persist(report: CalibrationReport) -> None:
                   horizon_days, brier_score, ece, verdict, bins
                 ) VALUES ($1, $2, $3, $4, $5::jsonb)
                 """,
-                report.horizon_days, report.brier_score, report.ece,
-                report.verdict, bins_json,
+                report.horizon_days,
+                report.brier_score,
+                report.ece,
+                report.verdict,
+                bins_json,
             )
     except Exception as e:
         log.warning("calibration persist failed: %s", e)
@@ -221,6 +235,7 @@ async def latest_report(horizon_days: int = 21) -> dict[str, Any] | None:
     """Best-effort fetch latest persisted report for an MCP / API caller."""
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return None

@@ -23,8 +23,12 @@ def _fetch_spy_close() -> pd.Series | None:
         return entry[0]
     try:
         data = yf.download(
-            "SPY", period="1y", interval="1d",
-            progress=False, auto_adjust=True, threads=False,
+            "SPY",
+            period="1y",
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+            threads=False,
         )
         if data is None or data.empty:
             return None
@@ -81,7 +85,9 @@ def _candle_patterns(df: pd.DataFrame) -> dict:
         bearish = {"shooting_star", "bearish_engulfing", "marubozu_bearish"}
         nb = sum(1 for p in patterns if p in bullish)
         nbe = sum(1 for p in patterns if p in bearish)
-        signal = "bullish" if nb > nbe else ("bearish" if nbe > nb else ("indecision" if "doji" in patterns else "neutral"))
+        signal = (
+            "bullish" if nb > nbe else ("bearish" if nbe > nb else ("indecision" if "doji" in patterns else "neutral"))
+        )
         return {"detected": patterns, "signal": signal}
     except Exception:
         return {"detected": [], "signal": "neutral"}
@@ -119,9 +125,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
         bb_mid = _safe(bb.bollinger_mavg())
         bb_lower = _safe(bb.bollinger_lband())
 
-        vol_sma = ta.trend.SMAIndicator(
-            volume.astype(float), window=20
-        ).sma_indicator()
+        vol_sma = ta.trend.SMAIndicator(volume.astype(float), window=20).sma_indicator()
 
         current_price = _safe(close)
         sma50_val = _safe(sma50)
@@ -131,21 +135,13 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
 
         high_col = df["High"].squeeze() if "High" in df.columns else None
         low_col = df["Low"].squeeze() if "Low" in df.columns else None
-        week52_high = (
-            float(high_col.max())
-            if high_col is not None and not high_col.empty else None
-        )
-        week52_low = (
-            float(low_col.min())
-            if low_col is not None and not low_col.empty else None
-        )
+        week52_high = float(high_col.max()) if high_col is not None and not high_col.empty else None
+        week52_low = float(low_col.min()) if low_col is not None and not low_col.empty else None
         pct_from_52w_high = (
-            round((current_price - week52_high) / week52_high * 100, 2)
-            if current_price and week52_high else None
+            round((current_price - week52_high) / week52_high * 100, 2) if current_price and week52_high else None
         )
         pct_from_52w_low = (
-            round((current_price - week52_low) / week52_low * 100, 2)
-            if current_price and week52_low else None
+            round((current_price - week52_low) / week52_low * 100, 2) if current_price and week52_low else None
         )
 
         sma200_slope = None
@@ -153,28 +149,18 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             s_now = sma200.iloc[-1]
             s_21ago = sma200.iloc[-22]
             if pd.notna(s_now) and pd.notna(s_21ago) and float(s_21ago) != 0:
-                sma200_slope = round(
-                    (float(s_now) - float(s_21ago)) / float(s_21ago) * 100, 3
-                )
+                sma200_slope = round((float(s_now) - float(s_21ago)) / float(s_21ago) * 100, 3)
 
         sma200_rising = (sma200_slope or 0) > 0.5
-        price_above_sma200 = bool(
-            current_price and sma200_val and current_price > sma200_val
-        )
+        price_above_sma200 = bool(current_price and sma200_val and current_price > sma200_val)
         checks = [
             bool(current_price and sma150_val and current_price > sma150_val),
             price_above_sma200,
             bool(sma150_val and sma200_val and sma150_val > sma200_val),
             sma200_rising,
             bool(sma50_val and sma150_val and sma50_val > sma150_val),
-            bool(
-                current_price and week52_low
-                and current_price >= week52_low * 1.30
-            ),
-            bool(
-                current_price and week52_high
-                and current_price >= week52_high * 0.75
-            ),
+            bool(current_price and week52_low and current_price >= week52_low * 1.30),
+            bool(current_price and week52_high and current_price >= week52_high * 0.75),
         ]
         minervini_score = sum(checks)
 
@@ -232,33 +218,40 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                 pass
 
         # ATR(14) — average true range for volatility/stop sizing
-        atr_series = ta.volatility.AverageTrueRange(
-            high_col, low_col, close, window=14
-        ).average_true_range() if high_col is not None and low_col is not None else None
+        atr_series = (
+            ta.volatility.AverageTrueRange(high_col, low_col, close, window=14).average_true_range()
+            if high_col is not None and low_col is not None
+            else None
+        )
         atr_val = _safe(atr_series)
         atr_pct = round(atr_val / current_price * 100, 3) if atr_val and current_price else None
 
         # ADX(14) — trend strength; >25 = strong trend
-        adx_obj = ta.trend.ADXIndicator(high_col, low_col, close, window=14) \
-            if high_col is not None and low_col is not None else None
+        adx_obj = (
+            ta.trend.ADXIndicator(high_col, low_col, close, window=14)
+            if high_col is not None and low_col is not None
+            else None
+        )
         adx_val = _safe(adx_obj.adx()) if adx_obj else None
         adx_signal = (
-            "strong" if adx_val and adx_val > 25
-            else "weak" if adx_val and adx_val < 20
-            else "moderate"
-        ) if adx_val is not None else None
+            ("strong" if adx_val and adx_val > 25 else "weak" if adx_val and adx_val < 20 else "moderate")
+            if adx_val is not None
+            else None
+        )
 
         # Stochastic(14,3) — K and D lines
-        stoch_obj = ta.momentum.StochasticOscillator(
-            high_col, low_col, close, window=14, smooth_window=3
-        ) if high_col is not None and low_col is not None else None
+        stoch_obj = (
+            ta.momentum.StochasticOscillator(high_col, low_col, close, window=14, smooth_window=3)
+            if high_col is not None and low_col is not None
+            else None
+        )
         stoch_k = _safe(stoch_obj.stoch()) if stoch_obj else None
         stoch_d = _safe(stoch_obj.stoch_signal()) if stoch_obj else None
         stoch_signal = (
-            "overbought" if stoch_k and stoch_k > 80
-            else "oversold" if stoch_k and stoch_k < 20
-            else "neutral"
-        ) if stoch_k is not None else None
+            ("overbought" if stoch_k and stoch_k > 80 else "oversold" if stoch_k and stoch_k < 20 else "neutral")
+            if stoch_k is not None
+            else None
+        )
 
         # OBV — on-balance volume trend
         obv_series = ta.volume.OnBalanceVolumeIndicator(close, volume.astype(float)).on_balance_volume()
@@ -297,16 +290,12 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                 p_now_excl_recent = float(close.iloc[-22])
                 p_12mo_ago = float(close.iloc[-252])
                 if p_12mo_ago != 0:
-                    mom_12_1_pct = round(
-                        (p_now_excl_recent - p_12mo_ago) / p_12mo_ago * 100, 2
-                    )
+                    mom_12_1_pct = round((p_now_excl_recent - p_12mo_ago) / p_12mo_ago * 100, 2)
             elif len(close) >= 126:  # fallback: 6-1 momentum if <1yr data
                 p_now_excl_recent = float(close.iloc[-22])
                 p_6mo_ago = float(close.iloc[-126])
                 if p_6mo_ago != 0:
-                    mom_12_1_pct = round(
-                        (p_now_excl_recent - p_6mo_ago) / p_6mo_ago * 100, 2
-                    )
+                    mom_12_1_pct = round((p_now_excl_recent - p_6mo_ago) / p_6mo_ago * 100, 2)
         except Exception:
             pass
 
@@ -318,61 +307,77 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
         # lighter on lagging oscillators (MACD, stoch — Park-Irwin 2007 found marginal edge).
         # minervini(25%) + trend(8%) + RS(12%) + 12-1 mom(10%) + volume(13%) + OBV(7%)
         # + ADX(8%) + RSI(7%) + stoch(2%) + MACD(3%) + crowding-adjacent placeholder(5%)
-        mnv = (minervini_score / 7)
+        mnv = minervini_score / 7
         trn = 1.0 if trend == "uptrend" else (0.5 if trend == "sideways" else 0.0)
         rsi_pos = (
-            1.0 if (rsi_val is not None and 40 <= rsi_val <= 65)
-            else 0.5 if (rsi_val is not None and (30 <= rsi_val < 40 or 65 < rsi_val <= 70))
+            1.0
+            if (rsi_val is not None and 40 <= rsi_val <= 65)
+            else 0.5
+            if (rsi_val is not None and (30 <= rsi_val < 40 or 65 < rsi_val <= 70))
             else 0.0
         )
         macd_pos = 1.0 if (macd_hist is not None and macd_hist > 0) else 0.0
         adx_pos = min((adx_val or 0) / 50, 1.0)
-        stoch_pos = (
-            1.0 if (stoch_k is not None and 20 <= stoch_k <= 80)
-            else 0.5 if stoch_k is not None
-            else 0.0
-        )
+        stoch_pos = 1.0 if (stoch_k is not None and 20 <= stoch_k <= 80) else 0.5 if stoch_k is not None else 0.0
         vol_pos = min(volume_score or 0.0, 2.0) / 2.0
         rs_pos = (
-            1.0 if (rs_21d_change_pct is not None and rs_21d_change_pct > 2)
-            else 0.5 if (rs_21d_change_pct is not None and rs_21d_change_pct > -2)
-            else 0.0 if rs_21d_change_pct is not None
+            1.0
+            if (rs_21d_change_pct is not None and rs_21d_change_pct > 2)
+            else 0.5
+            if (rs_21d_change_pct is not None and rs_21d_change_pct > -2)
+            else 0.0
+            if rs_21d_change_pct is not None
             else 0.5  # neutral if RS unavailable (e.g. TSX vs SPY mismatch)
         )
         mom_pos = (
-            1.0 if (mom_12_1_pct is not None and mom_12_1_pct > 15)
-            else 0.7 if (mom_12_1_pct is not None and mom_12_1_pct > 5)
-            else 0.3 if (mom_12_1_pct is not None and mom_12_1_pct > -5)
-            else 0.0 if mom_12_1_pct is not None
+            1.0
+            if (mom_12_1_pct is not None and mom_12_1_pct > 15)
+            else 0.7
+            if (mom_12_1_pct is not None and mom_12_1_pct > 5)
+            else 0.3
+            if (mom_12_1_pct is not None and mom_12_1_pct > -5)
+            else 0.0
+            if mom_12_1_pct is not None
             else 0.5
         )
         technical_score = round(
-            mnv * 0.25 + trn * 0.08 + rs_pos * 0.12 + mom_pos * 0.10
-            + vol_pos * 0.13 + obv_pos * 0.07 + adx_pos * 0.08
-            + rsi_pos * 0.07 + stoch_pos * 0.02 + macd_pos * 0.03
+            mnv * 0.25
+            + trn * 0.08
+            + rs_pos * 0.12
+            + mom_pos * 0.10
+            + vol_pos * 0.13
+            + obv_pos * 0.07
+            + adx_pos * 0.08
+            + rsi_pos * 0.07
+            + stoch_pos * 0.02
+            + macd_pos * 0.03
             + 0.05 * 0.5,  # 5% placeholder for crowding-blend (set neutral until wired)
             3,
         )
 
         # Signal agreement: count bullish vs bearish across 7 independent signals
-        _bull = sum([
-            trend == "uptrend",
-            rsi_pos >= 0.7,
-            macd_hist is not None and macd_hist > 0,
-            rs_21d_change_pct is not None and rs_21d_change_pct > 2,
-            mom_12_1_pct is not None and mom_12_1_pct > 5,
-            minervini_score >= 5,
-            obv_trend == "rising",
-        ])
-        _bear = sum([
-            trend == "downtrend",
-            rsi_val is not None and rsi_val > 70,
-            macd_hist is not None and macd_hist < 0,
-            rs_21d_change_pct is not None and rs_21d_change_pct < -2,
-            mom_12_1_pct is not None and mom_12_1_pct < -5,
-            minervini_score <= 2,
-            obv_trend == "falling",
-        ])
+        _bull = sum(
+            [
+                trend == "uptrend",
+                rsi_pos >= 0.7,
+                macd_hist is not None and macd_hist > 0,
+                rs_21d_change_pct is not None and rs_21d_change_pct > 2,
+                mom_12_1_pct is not None and mom_12_1_pct > 5,
+                minervini_score >= 5,
+                obv_trend == "rising",
+            ]
+        )
+        _bear = sum(
+            [
+                trend == "downtrend",
+                rsi_val is not None and rsi_val > 70,
+                macd_hist is not None and macd_hist < 0,
+                rs_21d_change_pct is not None and rs_21d_change_pct < -2,
+                mom_12_1_pct is not None and mom_12_1_pct < -5,
+                minervini_score <= 2,
+                obv_trend == "falling",
+            ]
+        )
         if _bull >= 5:
             signal_agreement, signal_conviction = "bullish", "HIGH"
         elif _bull == 4:
@@ -477,11 +482,13 @@ def _fetch_massive_ohlcv(symbol: str) -> pd.DataFrame | None:
     """1y daily OHLCV from Massive, returns yfinance-compatible DataFrame."""
     import os
     from datetime import datetime, timedelta
+
     key = os.environ.get("MASSIVE_API_KEY", "")
     if not key:
         return None
     try:
         from massive import RESTClient
+
         client = RESTClient(api_key=key)
         to_dt = datetime.now()
         from_dt = to_dt - timedelta(days=370)
@@ -496,14 +503,16 @@ def _fetch_massive_ohlcv(symbol: str) -> pd.DataFrame | None:
             adjusted=True,
         ):
             try:
-                records.append({
-                    "Date": pd.Timestamp(agg.timestamp, unit="ms"),
-                    "Open": float(agg.open),
-                    "High": float(agg.high),
-                    "Low": float(agg.low),
-                    "Close": float(agg.close),
-                    "Volume": float(agg.volume or 0),
-                })
+                records.append(
+                    {
+                        "Date": pd.Timestamp(agg.timestamp, unit="ms"),
+                        "Open": float(agg.open),
+                        "High": float(agg.high),
+                        "Low": float(agg.low),
+                        "Close": float(agg.close),
+                        "Volume": float(agg.volume or 0),
+                    }
+                )
             except Exception:
                 continue
         if len(records) < 21:
@@ -564,9 +573,7 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
             data = None
         for sym in needs_yfinance:
             df = _slice_symbol(data, sym) if data is not None else None
-            result = (
-                _compute_from_df(df, spy_close=spy_close) if df is not None else {}
-            )
+            result = _compute_from_df(df, spy_close=spy_close) if df is not None else {}
             _cache[sym] = (result, time.time())
             out[sym] = result
     return out
@@ -577,9 +584,18 @@ _MTF_CACHE_TTL = 3600
 
 _MTF_PERIOD_MAP = {"1d": "1y", "1wk": "5y", "1mo": "10y"}
 _MTF_KEY_FIELDS = (
-    "trend", "rsi_14", "rsi_signal", "macd_hist", "signal_agreement",
-    "signal_conviction", "technical_score", "stage", "obv_trend", "adx_signal",
-    "sma_200", "current_price",
+    "trend",
+    "rsi_14",
+    "rsi_signal",
+    "macd_hist",
+    "signal_agreement",
+    "signal_conviction",
+    "technical_score",
+    "stage",
+    "obv_trend",
+    "adx_signal",
+    "sma_200",
+    "current_price",
 )
 
 
@@ -686,9 +702,7 @@ def get_technicals_mtf(
                     tf_results[tf] = {}
                     continue
                 full = _compute_from_df(sub, spy_close=spy_close)
-                tf_results[tf] = {
-                    k: full[k] for k in _MTF_KEY_FIELDS if k in full
-                }
+                tf_results[tf] = {k: full[k] for k in _MTF_KEY_FIELDS if k in full}
             except Exception as e:
                 _LOG.warning(f"[technicals_mtf] {sym} {tf}: {e}")
                 tf_results[tf] = {}

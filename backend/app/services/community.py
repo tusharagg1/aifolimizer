@@ -11,19 +11,56 @@ _ST_CACHE: dict[str, tuple[dict, float]] = {}
 _ST_TTL = 900  # 15 min — StockTwits is real-time retail flow, shorter TTL
 
 _BULL_WORDS = {
-    "buy", "bullish", "long", "calls", "moon", "rally", "breakout",
-    "strong", "upgrade", "beat", "growth", "outperform", "hold",
+    "buy",
+    "bullish",
+    "long",
+    "calls",
+    "moon",
+    "rally",
+    "breakout",
+    "strong",
+    "upgrade",
+    "beat",
+    "growth",
+    "outperform",
+    "hold",
 }
 _BEAR_WORDS = {
-    "sell", "bearish", "short", "puts", "crash", "dump", "weak",
-    "downgrade", "miss", "cut", "loss", "underperform", "avoid",
+    "sell",
+    "bearish",
+    "short",
+    "puts",
+    "crash",
+    "dump",
+    "weak",
+    "downgrade",
+    "miss",
+    "cut",
+    "loss",
+    "underperform",
+    "avoid",
 }
 
 # Tokens that flip polarity of the following keyword (window = 1 token).
 _NEGATIONS = {
-    "not", "no", "never", "isn't", "aren't", "wasn't", "weren't",
-    "don't", "doesn't", "didn't", "won't", "wouldn't", "shouldn't",
-    "couldn't", "cannot", "can't", "nothing", "without",
+    "not",
+    "no",
+    "never",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "don't",
+    "doesn't",
+    "didn't",
+    "won't",
+    "wouldn't",
+    "shouldn't",
+    "couldn't",
+    "cannot",
+    "can't",
+    "nothing",
+    "without",
 }
 
 _TOKEN_RE = re.compile(r"[a-z']+")
@@ -55,6 +92,7 @@ def score_text_polarity(
                 bear += 1
     return bull, bear
 
+
 _HEADERS = {"User-Agent": "aifolimizer/1.0 community-signal (personal finance research)"}
 _SUBREDDITS = ["stocks", "investing", "canadianinvestor", "wallstreetbets"]
 
@@ -68,10 +106,7 @@ def get_reddit_sentiment(symbol: str) -> dict:
     posts: list[str] = []
 
     for sub in _SUBREDDITS[:3]:
-        url = (
-            f"https://www.reddit.com/r/{sub}/search.json"
-            f"?q={ticker}&sort=top&t=week&limit=10&restrict_sr=1"
-        )
+        url = f"https://www.reddit.com/r/{sub}/search.json?q={ticker}&sort=top&t=week&limit=10&restrict_sr=1"
         try:
             resp = httpx.get(url, headers=_HEADERS, timeout=5.0, follow_redirects=True)
             if resp.status_code != 200:

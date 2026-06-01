@@ -13,6 +13,7 @@ Lifecycle hooked from app/main.py startup. Uses asyncio.create_task so it
 never blocks the FastAPI event loop. Each tick is wrapped in try/except so
 a transient failure does not kill the loop.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,6 +59,7 @@ def _load_scheduler_state() -> None:
         if not _STATE_FILE.is_file():
             return
         import json
+
         payload = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
         if isinstance(payload, dict):
             d = payload.get("last_score_date")
@@ -75,12 +77,15 @@ def _save_scheduler_state() -> None:
     try:
         _STATE_DIR.mkdir(parents=True, exist_ok=True)
         import json
+
         _STATE_FILE.write_text(
-            json.dumps({
-                "last_score_date": _LAST_SCORE_DATE,
-                "last_sentry_ts": _LAST_SENTRY_TS,
-                "saved_ts": time.time(),
-            }),
+            json.dumps(
+                {
+                    "last_score_date": _LAST_SCORE_DATE,
+                    "last_sentry_ts": _LAST_SENTRY_TS,
+                    "saved_ts": time.time(),
+                }
+            ),
             encoding="utf-8",
         )
     except Exception as e:
@@ -98,10 +103,7 @@ def _last_due_score_date() -> str:
     # Step back until we land on a weekday whose 4pm ET has already passed.
     while True:
         is_weekday = candidate.weekday() < 5
-        crossed_close = (
-            candidate < et_now.date()
-            or (candidate == et_now.date() and et_now.hour >= _SCORE_HOUR_ET)
-        )
+        crossed_close = candidate < et_now.date() or (candidate == et_now.date() and et_now.hour >= _SCORE_HOUR_ET)
         if is_weekday and crossed_close:
             return candidate.isoformat()
         candidate = candidate - timedelta(days=1)
@@ -120,9 +122,11 @@ async def catch_up_missed_runs() -> dict | None:
         return None
     _LOG.info(
         "scheduler: catch-up — last_score=%s due=%s, firing now",
-        last, due,
+        last,
+        due,
     )
     return await _score_once_if_due(force=True)
+
 
 # Sentry digest — hourly poll for live errors.
 _SENTRY_LOOP_INTERVAL_S = 60 * 60
@@ -149,6 +153,7 @@ def _now_eastern() -> datetime:
     # zoneinfo to stay correct across DST boundaries.
     try:
         from zoneinfo import ZoneInfo
+
         return datetime.now(tz=ZoneInfo("America/New_York"))
     except Exception:
         return datetime.now(tz=timezone.utc) - timedelta(hours=5)
@@ -191,17 +196,20 @@ async def _fetch_portfolio_for(sid: str):
         return None
     try:
         from app.api.ws import _get_portfolio
+
         return await _get_portfolio(sid, session, "", max_age_s=300)
     except Exception as e:
         _LOG.warning(
             "scheduler: _get_portfolio failed for sid=%s: %s",
-            sid[:8], e,
+            sid[:8],
+            e,
         )
         return None
 
 
 def _tenant_hash(sid: str) -> str:
     import hashlib
+
     return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
 
 
@@ -213,23 +221,21 @@ def _build_evidence_map(
     """Phase 1+ / Phase 8: build per-symbol skill evidence map, optionally
     regime-gated. Pure function — no DB writes.
     """
-    symbols = [
-        p.symbol for p in portfolio.positions
-        if getattr(p, "symbol", None)
-    ]
+    symbols = [p.symbol for p in portfolio.positions if getattr(p, "symbol", None)]
     return skill_evidence.build(
-        snapshots, symbols, regime_composite=regime_composite,
+        snapshots,
+        symbols,
+        regime_composite=regime_composite,
     )
 
 
-async def _persist_integrated_signals(
-    tenant_hash: str, recs: list[dict], evidence_map: dict[str, dict]
-) -> int:
+async def _persist_integrated_signals(tenant_hash: str, recs: list[dict], evidence_map: dict[str, dict]) -> int:
     """Phase 2: write one signal_history row per holding using the integrated
     score + 5-signal breakdown + skill evidence. Replaces the Phase 1
     EVIDENCE_ONLY placeholders.
     """
     from datetime import datetime, timezone
+
     ts = datetime.now(tz=timezone.utc)
     written = 0
     for rec in recs or []:
@@ -251,10 +257,7 @@ async def _persist_integrated_signals(
                 sentiment_score=rec.get("sentiment"),
                 skill_consensus=int(ev.get("skill_consensus") or 0),
                 skill_confidence=float(ev.get("skill_confidence") or 0),
-                skill_evidence={
-                    k: v for k, v in ev.items()
-                    if k not in {"skill_consensus", "skill_confidence"}
-                },
+                skill_evidence={k: v for k, v in ev.items() if k not in {"skill_consensus", "skill_confidence"}},
                 features={
                     "rsi": rec.get("rsi"),
                     "stage": rec.get("stage"),
@@ -286,9 +289,9 @@ async def _persist_snapshots(tenant_hash: str, snapshots: dict[str, dict]) -> No
 
 async def _handle_session_expired(sid: str) -> None:
     """Phase 6: when scheduler discovers a dead WS session:
-      - push one Telegram message per tenant per day ("Wealthsimple session expired")
-      - write a session_expired snapshot row per portfolio-dependent skill so
-        the dashboard banner has something to read.
+    - push one Telegram message per tenant per day ("Wealthsimple session expired")
+    - write a session_expired snapshot row per portfolio-dependent skill so
+      the dashboard banner has something to read.
     """
     from datetime import date as date_t
 
@@ -301,9 +304,15 @@ async def _handle_session_expired(sid: str) -> None:
 
     # 1. Mark snapshots so frontend shows session-expired banner.
     portfolio_dependent_skills = (
-        "portfolio-health", "risk-assessment", "cash-deployment",
-        "stock-analysis", "earnings-analyzer", "tax-loss-review",
-        "dividend-strategy", "sector-rotation", "daily-briefing",
+        "portfolio-health",
+        "risk-assessment",
+        "cash-deployment",
+        "stock-analysis",
+        "earnings-analyzer",
+        "tax-loss-review",
+        "dividend-strategy",
+        "sector-rotation",
+        "daily-briefing",
     )
     expired_snapshot = {
         "computed_at": datetime.now(tz=timezone.utc),
@@ -322,14 +331,17 @@ async def _handle_session_expired(sid: str) -> None:
         except Exception as e:
             _LOG.warning(
                 "session_expired snapshot insert failed for %s: %s",
-                skill_name, e,
+                skill_name,
+                e,
             )
 
     # 2. Telegram push (deduped per day per tenant).
     try:
         from app.core.config import settings as _cfg
+
         if _cfg.telegram_bot_token and _cfg.telegram_chat_id:
             from app.services.alerts import _push_telegram
+
             _push_telegram(
                 _cfg.telegram_bot_token,
                 _cfg.telegram_chat_id,
@@ -349,12 +361,16 @@ async def _run_for_session(sid: str) -> dict:
     # inside market_breadth so back-to-back ticks reuse the same data).
     try:
         from app.services import market_regime
+
         new_regime = await market_regime.classify_and_persist()
         # Phase 15: event-driven regime flip → fire LLM skills out-of-band.
         try:
             from app.services import event_dispatcher
+
             await event_dispatcher.on_regime_flip(
-                _PREV_REGIME, new_regime, tenant_hashes=[_tenant_hash(sid)],
+                _PREV_REGIME,
+                new_regime,
+                tenant_hashes=[_tenant_hash(sid)],
             )
         except Exception as e:
             _LOG.warning("regime flip dispatch failed: %s", e)
@@ -373,7 +389,9 @@ async def _run_for_session(sid: str) -> dict:
     try:
         # 1. Run codified skills (parallel, ThreadPool inside run_all_skills).
         out = await asyncio.to_thread(
-            skill_runner.run_all_skills, portfolio, tenant_id=sid,
+            skill_runner.run_all_skills,
+            portfolio,
+            tenant_id=sid,
         )
         thash = _tenant_hash(sid)
 
@@ -384,31 +402,40 @@ async def _run_for_session(sid: str) -> dict:
         regime_composite = None
         try:
             from app.services import market_regime
+
             current = await market_regime.get_current()
             if current:
                 regime_composite = current.composite
         except Exception as e:
             _LOG.warning("regime fetch failed: %s", e)
         evidence_map = _build_evidence_map(
-            portfolio, out, regime_composite=regime_composite,
+            portfolio,
+            out,
+            regime_composite=regime_composite,
         )
 
         # 4. Re-score portfolio with skill evidence as 5th sub-signal (Phase 2,
         #    w_skill=0.5 from Postgres weights). Cache key inside
         #    get_recommendations includes evidence digest.
         from app.services import recommendations as rec_svc
+
         positions = [
             {
-                "symbol": p.symbol, "name": p.name, "weight": p.weight,
+                "symbol": p.symbol,
+                "name": p.name,
+                "weight": p.weight,
                 "market_value_cad": p.market_value_cad,
                 "total_return_pct": p.total_return_pct,
-                "currency": p.currency, "asset_class": p.asset_class,
+                "currency": p.currency,
+                "asset_class": p.asset_class,
                 "sector": p.sector,
             }
             for p in portfolio.positions
         ]
         recs = await asyncio.to_thread(
-            rec_svc.get_recommendations, positions, evidence_map,
+            rec_svc.get_recommendations,
+            positions,
+            evidence_map,
         )
 
         # 5. Persist integrated signals (per-holding 5-signal row).
@@ -417,29 +444,31 @@ async def _run_for_session(sid: str) -> dict:
         # 5b. Phase 12: risk gate evaluation + suppression of BUYs on halt.
         try:
             from app.services import risk_gate
+
             gate = await risk_gate.evaluate_and_persist(thash)
             # Phase 15: event-driven drawdown breach → fire risk LLM skill.
             try:
                 from app.services import event_dispatcher
+
                 prev_status = _PREV_GATE_STATUS.get(thash)
                 await event_dispatcher.on_drawdown_breach(
-                    thash, prev_status, gate.status,
+                    thash,
+                    prev_status,
+                    gate.status,
                     context={"reasons": gate.reasons, "triggers": gate.triggers},
                 )
                 _PREV_GATE_STATUS[thash] = gate.status
             except Exception as e:
                 _LOG.warning("drawdown breach dispatch failed: %s", e)
             if gate.status == "halt":
-                recs = [
-                    r for r in recs
-                    if (r.get("action") or "").upper() not in ("BUY", "ADD")
-                ]
+                recs = [r for r in recs if (r.get("action") or "").upper() not in ("BUY", "ADD")]
             elif gate.status == "reduce_size" and gate.size_multiplier:
                 for r in recs:
                     if (r.get("action") or "").upper() in ("BUY", "ADD"):
                         if r.get("kelly_pct"):
                             r["kelly_pct"] = round(
-                                r["kelly_pct"] * gate.size_multiplier, 1,
+                                r["kelly_pct"] * gate.size_multiplier,
+                                1,
                             )
         except Exception as e:
             _LOG.warning("risk_gate evaluate failed: %s", e)
@@ -449,10 +478,12 @@ async def _run_for_session(sid: str) -> dict:
         try:
             from app.services import signal_change_detector
             from app.core.config import settings as _cfg
+
             # Pass topic only if configured — detector silently no-ops on push
             # but still records detected count + updates last_signals snapshot.
             change_stats = await signal_change_detector.detect_and_dispatch(
-                thash, recs,
+                thash,
+                recs,
                 telegram_bot_token=(_cfg.telegram_bot_token or None),
                 telegram_chat_id=(_cfg.telegram_chat_id or None),
             )
@@ -463,10 +494,7 @@ async def _run_for_session(sid: str) -> dict:
             "tenant": sid[:8],
             "status": "ok",
             "skills": list(out.keys()),
-            "errors": [
-                s for s, snap in out.items()
-                if snap.get("status") == "error"
-            ],
+            "errors": [s for s, snap in out.items() if snap.get("status") == "error"],
             "signal_rows": n_signals,
             "evidence_symbols": len(evidence_map),
             "changes": change_stats,
@@ -499,10 +527,12 @@ async def _tick() -> dict:
             enqueued = []
             for sid in sids:
                 job = q.enqueue(
-                    run_skill_tick_for_tenant, sid,
+                    run_skill_tick_for_tenant,
+                    sid,
                     job_timeout=600,
                     retry=Retry(max=3, interval=[60, 180, 600]),
-                    result_ttl=3600, failure_ttl=86400,
+                    result_ttl=3600,
+                    failure_ttl=86400,
                 )
                 enqueued.append({"tenant": sid[:8], "job_id": job.id})
             _LAST_RUN_TS = time.time()
@@ -581,6 +611,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             from app.services import discovery
             from app.api.ws import _get_portfolio as _gp_disc
             import hashlib as _h2
+
             disco_results: list[dict] = []
             for sid in _active_session_ids():
                 session = wealthsimple.get_session(sid)
@@ -588,18 +619,24 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                 if session:
                     try:
                         portfolio = await _gp_disc(
-                            sid, session, "", max_age_s=300,
+                            sid,
+                            session,
+                            "",
+                            max_age_s=300,
                         )
                     except Exception:
                         portfolio = None
                 thash = _h2.sha1(sid.encode("utf-8")).hexdigest()[:16]
                 try:
-                    disco_results.append({
-                        "tenant": sid[:8],
-                        "result": await discovery.run_nightly_scan(
-                            thash, portfolio,
-                        ),
-                    })
+                    disco_results.append(
+                        {
+                            "tenant": sid[:8],
+                            "result": await discovery.run_nightly_scan(
+                                thash,
+                                portfolio,
+                            ),
+                        }
+                    )
                 except Exception as e:
                     _LOG.warning("discovery scan failed: %s", e)
             _LAST_SCORE_RESULT["discovery"] = disco_results
@@ -612,13 +649,17 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             from app.services import skill_llm_runner
             from app.api.ws import _get_portfolio as _gp_llm
             import hashlib
+
             llm_results: list[dict] = []
             for sid in _active_session_ids():
                 session = wealthsimple.get_session(sid)
                 if not session:
                     continue
                 portfolio = await _gp_llm(
-                    sid, session, "", max_age_s=300,
+                    sid,
+                    session,
+                    "",
+                    max_age_s=300,
                 )
                 if not portfolio or not portfolio.positions:
                     continue
@@ -637,7 +678,8 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                 )
                 thash = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
                 llm_result = await skill_llm_runner.run_nightly_llm_skills(
-                    thash, top,
+                    thash,
+                    top,
                 )
                 llm_results.append({"tenant": sid[:8], "result": llm_result})
             _LAST_SCORE_RESULT["llm_skills"] = llm_results
@@ -649,16 +691,16 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # material market events trigger fresh LLM reasoning immediately.
         try:
             from app.services import (
-                event_dispatcher, fundamentals, positioning,
+                event_dispatcher,
+                fundamentals,
+                positioning,
             )
             from app.api.ws import _get_portfolio as _gp_evt
             import hashlib as _h_evt
             from datetime import datetime as _dt, timedelta as _td
 
             event_results: list[dict] = []
-            recent_cutoff = (
-                _dt.utcnow() - _td(days=7)
-            ).date().isoformat()
+            recent_cutoff = (_dt.utcnow() - _td(days=7)).date().isoformat()
 
             for sid in _active_session_ids():
                 session = wealthsimple.get_session(sid)
@@ -666,7 +708,10 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                     continue
                 try:
                     portfolio = await _gp_evt(
-                        sid, session, "", max_age_s=300,
+                        sid,
+                        session,
+                        "",
+                        max_age_s=300,
                     )
                 except Exception:
                     continue
@@ -674,17 +719,16 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                     continue
 
                 thash = _h_evt.sha1(sid.encode("utf-8")).hexdigest()[:16]
-                symbols = [
-                    p.symbol for p in portfolio.positions
-                    if getattr(p, "symbol", None)
-                ]
+                symbols = [p.symbol for p in portfolio.positions if getattr(p, "symbol", None)]
                 if not symbols:
                     continue
 
                 # --- Earnings surprises (last 7d, latest quarter only) ---
                 try:
                     history = await asyncio.to_thread(
-                        fundamentals.get_earnings_history, symbols, 1,
+                        fundamentals.get_earnings_history,
+                        symbols,
+                        1,
                     )
                     for sym, quarters in (history or {}).items():
                         if not quarters:
@@ -697,7 +741,9 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                         if surprise is None:
                             continue
                         result = await event_dispatcher.on_earnings_surprise(
-                            thash, sym, float(surprise),
+                            thash,
+                            sym,
+                            float(surprise),
                             context={
                                 "earnings_date": q_date,
                                 "eps_actual": latest.get("eps_actual"),
@@ -706,19 +752,22 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                             },
                         )
                         if result.get("status") == "ok":
-                            event_results.append({
-                                "tenant": sid[:8],
-                                "event": "earnings_surprise",
-                                "ticker": sym,
-                                "surprise_pct": surprise,
-                            })
+                            event_results.append(
+                                {
+                                    "tenant": sid[:8],
+                                    "event": "earnings_surprise",
+                                    "ticker": sym,
+                                    "surprise_pct": surprise,
+                                }
+                            )
                 except Exception as e:
                     _LOG.warning("earnings event scan failed: %s", e)
 
                 # --- Crowding regime shifts ---
                 try:
                     top_syms = [
-                        p.symbol for p in sorted(
+                        p.symbol
+                        for p in sorted(
                             portfolio.positions,
                             key=lambda p: p.weight or 0,
                             reverse=True,
@@ -726,18 +775,22 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                         if getattr(p, "symbol", None)
                     ]
                     await asyncio.to_thread(
-                        positioning.snapshot_to_history, top_syms,
+                        positioning.snapshot_to_history,
+                        top_syms,
                     )
                     shifts = await asyncio.to_thread(
                         positioning.detect_regime_shifts,
-                        top_syms, 30, 25.0,
+                        top_syms,
+                        30,
+                        25.0,
                     )
                     for shift in shifts or []:
                         sym = shift.get("symbol")
                         if not sym:
                             continue
                         result = await event_dispatcher.on_crowding_flip(
-                            thash, sym,
+                            thash,
+                            sym,
                             float(shift.get("from_score") or 0),
                             float(shift.get("to_score") or 0),
                             context={
@@ -747,12 +800,14 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                             },
                         )
                         if result.get("status") == "ok":
-                            event_results.append({
-                                "tenant": sid[:8],
-                                "event": "crowding_flip",
-                                "ticker": sym,
-                                "delta": shift.get("delta"),
-                            })
+                            event_results.append(
+                                {
+                                    "tenant": sid[:8],
+                                    "event": "crowding_flip",
+                                    "ticker": sym,
+                                    "delta": shift.get("delta"),
+                                }
+                            )
                 except Exception as e:
                     _LOG.warning("crowding event scan failed: %s", e)
 
@@ -764,22 +819,27 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         try:
             from app.services import live_metrics
             import hashlib as _h
+
             kpi_results: list[dict] = []
             for sid in _active_session_ids():
                 thash = _h.sha1(sid.encode("utf-8")).hexdigest()[:16]
                 for window in (7, 30, 90):
                     try:
                         snap = await live_metrics.kpis(thash, window_days=window)
-                        kpi_results.append({
-                            "tenant": sid[:8],
-                            "window": window,
-                            "pf": snap.get("profit_factor"),
-                            "sharpe": snap.get("sharpe"),
-                            "n": snap.get("n_trades"),
-                        })
+                        kpi_results.append(
+                            {
+                                "tenant": sid[:8],
+                                "window": window,
+                                "pf": snap.get("profit_factor"),
+                                "sharpe": snap.get("sharpe"),
+                                "n": snap.get("n_trades"),
+                            }
+                        )
                     except Exception as e:
                         _LOG.warning(
-                            "kpis window=%s failed: %s", window, e,
+                            "kpis window=%s failed: %s",
+                            window,
+                            e,
                         )
             _LAST_SCORE_RESULT["live_kpis"] = kpi_results
         except Exception as e:
@@ -790,6 +850,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # decay-curve / accuracy / source-attribution endpoints stay empty.
         try:
             from app.services import signal_history as signal_history_svc
+
             score_horizons_result = await asyncio.to_thread(
                 signal_history_svc.score_horizons,
                 signal_history_svc._DEFAULT_HORIZONS,
@@ -808,6 +869,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         try:
             from app.services import decision_memory
             from app.services import data_router as _dr
+
             open_decisions = decision_memory.get_open_decisions()
             symbols = sorted({d.get("ticker") for d in open_decisions if d.get("ticker")})
             price_map: dict[str, float] = {}
@@ -817,9 +879,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                     p = q.get("price") if isinstance(q, dict) else None
                     if p is not None:
                         price_map[sym] = float(p)
-            outcomes_result = await asyncio.to_thread(
-                decision_memory.resolve_outcomes, price_map
-            )
+            outcomes_result = await asyncio.to_thread(decision_memory.resolve_outcomes, price_map)
             _LAST_SCORE_RESULT["decision_outcomes"] = outcomes_result
             _LOG.info(
                 "scheduler: decision outcomes — %s",
@@ -833,16 +893,13 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # a single 21d snapshot.
         try:
             from app.services.calibration import calibration_verdict
+
             cal_results: dict[int, dict] = {}
             for horizon in (5, 21, 63):
                 try:
-                    cal_results[horizon] = await calibration_verdict(
-                        horizon_days=horizon
-                    )
+                    cal_results[horizon] = await calibration_verdict(horizon_days=horizon)
                 except Exception as e:
-                    _LOG.warning(
-                        "calibration horizon=%s failed: %s", horizon, e
-                    )
+                    _LOG.warning("calibration horizon=%s failed: %s", horizon, e)
             primary = cal_results.get(21) or {}
             _LAST_SCORE_RESULT["calibration"] = {
                 "brier": primary.get("brier_score"),
@@ -873,6 +930,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             # Phase 11: omit objective → auto-select accuracy/expectancy
             # depending on how much horizon-scored data has accumulated.
             from app.services.weights_tuner import recalibrate
+
             tuner_result = await recalibrate()
             _LAST_SCORE_RESULT["tuner"] = tuner_result
             _LOG.info(
@@ -885,6 +943,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # Phase 11b: learn (skill, regime) multipliers from realized data.
         try:
             from app.services.adaptive_regime import recalibrate_multipliers
+
             adaptive = await recalibrate_multipliers()
             _LAST_SCORE_RESULT["adaptive_regime"] = adaptive
         except Exception as e:
@@ -893,6 +952,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # Threshold tuner — promote calibrated buy/sell thresholds.
         try:
             from app.services.threshold_tuner import recalibrate as thr_recal
+
             thr_result = await asyncio.to_thread(thr_recal)
             _LAST_SCORE_RESULT["threshold_tuner"] = thr_result
         except Exception as e:
@@ -901,6 +961,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # Skill-health gate (live forward-tested hit-rate / profit-factor).
         try:
             from app.services.skill_health import enforce as skill_health_enforce
+
             health = await asyncio.to_thread(skill_health_enforce)
             _LAST_SCORE_RESULT["skill_health"] = health
         except Exception as e:
@@ -909,6 +970,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # Backtest gate (deflated Sharpe over walk-forward runs).
         try:
             from app.services.backtest_gate import enforce_dsr_gate
+
             bt_gate = await asyncio.to_thread(enforce_dsr_gate)
             _LAST_SCORE_RESULT["backtest_gate"] = bt_gate
         except Exception as e:
@@ -917,6 +979,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         # Source drift detector (data-router auto-rerank).
         try:
             from app.services.source_drift import detect_and_demote
+
             drift = await asyncio.to_thread(detect_and_demote)
             _LAST_SCORE_RESULT["source_drift"] = drift
         except Exception as e:
@@ -935,7 +998,8 @@ async def _score_loop():
         await _score_once_if_due()
         try:
             await asyncio.wait_for(
-                _STOP_EVENT.wait(), timeout=_SCORE_LOOP_INTERVAL_S,
+                _STOP_EVENT.wait(),
+                timeout=_SCORE_LOOP_INTERVAL_S,
             )
         except asyncio.TimeoutError:
             continue
@@ -945,10 +1009,12 @@ async def _sentry_digest_once() -> dict | None:
     """Pull latest Sentry digest; log high-severity issues."""
     global _LAST_SENTRY_TS, _LAST_SENTRY_DIGEST
     from app.core.config import settings
+
     if not settings.sentry_auth_token or not settings.sentry_org:
         return None
     try:
         from app.services import sentry_monitor
+
         digest = await asyncio.to_thread(sentry_monitor.build_digest, 10)
         _LAST_SENTRY_TS = time.time()
         _LAST_SENTRY_DIGEST = digest
@@ -970,7 +1036,8 @@ async def _sentry_loop():
         await _sentry_digest_once()
         try:
             await asyncio.wait_for(
-                _STOP_EVENT.wait(), timeout=_SENTRY_LOOP_INTERVAL_S,
+                _STOP_EVENT.wait(),
+                timeout=_SENTRY_LOOP_INTERVAL_S,
             )
         except asyncio.TimeoutError:
             continue
@@ -1019,26 +1086,26 @@ async def _registry_cron_tick() -> dict:
                 await snapshots_repo.upsert(thash, snap["skill"], snap)
             except Exception as e:
                 _LOG.warning(
-                    "registry snapshot persist failed %s: %s", spec.name, e,
+                    "registry snapshot persist failed %s: %s",
+                    spec.name,
+                    e,
                 )
             ar.mark_run(spec.name, snap.get("status") or "ok")
             _REGISTRY_FIRED.add(key)
-            fired.append({
-                "agent": spec.name,
-                "status": snap.get("status"),
-            })
+            fired.append(
+                {
+                    "agent": spec.name,
+                    "status": snap.get("status"),
+                }
+            )
         except Exception as e:
             _LOG.warning("registry agent %s failed: %s", spec.name, e)
             ar.mark_run(spec.name, "error")
 
     # Garbage-collect dedup set so it doesn't grow forever
     if len(_REGISTRY_FIRED) > 5000:
-        cutoff_key = (
-            now - timedelta(hours=2)
-        ).strftime("%Y%m%d-%H%M")
-        _REGISTRY_FIRED.intersection_update(
-            {k for k in _REGISTRY_FIRED if k[1] >= cutoff_key}
-        )
+        cutoff_key = (now - timedelta(hours=2)).strftime("%Y%m%d-%H%M")
+        _REGISTRY_FIRED.intersection_update({k for k in _REGISTRY_FIRED if k[1] >= cutoff_key})
 
     return {"status": "ok", "minute": minute_key, "fired": fired}
 
@@ -1052,7 +1119,8 @@ async def _registry_cron_loop():
             _LOG.exception("registry cron tick failed")
         try:
             await asyncio.wait_for(
-                _STOP_EVENT.wait(), timeout=_REGISTRY_LOOP_INTERVAL_S,
+                _STOP_EVENT.wait(),
+                timeout=_REGISTRY_LOOP_INTERVAL_S,
             )
         except asyncio.TimeoutError:
             continue
@@ -1071,18 +1139,17 @@ def start_scheduler() -> None:
     _SCORE_TASK = asyncio.create_task(_score_loop(), name="rec-scorer")
     _SENTRY_TASK = asyncio.create_task(_sentry_loop(), name="sentry-digest")
     _REGISTRY_TASK = asyncio.create_task(
-        _registry_cron_loop(), name="agent-registry-cron",
+        _registry_cron_loop(),
+        name="agent-registry-cron",
     )
     # Fire-and-forget catch-up. The coroutine no-ops when the cursor is
     # already current; otherwise it forces a single overdue score so a
     # host that was asleep at 4pm ET doesn't leave a gap until tomorrow.
     asyncio.create_task(
-        catch_up_missed_runs(), name="rec-scorer-catchup",
+        catch_up_missed_runs(),
+        name="rec-scorer-catchup",
     )
-    _LOG.info(
-        "scheduler: started "
-        "(skill loop + scorer + sentry + registry-cron + catch-up)"
-    )
+    _LOG.info("scheduler: started (skill loop + scorer + sentry + registry-cron + catch-up)")
 
 
 def stop_scheduler() -> None:
@@ -1103,9 +1170,7 @@ def scheduler_status() -> dict:
     return {
         "running": bool(_TASK and not _TASK.done()),
         "score_running": bool(_SCORE_TASK and not _SCORE_TASK.done()),
-        "registry_running": bool(
-            _REGISTRY_TASK and not _REGISTRY_TASK.done()
-        ),
+        "registry_running": bool(_REGISTRY_TASK and not _REGISTRY_TASK.done()),
         "last_run_ts": _LAST_RUN_TS,
         "last_run_result": _LAST_RUN_RESULT,
         "last_score_date": _LAST_SCORE_DATE,

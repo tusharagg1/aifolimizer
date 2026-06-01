@@ -153,6 +153,7 @@ class TestMaxDrawdown:
 
     def test_always_non_positive(self):
         import random
+
         random.seed(42)
         prices = [abs(random.gauss(100, 10)) + 1 for _ in range(200)]
         assert max_drawdown(prices) <= 0.0
@@ -331,8 +332,14 @@ class TestRecommendationScoreDirection:
     def test_neutral_signals_give_hold_watch_or_no_edge(self):
         # No directional sub-signals → engine must refuse BUY/SELL.
         # Acceptable: HOLD (neutral), WATCH (forming), NO_EDGE (no advantage).
-        neutral_tech = {"stage": None, "rsi_14": 50.0, "macd_hist": 0.0, "trend": None,
-                        "sma_50": 100.0, "current_price": 100.0}
+        neutral_tech = {
+            "stage": None,
+            "rsi_14": 50.0,
+            "macd_hist": 0.0,
+            "trend": None,
+            "sma_50": 100.0,
+            "current_price": 100.0,
+        }
         neutral_fund = {"analyst_recommendation": "hold"}
         neutral_macro = {"market_regime": "bull_low_fear", "vix": 18.0}
         rec = _score_position("TEST", _BASE_POS, neutral_tech, neutral_fund, neutral_macro, 0.0)
@@ -348,32 +355,32 @@ class TestRecommendationScoreDirection:
         heavy = {**_BASE_POS, "weight": 25.0}
         # Use neutral signals so score doesn't hit ceiling before penalty
         neutral_tech = {
-            "stage": None, "rsi_14": 50.0, "macd_hist": 0.1,
-            "trend": "uptrend", "sma_50": 95.0, "current_price": 100.0,
+            "stage": None,
+            "rsi_14": 50.0,
+            "macd_hist": 0.1,
+            "trend": "uptrend",
+            "sma_50": 95.0,
+            "current_price": 100.0,
         }
         neutral_fund = {"analyst_recommendation": "hold", "analyst_target_price": 110.0}
-        rec_normal = _score_position(
-            "TEST", _BASE_POS, neutral_tech, neutral_fund, _BULL_MACRO, 0.1
-        )
-        rec_heavy = _score_position(
-            "TEST", heavy, neutral_tech, neutral_fund, _BULL_MACRO, 0.1
-        )
+        rec_normal = _score_position("TEST", _BASE_POS, neutral_tech, neutral_fund, _BULL_MACRO, 0.1)
+        rec_heavy = _score_position("TEST", heavy, neutral_tech, neutral_fund, _BULL_MACRO, 0.1)
         assert rec_heavy["score"] < rec_normal["score"]
         assert "overweight" in rec_heavy["flags"]
 
     def test_deep_loss_penalty_applied(self):
         loser = {**_BASE_POS, "total_return_pct": -30.0}
         neutral_tech = {
-            "stage": None, "rsi_14": 50.0, "macd_hist": 0.1,
-            "trend": "uptrend", "sma_50": 95.0, "current_price": 100.0,
+            "stage": None,
+            "rsi_14": 50.0,
+            "macd_hist": 0.1,
+            "trend": "uptrend",
+            "sma_50": 95.0,
+            "current_price": 100.0,
         }
         neutral_fund = {"analyst_recommendation": "hold", "analyst_target_price": 110.0}
-        rec_normal = _score_position(
-            "TEST", _BASE_POS, neutral_tech, neutral_fund, _BULL_MACRO, 0.1
-        )
-        rec_loser = _score_position(
-            "TEST", loser, neutral_tech, neutral_fund, _BULL_MACRO, 0.1
-        )
+        rec_normal = _score_position("TEST", _BASE_POS, neutral_tech, neutral_fund, _BULL_MACRO, 0.1)
+        rec_loser = _score_position("TEST", loser, neutral_tech, neutral_fund, _BULL_MACRO, 0.1)
         assert rec_loser["score"] < rec_normal["score"]
 
     def test_score_bounded_0_to_10(self):
@@ -446,17 +453,13 @@ class TestKellyCriterion:
     def test_sell_rec_uses_lower_win_prob(self):
         # SELL analyst rec → win_prob = 0.35 (hardcoded floor)
         sell_fund = {**_BEAR_FUND, "analyst_recommendation": "sell"}
-        rec = _score_position(
-            "TEST", _BASE_POS, _BEAR_TECH, sell_fund, _BEAR_MACRO, -0.5
-        )
+        rec = _score_position("TEST", _BASE_POS, _BEAR_TECH, sell_fund, _BEAR_MACRO, -0.5)
         assert rec["win_prob"] == pytest.approx(0.35)
 
     def test_hold_rec_win_prob_interpolated_from_score(self):
         # hold recommendation → win_prob derived from score, not hardcoded
         hold_fund = {**_BULL_FUND, "analyst_recommendation": "hold"}
-        rec = _score_position(
-            "TEST", _BASE_POS, _BULL_TECH, hold_fund, _BULL_MACRO, 0.3
-        )
+        rec = _score_position("TEST", _BASE_POS, _BULL_TECH, hold_fund, _BULL_MACRO, 0.3)
         expected = min(0.65, max(0.35, 0.35 + (rec["score"] / 10) * 0.30))
         assert rec["win_prob"] == pytest.approx(expected, rel=1e-3)
 

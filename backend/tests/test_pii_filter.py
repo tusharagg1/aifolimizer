@@ -89,10 +89,15 @@ def test_filter_portfolio_strips_pii_keys():
 
 def test_filter_portfolio_empty_input():
     """Empty / partial dicts must not crash."""
-    assert filter_portfolio({}) == {"positions": [], "summary": {
-        "total_value": 0, "total_cost": 0,
-        "total_return_pct": 0, "cash_available": 0,
-    }}
+    assert filter_portfolio({}) == {
+        "positions": [],
+        "summary": {
+            "total_value": 0,
+            "total_cost": 0,
+            "total_return_pct": 0,
+            "cash_available": 0,
+        },
+    }
 
 
 def test_filter_portfolio_position_defaults():

@@ -33,9 +33,7 @@ from app.services import agent_registry
 _LOG = get_logger("aifolimizer.services.backtest_gate")
 
 _BACKTEST_DIR = Path(__file__).resolve().parents[2] / ".cache" / "backtests"
-_AUDIT_FILE = (
-    Path(__file__).resolve().parents[2] / ".cache" / "backtest_gate_audit.jsonl"
-)
+_AUDIT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "backtest_gate_audit.jsonl"
 
 # DSR < this over `lookback_runs` walk-forward runs trips the gate. 0.5 is the
 # Bailey/Lopez threshold for "weak evidence — borderline, could be noise".
@@ -128,7 +126,10 @@ def enforce_dsr_gate(
         muted.append(row)
         _LOG.warning(
             "backtest_gate: muted %s (DSR=%.3f < %.2f over %d runs)",
-            skill, med, threshold, len(scores),
+            skill,
+            med,
+            threshold,
+            len(scores),
         )
 
     return {

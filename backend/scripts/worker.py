@@ -9,6 +9,7 @@ Or via docker-compose service `worker`.
 Picks jobs from `default` + `nightly` queues. Single worker is enough
 for solo use; scale by spawning N processes.
 """
+
 from __future__ import annotations
 
 import logging

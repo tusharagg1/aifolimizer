@@ -43,6 +43,7 @@ Exit codes:
     3  code rejected
     4  WS_EMAIL / WS_PASSWORD missing in backend/.env
 """
+
 from __future__ import annotations
 
 import json
@@ -122,8 +123,10 @@ def main() -> int:
 
     try:
         WealthsimpleAPI.login(
-            username=email, password=password,
-            otp_answer=None, persist_session_fct=_noop,
+            username=email,
+            password=password,
+            otp_answer=None,
+            persist_session_fct=_noop,
         )
         _msg("info", "WS session already valid. No MFA required.")
         return 0
@@ -139,8 +142,10 @@ def main() -> int:
 
     try:
         session = WealthsimpleAPI.login(
-            username=email, password=password,
-            otp_answer=code, persist_session_fct=_noop,
+            username=email,
+            password=password,
+            otp_answer=code,
+            persist_session_fct=_noop,
         )
     except OTPRequiredException:
         _msg("error", "Code rejected. Re-run launcher to try again.")

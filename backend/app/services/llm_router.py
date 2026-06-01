@@ -13,6 +13,7 @@ Priority (runtime auto-selection):
 Cache: 30-min per (symbol, score, market_regime).
 Narrative is None when all providers fail — rule-based signals still show.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -81,16 +82,16 @@ def _audit_outbound(
 # endpoint only exposes a tiny subset (gpt-4o, gpt-4o-mini, Llama-3.1).
 
 _GH_MODEL_BY_TASK: dict[str, str] = {
-    "narrative":         "openai/gpt-4o-mini",
-    "sell_verify":       "deepseek/deepseek-r1",   # chain-of-thought reasoning
-    "adversarial":       "deepseek/deepseek-r1",   # bull/bear debate w/ reasoning
-    "earnings_pm":       "openai/gpt-4o",
-    "risk_assess":       "openai/gpt-4o",
-    "macro_impact":      "openai/gpt-4o",
-    "stock_compare":     "openai/gpt-4o-mini",
-    "portfolio_health":  "openai/gpt-4o-mini",
-    "daily_briefing":    "openai/gpt-4o-mini",
-    "portfolio_advice":  "openai/gpt-4o-mini",
+    "narrative": "openai/gpt-4o-mini",
+    "sell_verify": "deepseek/deepseek-r1",  # chain-of-thought reasoning
+    "adversarial": "deepseek/deepseek-r1",  # bull/bear debate w/ reasoning
+    "earnings_pm": "openai/gpt-4o",
+    "risk_assess": "openai/gpt-4o",
+    "macro_impact": "openai/gpt-4o",
+    "stock_compare": "openai/gpt-4o-mini",
+    "portfolio_health": "openai/gpt-4o-mini",
+    "daily_briefing": "openai/gpt-4o-mini",
+    "portfolio_advice": "openai/gpt-4o-mini",
 }
 
 
@@ -164,6 +165,7 @@ def _store_narrative(key: tuple, text: str) -> None:
 
 # ── Provider selection ─────────────────────────────────────────────────────────
 
+
 def _available_providers() -> list[dict]:
     now = time.time()
     result = []
@@ -172,10 +174,7 @@ def _available_providers() -> list[dict]:
         if not key:
             continue
         state = _ERROR_STATE.get(p["name"], {})
-        if (
-            state.get("consecutive", 0) >= _MAX_CONSECUTIVE
-            and now - state.get("last_error", 0) < _COOLDOWN_SECONDS
-        ):
+        if state.get("consecutive", 0) >= _MAX_CONSECUTIVE and now - state.get("last_error", 0) < _COOLDOWN_SECONDS:
             continue
         result.append(p)
     return result
@@ -198,10 +197,7 @@ def active_provider_names() -> list[str]:
 
 # ── HTTP calls ─────────────────────────────────────────────────────────────────
 
-_FOOTER = (
-    "_Educational analysis only. Not investment advice. "
-    "Verify independently before acting._"
-)
+_FOOTER = "_Educational analysis only. Not investment advice. Verify independently before acting._"
 
 _SYSTEM_PROMPT = (
     "You are a concise portfolio analyst. "
@@ -235,9 +231,7 @@ def _build_sell_verify_prompt(rec: dict) -> str:
 def _build_user_prompt(rec: dict) -> str:
     reasons = "\n".join(f"  - {r}" for r in rec.get("reasons", [])[:4])
     upside = rec.get("analyst_upside_pct")
-    upside_str = f"+{upside}%" if upside and upside > 0 else (
-        f"{upside}%" if upside else "N/A"
-    )
+    upside_str = f"+{upside}%" if upside and upside > 0 else (f"{upside}%" if upside else "N/A")
     return (
         f"Stock: {rec['symbol']} ({rec.get('name', rec['symbol'])})\n"
         f"Action: {rec['action']} (score {rec['score']}/10)\n"
@@ -310,32 +304,19 @@ async def _call_gemini(
     max_tokens: int = 120,
     temperature: float = 0.3,
 ) -> str:
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta"
-        f"/models/{model}:generateContent?key={api_key}"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     body = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": f"{system}\n\n{prompt}"}
-                ]
-            }
-        ],
+        "contents": [{"parts": [{"text": f"{system}\n\n{prompt}"}]}],
         "generationConfig": {
             "maxOutputTokens": max_tokens,
             "temperature": temperature,
         },
     }
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(
-            url, json=body, headers={"Content-Type": "application/json"}
-        )
+        resp = await client.post(url, json=body, headers={"Content-Type": "application/json"})
         resp.raise_for_status()
         data = resp.json()
-        return (
-            data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        )
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
 async def _call_provider(
@@ -352,11 +333,18 @@ async def _call_provider(
     if provider["type"] == "gemini":
         return await _call_gemini(api_key, model, prompt, system, max_tokens, temperature)
     return await _call_openai_compat(
-        provider, api_key, prompt, system, max_tokens, temperature, model=model,
+        provider,
+        api_key,
+        prompt,
+        system,
+        max_tokens,
+        temperature,
+        model=model,
     )
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
+
 
 async def generate_narrative(rec: dict) -> str | None:
     """Generate AI narrative for one recommendation. Returns None if all fail."""
@@ -376,10 +364,7 @@ async def generate_narrative(rec: dict) -> str | None:
                 _store_narrative(ck, text)
                 return text
         except Exception as e:
-            print(
-                f"[llm_router] {provider['name']} failed for {symbol}: "
-                f"{type(e).__name__}: {e}"
-            )
+            print(f"[llm_router] {provider['name']} failed for {symbol}: {type(e).__name__}: {e}")
             _record_error(provider["name"])
 
     return None
@@ -388,7 +373,7 @@ async def generate_narrative(rec: dict) -> str | None:
 _PORTFOLIO_COMMENTARY_SYSTEM = (
     "You are a concise portfolio advisor for a 32-year-old Canadian growth "
     "investor using Wealthsimple. Reply with a JSON object: "
-    "\"commentary\" (2-3 sentences) and \"actions\" (2-4 actionable bullets).\n"
+    '"commentary" (2-3 sentences) and "actions" (2-4 actionable bullets).\n'
     "STRICT RULES — violating any is a hallucination:\n"
     "1. TRIM/SELL actions must reference a symbol ONLY from the HOLDINGS list. "
     "   NEVER propose trimming a symbol not in HOLDINGS.\n"
@@ -402,7 +387,7 @@ _PORTFOLIO_COMMENTARY_SYSTEM = (
     "5. Reference figures from the data given — do not invent. Use weights and "
     "   percentages only; never fabricate dollar amounts.\n"
     "6. No markdown outside JSON. Each action under 15 words.\n"
-    "7. ALWAYS include a \"footer\" string field in the JSON object set EXACTLY to: "
+    '7. ALWAYS include a "footer" string field in the JSON object set EXACTLY to: '
     f"{_FOOTER}"
 )
 
@@ -445,15 +430,8 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
             )
         holdings_block = "\n".join(rows)
 
-    buys = [
-        r for r in top_recs
-        if r.get("action") in ("BUY", "ADD")
-        and not (r.get("weight") or 0)
-    ]
-    buy_block = (
-        ", ".join(f"{r['symbol']} (score {r['score']})" for r in buys[:5])
-        or "none"
-    )
+    buys = [r for r in top_recs if r.get("action") in ("BUY", "ADD") and not (r.get("weight") or 0)]
+    buy_block = ", ".join(f"{r['symbol']} (score {r['score']})" for r in buys[:5]) or "none"
 
     acc_ret_str = f"{acc_ret:+.2f}%" if acc_ret is not None else "N/A"
     cash_str = f"{cash_pct:.1f}% of NLV" if cash_pct is not None else "N/A"
@@ -484,11 +462,7 @@ def _portfolio_cache_key(summary: dict, recs: list[dict]) -> str:
     portfolios at similar NLV used to collide and serve each other's commentary;
     keying on (sorted symbol, weight%-bucketed) prevents that."""
     holdings = sorted(
-        (
-            (str(r.get("symbol") or ""), round(float(r.get("weight") or 0), 1))
-            for r in recs
-            if r.get("symbol")
-        )
+        ((str(r.get("symbol") or ""), round(float(r.get("weight") or 0), 1)) for r in recs if r.get("symbol"))
     )
     digest = hashlib.sha1(repr(holdings).encode("utf-8")).hexdigest()[:16]
     return f"{_PORTFOLIO_PROMPT_VERSION}_{digest}"
@@ -499,6 +473,7 @@ def _parse_json_tolerant(text: str | None) -> dict | None:
     and falls back to first {..} substring if model wraps JSON in prose."""
     import json
     import re
+
     if not text:
         return None
     t = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
@@ -513,7 +488,7 @@ def _parse_json_tolerant(text: str | None) -> dict | None:
         start, end = t.find("{"), t.rfind("}")
         if start >= 0 and end > start:
             try:
-                return json.loads(t[start:end + 1])
+                return json.loads(t[start : end + 1])
             except json.JSONDecodeError:
                 return None
         return None
@@ -535,7 +510,8 @@ async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict
     for provider in providers:
         try:
             text = await _call_provider(
-                provider, prompt,
+                provider,
+                prompt,
                 system=_PORTFOLIO_COMMENTARY_SYSTEM,
                 max_tokens=300,
                 temperature=0.4,
@@ -546,7 +522,8 @@ async def generate_portfolio_commentary(summary: dict, recs: list[dict]) -> dict
                 if data is None:
                     _LOG.warning(
                         "[llm_router] commentary unparseable from %s: %r",
-                        provider["name"], text[:200],
+                        provider["name"],
+                        text[:200],
                     )
                     _record_error(provider["name"])
                     continue
@@ -582,9 +559,7 @@ async def generate_narratives_batch(
     priority = [r for r in recommendations if r["action"] != "HOLD"]
     if len(priority) < max_count:
         remaining = max_count - len(priority)
-        priority += [
-            r for r in recommendations if r["action"] == "HOLD"
-        ][:remaining]
+        priority += [r for r in recommendations if r["action"] == "HOLD"][:remaining]
 
     targets = priority[:max_count]
     sem = asyncio.Semaphore(concurrency)
@@ -621,8 +596,11 @@ async def verify_sell_signal(rec: dict) -> bool:
                 )
             else:
                 text = await _call_openai_compat_with_system(
-                    provider, provider["key_getter"](), prompt,
-                    _SELL_VERIFY_SYSTEM, model=sv_model,
+                    provider,
+                    provider["key_getter"](),
+                    prompt,
+                    _SELL_VERIFY_SYSTEM,
+                    model=sv_model,
                 )
             verdict = text.strip().upper().split()[0] if text.strip() else "SELL"
             _record_success(provider["name"])
@@ -641,7 +619,7 @@ _SENT_LLM_TTL = 1800  # 30 min — same as narrative cache
 
 _SENTIMENT_SYSTEM = (
     "Financial news sentiment analyst. "
-    "Given stock headlines, reply with JSON only: {\"score\": <float>} "
+    'Given stock headlines, reply with JSON only: {"score": <float>} '
     "where score is -1.0 (very bearish) to +1.0 (very bullish). No other text."
 )
 
@@ -667,14 +645,13 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
     if entry and time.time() - entry[1] < _SENT_LLM_TTL:
         return entry[0]
 
-    prompt = "Stock: {}\nHeadlines:\n{}".format(
-        symbol, "\n".join(f"- {h}" for h in sample)
-    )
+    prompt = "Stock: {}\nHeadlines:\n{}".format(symbol, "\n".join(f"- {h}" for h in sample))
 
     for provider in providers:
         try:
             text = await _call_provider(
-                provider, prompt,
+                provider,
+                prompt,
                 system=_SENTIMENT_SYSTEM,
                 max_tokens=30,
                 temperature=0.1,
@@ -693,7 +670,10 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
 
 
 async def _call_openai_compat_with_system(
-    provider: dict, api_key: str, prompt: str, system: str,
+    provider: dict,
+    api_key: str,
+    prompt: str,
+    system: str,
     model: str | None = None,
 ) -> str:
     url = f"{provider['base_url']}/chat/completions"

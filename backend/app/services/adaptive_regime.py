@@ -93,16 +93,13 @@ async def recalibrate_multipliers() -> dict[str, Any]:
     # Resolve baselines per regime so the adaptive multiplier reflects
     # `relative` performance rather than absolute expectancy.
     baseline = {
-        composite: (sum(values) / len(values)) if values else 0.0
-        for composite, values in by_regime_baseline.items()
+        composite: (sum(values) / len(values)) if values else 0.0 for composite, values in by_regime_baseline.items()
     }
 
     multipliers: dict[str, dict[str, float]] = {}
     for skill, regimes in learned.items():
         multipliers[skill] = {
-            composite: round(
-                _expectancy_to_multiplier(exp, baseline.get(composite, 0.0)), 3
-            )
+            composite: round(_expectancy_to_multiplier(exp, baseline.get(composite, 0.0)), 3)
             for composite, exp in regimes.items()
         }
 
@@ -112,9 +109,7 @@ async def recalibrate_multipliers() -> dict[str, Any]:
     try:
         _OUT_DIR.mkdir(parents=True, exist_ok=True)
         _OUT_FILE.write_text(
-            json.dumps(
-                {"updated_ts": time.time(), "multipliers": multipliers}, indent=2
-            ),
+            json.dumps({"updated_ts": time.time(), "multipliers": multipliers}, indent=2),
             encoding="utf-8",
         )
     except Exception as e:

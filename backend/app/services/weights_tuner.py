@@ -18,6 +18,7 @@ Safety:
   - persist attribution snapshot in `weights.attribution` JSONB for audit
   - publish redis events:weights_updated event so consumers can refresh cache
 """
+
 from __future__ import annotations
 
 import json
@@ -30,8 +31,8 @@ _W_MIN_LEGACY, _W_MAX_LEGACY = 0.5, 1.5
 _W_MIN_SKILL, _W_MAX_SKILL = 0.1, 1.5
 _BUMP = 1.05
 _CUT = 0.95
-_BUMP_OVERCONFIDENT = 1.02   # half-step when calibration says we're overconfident
-_CUT_OVERCONFIDENT = 0.92    # heavier cut when overconfident
+_BUMP_OVERCONFIDENT = 1.02  # half-step when calibration says we're overconfident
+_CUT_OVERCONFIDENT = 0.92  # heavier cut when overconfident
 _N_MIN = 20
 
 Objective = Literal["accuracy", "expectancy"]
@@ -99,7 +100,8 @@ async def recalibrate(
         return {"status": "error", "error": f"db not available: {e}"}
 
     attribution = await signals_repo.attribution_by_source(
-        horizon_days=horizon_days, lookback_days=lookback_days,
+        horizon_days=horizon_days,
+        lookback_days=lookback_days,
     )
     if not attribution:
         return {
@@ -122,6 +124,7 @@ async def recalibrate(
     overconfident = False
     try:
         from app.services.calibration import calibration_verdict
+
         cal = await calibration_verdict(horizon_days=horizon_days)
         if isinstance(cal, dict) and cal.get("verdict") == "overconfident":
             overconfident = True
@@ -129,17 +132,17 @@ async def recalibrate(
         log.debug("calibration probe in tuner failed: %s", e)
 
     current = await weights_repo.current()
-    proposed = {
-        k: float(current.get(k) or 0)
-        for k in ("w_tech", "w_fund", "w_macro", "w_sentiment", "w_skill")
-    }
+    proposed = {k: float(current.get(k) or 0) for k in ("w_tech", "w_fund", "w_macro", "w_sentiment", "w_skill")}
     for src in ("tech", "fund", "macro", "sentiment", "skill"):
         stats = attribution.get(src)
         if not stats:
             continue
         key = f"w_{src}"
         proposed[key] = _adjust(
-            proposed[key], stats, source=src, objective=objective,
+            proposed[key],
+            stats,
+            source=src,
+            objective=objective,
             overconfident=overconfident,
         )
 
@@ -153,8 +156,7 @@ async def recalibrate(
             "status": "noop",
             "reason": "no weight change after tuning",
             "objective": objective,
-            "attribution_n": {s: int((d or {}).get("n") or 0)
-                              for s, d in attribution.items()},
+            "attribution_n": {s: int((d or {}).get("n") or 0) for s, d in attribution.items()},
         }
 
     version = await weights_repo.insert_version(
@@ -168,6 +170,7 @@ async def recalibrate(
     # refresh on next request.
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             await r.publish(

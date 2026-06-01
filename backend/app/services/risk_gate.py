@@ -20,6 +20,7 @@ State is persisted to `risk_gate_events` hypertable and cached in Redis at
 `risk_gate:{tenant_hash}`. User can override via `/ws/risk-gate/override`
 (Phase 12 endpoint) for up to 24h.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,18 +45,20 @@ _DEFAULT_VALID_HOURS = 24
 
 @dataclass
 class RiskGateState:
-    status: str                                       # trade|reduce_size|halt
-    size_multiplier: float                            # 1.0 / 0.5 / 0.0
+    status: str  # trade|reduce_size|halt
+    size_multiplier: float  # 1.0 / 0.5 / 0.0
     reasons: list[str] = field(default_factory=list)
     triggers: dict[str, Any] = field(default_factory=dict)
     triggered_at: datetime = field(
         default_factory=lambda: datetime.now(tz=timezone.utc),
     )
     valid_until: datetime = field(
-        default_factory=lambda:
-            datetime.now(tz=timezone.utc) + timedelta(
+        default_factory=lambda: (
+            datetime.now(tz=timezone.utc)
+            + timedelta(
                 hours=_DEFAULT_VALID_HOURS,
-            ),
+            )
+        ),
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -74,6 +77,7 @@ def _trade() -> RiskGateState:
 
 
 # ── pure rule evaluator ────────────────────────────────────────────────────
+
 
 def evaluate(
     *,
@@ -108,8 +112,7 @@ def evaluate(
     if loss_streak_count >= _LOSS_STREAK_REDUCE:
         reduce = True
         reasons.append(
-            f"{loss_streak_count} consecutive losses in "
-            f"{_LOSS_STREAK_WINDOW_DAYS}d",
+            f"{loss_streak_count} consecutive losses in {_LOSS_STREAK_WINDOW_DAYS}d",
         )
         triggers["loss_streak_count"] = loss_streak_count
 
@@ -120,18 +123,23 @@ def evaluate(
 
     if halt:
         return RiskGateState(
-            status="halt", size_multiplier=0.0,
-            reasons=reasons, triggers=triggers,
+            status="halt",
+            size_multiplier=0.0,
+            reasons=reasons,
+            triggers=triggers,
         )
     if reduce:
         return RiskGateState(
-            status="reduce_size", size_multiplier=0.5,
-            reasons=reasons, triggers=triggers,
+            status="reduce_size",
+            size_multiplier=0.5,
+            reasons=reasons,
+            triggers=triggers,
         )
     return _trade()
 
 
 # ── DB-backed orchestration ────────────────────────────────────────────────
+
 
 async def _gather_inputs(tenant_hash: str) -> dict[str, Any]:
     """Fetch current trigger inputs from PG (best-effort)."""
@@ -143,6 +151,7 @@ async def _gather_inputs(tenant_hash: str) -> dict[str, Any]:
     }
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return out
@@ -170,7 +179,8 @@ async def _gather_inputs(tenant_hash: str) -> dict[str, Any]:
                 ORDER BY exit_date DESC, id DESC
                 LIMIT 20
                 """,
-                tenant_hash, str(_LOSS_STREAK_WINDOW_DAYS),
+                tenant_hash,
+                str(_LOSS_STREAK_WINDOW_DAYS),
             )
             count = 0
             for r in streak_rows:
@@ -193,10 +203,7 @@ async def _gather_inputs(tenant_hash: str) -> dict[str, Any]:
                 out["calibration_ece"] = float(cal_row["ece"])
 
             # Latest regime row carries VIX
-            regime_row = await conn.fetchrow(
-                "SELECT vix FROM regime_history "
-                "ORDER BY ts DESC LIMIT 1"
-            )
+            regime_row = await conn.fetchrow("SELECT vix FROM regime_history ORDER BY ts DESC LIMIT 1")
             if regime_row and regime_row["vix"] is not None:
                 out["vix"] = float(regime_row["vix"])
     except Exception as e:
@@ -207,6 +214,7 @@ async def _gather_inputs(tenant_hash: str) -> dict[str, Any]:
 async def _persist(tenant_hash: str, state: RiskGateState) -> None:
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return
@@ -218,15 +226,20 @@ async def _persist(tenant_hash: str, state: RiskGateState) -> None:
                   reasons, triggers, valid_until
                 ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
                 """,
-                tenant_hash, state.triggered_at, state.status,
-                state.size_multiplier, state.reasons,
-                json.dumps(state.triggers), state.valid_until,
+                tenant_hash,
+                state.triggered_at,
+                state.status,
+                state.size_multiplier,
+                state.reasons,
+                json.dumps(state.triggers),
+                state.valid_until,
             )
     except Exception as e:
         log.warning("risk_gate persist failed: %s", e)
 
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             await r.set(
@@ -255,6 +268,7 @@ async def get_current(tenant_hash: str) -> RiskGateState | None:
     """Read current gate state from Redis (preferred) or PG."""
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             blob = await r.get(f"risk_gate:{tenant_hash}")
@@ -272,6 +286,7 @@ async def get_current(tenant_hash: str) -> RiskGateState | None:
         log.warning("risk_gate redis get failed: %s", e)
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return None
@@ -292,8 +307,7 @@ async def get_current(tenant_hash: str) -> RiskGateState | None:
             reasons=list(row["reasons"] or []),
             triggers=row["triggers"] or {},
             triggered_at=row["ts"],
-            valid_until=row["valid_until"]
-                or row["ts"] + timedelta(hours=_DEFAULT_VALID_HOURS),
+            valid_until=row["valid_until"] or row["ts"] + timedelta(hours=_DEFAULT_VALID_HOURS),
         )
     except Exception as e:
         log.warning("risk_gate get_current failed: %s", e)
@@ -301,7 +315,9 @@ async def get_current(tenant_hash: str) -> RiskGateState | None:
 
 
 async def override(
-    tenant_hash: str, reason: str, hours: int = 24,
+    tenant_hash: str,
+    reason: str,
+    hours: int = 24,
 ) -> RiskGateState:
     """User manual override → status=trade, size_multiplier=1.0 for N hours.
     Logged in risk_gate_events with reason.

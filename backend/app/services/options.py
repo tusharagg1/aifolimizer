@@ -3,6 +3,7 @@
 Black-Scholes implemented in pure Python (no external deps).
 Data via yfinance options chain (free, no API key).
 """
+
 from __future__ import annotations
 
 import math
@@ -12,8 +13,8 @@ from typing import Any
 
 import yfinance as yf
 
-_CHAIN_TTL = 900       # 15 min — option prices move but not tick-by-tick
-_SCREEN_TTL = 1800     # 30 min — screener results
+_CHAIN_TTL = 900  # 15 min — option prices move but not tick-by-tick
+_SCREEN_TTL = 1800  # 30 min — screener results
 
 _chain_cache: dict[str, tuple[float, dict]] = {}
 _screen_cache: dict[str, tuple[float, dict]] = {}
@@ -22,6 +23,7 @@ _RISK_FREE_RATE = 0.045  # approx 3-month T-bill; update when rates change mater
 
 
 # ── Black-Scholes ────────────────────────────────────────────────────────────
+
 
 def _ncdf(x: float) -> float:
     return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
@@ -46,9 +48,7 @@ def black_scholes_greeks(
     """
     if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return {}
-    d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (
-        sigma * math.sqrt(T)
-    )
+    d1 = (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
     pdf_d1 = _npdf(d1)
     disc = math.exp(-r * T)
@@ -63,7 +63,7 @@ def black_scholes_greeks(
         rho = -K * T * disc * _ncdf(-d2) / 100
 
     gamma = pdf_d1 / (S * sigma * math.sqrt(T))
-    vega = S * pdf_d1 * math.sqrt(T) / 100   # per 1% change in IV
+    vega = S * pdf_d1 * math.sqrt(T) / 100  # per 1% change in IV
     # Standard BS theta:
     #   call: -(S φ σ)/(2√T) - r K e^(-rT) N(d2)
     #   put:  -(S φ σ)/(2√T) + r K e^(-rT) N(-d2)
@@ -85,6 +85,7 @@ def black_scholes_greeks(
 
 # ── Options chain ────────────────────────────────────────────────────────────
 
+
 def _enrich_row(
     row: Any,
     opt_type: str,
@@ -100,10 +101,7 @@ def _enrich_row(
     oi = int(row.get("openInterest") or 0)
 
     itm = (spot > strike) if opt_type == "call" else (spot < strike)
-    greeks = (
-        black_scholes_greeks(spot, strike, T, iv, option_type=opt_type)
-        if iv > 0 and spot > 0 else {}
-    )
+    greeks = black_scholes_greeks(spot, strike, T, iv, option_type=opt_type) if iv > 0 and spot > 0 else {}
 
     return {
         "strike": strike,
@@ -147,36 +145,21 @@ def get_options_chain(
             # snap to nearest available
             chosen = min(
                 expiries,
-                key=lambda e: abs(
-                    (
-                        datetime.strptime(e, "%Y-%m-%d")
-                        - datetime.strptime(expiry, "%Y-%m-%d")
-                    ).days
-                ),
+                key=lambda e: abs((datetime.strptime(e, "%Y-%m-%d") - datetime.strptime(expiry, "%Y-%m-%d")).days),
             )
         else:
             chosen = expiries[0]
 
         chain = ticker.option_chain(chosen)
         info = ticker.info or {}
-        spot = float(
-            info.get("regularMarketPrice")
-            or info.get("previousClose")
-            or 0
-        )
+        spot = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
 
         today = datetime.now()
         exp_dt = datetime.strptime(chosen, "%Y-%m-%d")
         T = max((exp_dt - today).days / 365.0, 1 / 365)
 
-        calls = [
-            _enrich_row(row, "call", spot, T)
-            for _, row in chain.calls.iterrows()
-        ]
-        puts = [
-            _enrich_row(row, "put", spot, T)
-            for _, row in chain.puts.iterrows()
-        ]
+        calls = [_enrich_row(row, "call", spot, T) for _, row in chain.calls.iterrows()]
+        puts = [_enrich_row(row, "put", spot, T) for _, row in chain.puts.iterrows()]
 
         result: dict[str, Any] = {
             "symbol": symbol,
@@ -194,6 +177,7 @@ def get_options_chain(
 
 
 # ── Covered call screener ────────────────────────────────────────────────────
+
 
 def screen_covered_calls(
     symbol: str,
@@ -221,11 +205,7 @@ def screen_covered_calls(
             return {"error": "no_options_listed", "symbol": symbol}
 
         info = ticker.info or {}
-        spot = float(
-            info.get("regularMarketPrice")
-            or info.get("previousClose")
-            or 0
-        )
+        spot = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
         if not spot:
             return {"error": "no_spot_price", "symbol": symbol}
 
@@ -253,10 +233,7 @@ def screen_covered_calls(
                 if strike <= spot or bid <= 0:
                     continue  # OTM only
 
-                greeks = (
-                    black_scholes_greeks(spot, strike, T, iv, option_type="call")
-                    if iv > 0 else {}
-                )
+                greeks = black_scholes_greeks(spot, strike, T, iv, option_type="call") if iv > 0 else {}
                 delta = abs(greeks.get("delta", 1.0))
                 if delta > max_delta:
                     continue
@@ -265,24 +242,22 @@ def screen_covered_calls(
                 if annual_yield < min_annual_yield_pct:
                     continue
 
-                candidates.append({
-                    "strike": strike,
-                    "expiry": exp,
-                    "days_to_expiry": days,
-                    "bid_premium": bid,
-                    "delta": round(delta, 3),
-                    "iv_pct": round(iv * 100, 1),
-                    "open_interest": oi,
-                    "annual_yield_pct": round(annual_yield, 1),
-                    "upside_to_strike_pct": round(
-                        (strike - spot) / spot * 100, 1
-                    ),
-                    "breakeven": round(spot - bid, 2),
-                    "prob_keep_shares_pct": round((1 - delta) * 100, 1),
-                    "max_profit_per_contract": round(
-                        (strike - spot + bid) * 100, 2
-                    ),
-                })
+                candidates.append(
+                    {
+                        "strike": strike,
+                        "expiry": exp,
+                        "days_to_expiry": days,
+                        "bid_premium": bid,
+                        "delta": round(delta, 3),
+                        "iv_pct": round(iv * 100, 1),
+                        "open_interest": oi,
+                        "annual_yield_pct": round(annual_yield, 1),
+                        "upside_to_strike_pct": round((strike - spot) / spot * 100, 1),
+                        "breakeven": round(spot - bid, 2),
+                        "prob_keep_shares_pct": round((1 - delta) * 100, 1),
+                        "max_profit_per_contract": round((strike - spot + bid) * 100, 2),
+                    }
+                )
 
         candidates.sort(key=lambda x: x["annual_yield_pct"], reverse=True)
         result: dict[str, Any] = {
@@ -307,6 +282,7 @@ def screen_covered_calls(
 
 
 # ── Protective put screener ──────────────────────────────────────────────────
+
 
 def screen_protective_puts(
     symbol: str,
@@ -333,11 +309,7 @@ def screen_protective_puts(
             return {"error": "no_options_listed", "symbol": symbol}
 
         info = ticker.info or {}
-        spot = float(
-            info.get("regularMarketPrice")
-            or info.get("previousClose")
-            or 0
-        )
+        spot = float(info.get("regularMarketPrice") or info.get("previousClose") or 0)
         if not spot:
             return {"error": "no_spot_price", "symbol": symbol}
 
@@ -373,24 +345,23 @@ def screen_protective_puts(
                 if annual_cost > max_annual_cost_pct:
                     continue
 
-                greeks = (
-                    black_scholes_greeks(spot, strike, T, iv, option_type="put")
-                    if iv > 0 else {}
-                )
+                greeks = black_scholes_greeks(spot, strike, T, iv, option_type="put") if iv > 0 else {}
 
-                candidates.append({
-                    "strike": strike,
-                    "expiry": exp,
-                    "days_to_expiry": days,
-                    "ask_premium": ask,
-                    "delta": round(abs(greeks.get("delta", 0)), 3),
-                    "iv_pct": round(iv * 100, 1),
-                    "open_interest": oi,
-                    "annual_cost_pct": round(annual_cost, 1),
-                    "protection_floor_pct": round(protection_pct, 1),
-                    "breakeven": round(spot - ask, 2),
-                    "cost_per_contract": round(ask * 100, 2),
-                })
+                candidates.append(
+                    {
+                        "strike": strike,
+                        "expiry": exp,
+                        "days_to_expiry": days,
+                        "ask_premium": ask,
+                        "delta": round(abs(greeks.get("delta", 0)), 3),
+                        "iv_pct": round(iv * 100, 1),
+                        "open_interest": oi,
+                        "annual_cost_pct": round(annual_cost, 1),
+                        "protection_floor_pct": round(protection_pct, 1),
+                        "breakeven": round(spot - ask, 2),
+                        "cost_per_contract": round(ask * 100, 2),
+                    }
+                )
 
         candidates.sort(key=lambda x: x["annual_cost_pct"])
         result: dict[str, Any] = {
@@ -402,10 +373,7 @@ def screen_protective_puts(
                 "min_protection_pct": min_protection_pct,
             },
             "candidates": candidates[:10],
-            "note": (
-                "Ask price used; set limit at mid for better fill. "
-                "Each contract = 100 shares."
-            ),
+            "note": ("Ask price used; set limit at mid for better fill. Each contract = 100 shares."),
         }
         _screen_cache[cache_key] = (time.time(), result)
         return result

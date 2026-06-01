@@ -26,15 +26,36 @@ from app.services.data_sources.base import (
 _BASE = "https://api.coingecko.com/api/v3"
 
 _SYMBOL_MAP: dict[str, str] = {
-    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana", "ADA": "cardano",
-    "DOT": "polkadot", "AVAX": "avalanche-2", "LINK": "chainlink",
-    "MATIC": "matic-network", "DOGE": "dogecoin", "XRP": "ripple",
-    "LTC": "litecoin", "BCH": "bitcoin-cash", "ATOM": "cosmos",
-    "UNI": "uniswap", "ALGO": "algorand", "NEAR": "near", "FTM": "fantom",
-    "SAND": "the-sandbox", "MANA": "decentraland", "AAVE": "aave",
-    "USDC": "usd-coin", "USDT": "tether", "TON": "the-open-network",
-    "TRX": "tron", "SHIB": "shiba-inu", "INJ": "injective-protocol",
-    "ARB": "arbitrum", "OP": "optimism", "FIL": "filecoin", "APT": "aptos",
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "ADA": "cardano",
+    "DOT": "polkadot",
+    "AVAX": "avalanche-2",
+    "LINK": "chainlink",
+    "MATIC": "matic-network",
+    "DOGE": "dogecoin",
+    "XRP": "ripple",
+    "LTC": "litecoin",
+    "BCH": "bitcoin-cash",
+    "ATOM": "cosmos",
+    "UNI": "uniswap",
+    "ALGO": "algorand",
+    "NEAR": "near",
+    "FTM": "fantom",
+    "SAND": "the-sandbox",
+    "MANA": "decentraland",
+    "AAVE": "aave",
+    "USDC": "usd-coin",
+    "USDT": "tether",
+    "TON": "the-open-network",
+    "TRX": "tron",
+    "SHIB": "shiba-inu",
+    "INJ": "injective-protocol",
+    "ARB": "arbitrum",
+    "OP": "optimism",
+    "FIL": "filecoin",
+    "APT": "aptos",
 }
 
 
@@ -89,16 +110,20 @@ class CoinGeckoSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if interval != "1d":
             raise SourceUnavailable("coingecko: daily only")
         cid = self._coin_id(symbol)
         days_map = {
-            "1mo": 30, "3mo": 90, "6mo": 180, "1y": 365,
-            "2y": 730, "3y": 1095, "5y": 1825,
-            "ytd": 365, "max": "max",
+            "1mo": 30,
+            "3mo": 90,
+            "6mo": 180,
+            "1y": 365,
+            "2y": 730,
+            "3y": 1095,
+            "5y": 1825,
+            "ytd": 365,
+            "max": "max",
         }
         days = days_map.get(period, 365)
         try:
@@ -121,20 +146,26 @@ class CoinGeckoSource(DataSource):
         if not prices:
             raise SourceUnavailable(f"coingecko: empty history for {symbol}")
         from datetime import datetime
+
         bars: list[PriceBar] = []
         for ts_ms, p in prices:
             try:
                 d = datetime.utcfromtimestamp(int(ts_ms) / 1000).strftime("%Y-%m-%d")
                 pf = float(p)
-                bars.append(PriceBar(
-                    symbol=symbol,
-                    date=d,
-                    open=pf, high=pf, low=pf, close=pf,
-                    volume=float(volumes.get(int(ts_ms), 0.0)),
-                    adj_close=pf,
-                    source=self.name,
-                    as_of=time.time(),
-                ))
+                bars.append(
+                    PriceBar(
+                        symbol=symbol,
+                        date=d,
+                        open=pf,
+                        high=pf,
+                        low=pf,
+                        close=pf,
+                        volume=float(volumes.get(int(ts_ms), 0.0)),
+                        adj_close=pf,
+                        source=self.name,
+                        as_of=time.time(),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         if not bars:

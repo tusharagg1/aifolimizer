@@ -98,12 +98,14 @@ def list_memories(memory_type: str | None = None) -> list[dict]:
             record = json.loads(p.read_text())
             if memory_type and record.get("type") != memory_type:
                 continue
-            records.append({
-                "type": record.get("type"),
-                "content": record.get("content"),
-                "tags": record.get("tags", []),
-                "created_utc": record.get("created_utc"),
-            })
+            records.append(
+                {
+                    "type": record.get("type"),
+                    "content": record.get("content"),
+                    "tags": record.get("tags", []),
+                    "created_utc": record.get("created_utc"),
+                }
+            )
         except Exception:
             continue
     records.sort(key=lambda r: r.get("created_utc", ""), reverse=True)

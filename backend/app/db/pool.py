@@ -3,6 +3,7 @@
 Initialized at FastAPI startup, closed at shutdown.
 DSN from POSTGRES_DSN env var.
 """
+
 from __future__ import annotations
 
 import logging

@@ -2,6 +2,7 @@
 
 Run:  python tests/smoke_phase14.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -43,14 +44,15 @@ def main() -> None:
     # Drain queue manually with one burst worker so the smoke test is self-
     # contained (don't rely on a separate worker process).
     from rq import SimpleWorker
+
     w = SimpleWorker([q], connection=r)
     w.work(burst=True, with_scheduler=False)
 
     from rq.job import Job
+
     j = Job.fetch(job.id, connection=r)
     print("job_status:", j.get_status(), "result:", j.result)
-    assert isinstance(j.result, dict) and j.result.get("status") == "noop", \
-        f"expected noop dict got {j.result!r}"
+    assert isinstance(j.result, dict) and j.result.get("status") == "noop", f"expected noop dict got {j.result!r}"
     print("OK")
 
 

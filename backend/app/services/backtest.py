@@ -177,7 +177,7 @@ def _run_signal(
                     trades.append((entry_price, float(price_now)))
                     in_pos = False
                     entry_date = None
-                    equity[-1] *= (1 - fee_leg)
+                    equity[-1] *= 1 - fee_leg
                     continue
         else:
             equity.append(equity[-1])
@@ -188,17 +188,17 @@ def _run_signal(
                 in_pos = True
                 entry_price = float(price_now)
                 entry_date = date_now
-                equity[-1] *= (1 - fee_leg)
+                equity[-1] *= 1 - fee_leg
         elif in_pos and sig_now == 0:
             trades.append((entry_price, float(price_now)))
             in_pos = False
             entry_date = None
-            equity[-1] *= (1 - fee_leg)
+            equity[-1] *= 1 - fee_leg
 
     if in_pos:
         # Close-out at last bar — synthetic exit, charge final leg
         trades.append((entry_price, float(aligned["close"].iloc[-1])))
-        equity[-1] *= (1 - fee_leg)
+        equity[-1] *= 1 - fee_leg
 
     eq_series = pd.Series(equity, index=aligned.index)
     daily_ret = eq_series.pct_change().dropna()
@@ -292,9 +292,7 @@ def _prefetch_closes(symbols: list[str], period: str) -> None:
     """
     now = time.time()
     to_fetch = [
-        s for s in symbols
-        if (entry := _CLOSE_CACHE.get((s.upper(), period))) is None
-        or (now - entry[1]) >= _CLOSE_TTL
+        s for s in symbols if (entry := _CLOSE_CACHE.get((s.upper(), period))) is None or (now - entry[1]) >= _CLOSE_TTL
     ]
     if len(to_fetch) <= 1:
         return  # single-symbol falls through to _fetch_close anyway
@@ -357,13 +355,21 @@ def _run_strategy_on_window(
         return _run_buy_hold(close, tx_cost_bps)
     if strategy == "rsi_swing":
         return _run_signal(
-            close, _rsi_signal(close), lookback_days, tx_cost_bps,
-            exclude_weekdays, max_hold_days,
+            close,
+            _rsi_signal(close),
+            lookback_days,
+            tx_cost_bps,
+            exclude_weekdays,
+            max_hold_days,
         )
     if strategy == "sma_cross":
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
-            exclude_weekdays, max_hold_days,
+            close,
+            _sma_cross_signal(close),
+            lookback_days,
+            tx_cost_bps,
+            exclude_weekdays,
+            max_hold_days,
         )
     if strategy == "crowd_fade":
         if crowding_label == "consensus":
@@ -371,8 +377,12 @@ def _run_strategy_on_window(
             r["skipped_due_to_crowding"] = True
             return r
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
-            exclude_weekdays, max_hold_days,
+            close,
+            _sma_cross_signal(close),
+            lookback_days,
+            tx_cost_bps,
+            exclude_weekdays,
+            max_hold_days,
         )
     if strategy == "crowd_buy":
         if crowding_label != "contrarian":
@@ -380,8 +390,12 @@ def _run_strategy_on_window(
             r["skipped_due_to_crowding"] = True
             return r
         return _run_signal(
-            close, _sma_cross_signal(close), lookback_days, tx_cost_bps,
-            exclude_weekdays, max_hold_days,
+            close,
+            _sma_cross_signal(close),
+            lookback_days,
+            tx_cost_bps,
+            exclude_weekdays,
+            max_hold_days,
         )
     return _empty_result()
 
@@ -407,9 +421,14 @@ def backtest_symbol(
         return {"error": f"unknown strategy: {strategy}"}
     train_frac = max(0.3, min(float(train_frac), 0.9))
     cache_key = (
-        symbol.upper(), strategy, int(lookback_days),
-        float(tx_cost_bps), bool(walk_forward), round(train_frac, 2),
-        tuple(sorted(exclude_weekdays or [])), int(max_hold_days),
+        symbol.upper(),
+        strategy,
+        int(lookback_days),
+        float(tx_cost_bps),
+        bool(walk_forward),
+        round(train_frac, 2),
+        tuple(sorted(exclude_weekdays or [])),
+        int(max_hold_days),
     )
     entry = _CACHE.get(cache_key)
     now = time.time()
@@ -419,8 +438,7 @@ def backtest_symbol(
     period = "2y" if lookback_days > 365 else "1y"
     close = _fetch_close(symbol, period)
     if close.empty or len(close) < 30:
-        result = {"symbol": symbol, "strategy": strategy, **_empty_result(),
-                  "error": "insufficient_data"}
+        result = {"symbol": symbol, "strategy": strategy, **_empty_result(), "error": "insufficient_data"}
         _CACHE[cache_key] = (result, now)
         return result
 
@@ -437,16 +455,31 @@ def backtest_symbol(
         in_sample = close.iloc[:split_idx]
         out_sample = close.iloc[split_idx:]
         is_metrics = _run_strategy_on_window(
-            strategy, in_sample, lookback_days, tx_cost_bps, crowding_label,
-            exclude_weekdays, max_hold_days,
+            strategy,
+            in_sample,
+            lookback_days,
+            tx_cost_bps,
+            crowding_label,
+            exclude_weekdays,
+            max_hold_days,
         )
         oos_metrics = _run_strategy_on_window(
-            strategy, out_sample, lookback_days, tx_cost_bps, crowding_label,
-            exclude_weekdays, max_hold_days,
+            strategy,
+            out_sample,
+            lookback_days,
+            tx_cost_bps,
+            crowding_label,
+            exclude_weekdays,
+            max_hold_days,
         )
         full_metrics = _run_strategy_on_window(
-            strategy, close, lookback_days, tx_cost_bps, crowding_label,
-            exclude_weekdays, max_hold_days,
+            strategy,
+            close,
+            lookback_days,
+            tx_cost_bps,
+            crowding_label,
+            exclude_weekdays,
+            max_hold_days,
         )
         is_ret = is_metrics.pop("_daily_ret", np.array([]))
         oos_ret = oos_metrics.pop("_daily_ret", np.array([]))
@@ -465,14 +498,19 @@ def backtest_symbol(
             "validation": run_validation(full_ret),
             # Decay = how much OOS underperformed IS (negative = worse OOS)
             "oos_minus_is_pct": round(
-                oos_metrics.get("total_return_pct", 0.0)
-                - is_metrics.get("total_return_pct", 0.0), 2,
+                oos_metrics.get("total_return_pct", 0.0) - is_metrics.get("total_return_pct", 0.0),
+                2,
             ),
         }
     else:
         metrics = _run_strategy_on_window(
-            strategy, close, lookback_days, tx_cost_bps, crowding_label,
-            exclude_weekdays, max_hold_days,
+            strategy,
+            close,
+            lookback_days,
+            tx_cost_bps,
+            crowding_label,
+            exclude_weekdays,
+            max_hold_days,
         )
         daily_ret = metrics.pop("_daily_ret", np.array([]))
         result = {
@@ -523,9 +561,14 @@ def backtest_portfolio(
         per_symbol[sym] = {}
         for strat in strategies:
             per_symbol[sym][strat] = backtest_symbol(
-                sym, strat, lookback_days, tx_cost_bps,
-                walk_forward, train_frac,
-                exclude_weekdays, max_hold_days,
+                sym,
+                strat,
+                lookback_days,
+                tx_cost_bps,
+                walk_forward,
+                train_frac,
+                exclude_weekdays,
+                max_hold_days,
             )
 
     # Weighted portfolio totals per strategy
@@ -549,10 +592,7 @@ def backtest_portfolio(
             agg_ras += r.get("risk_adjusted_score", 0.0) * norm_w[sym]
             worst_dd = min(worst_dd, r.get("max_drawdown_pct", 0.0))
             n_valid += 1
-        n_insufficient = sum(
-            1 for sym in symbols
-            if per_symbol[sym][strat].get("insufficient_trades_warning", False)
-        )
+        n_insufficient = sum(1 for sym in symbols if per_symbol[sym][strat].get("insufficient_trades_warning", False))
         portfolio_totals[strat] = {
             "weighted_total_return_pct": round(agg_return, 2),
             "weighted_cagr_pct": round(agg_cagr, 2),
@@ -569,9 +609,7 @@ def backtest_portfolio(
         for strat, totals in portfolio_totals.items():
             if strat == "buy_hold":
                 continue
-            deltas[strat] = round(
-                totals["weighted_total_return_pct"] - base, 2
-            )
+            deltas[strat] = round(totals["weighted_total_return_pct"] - base, 2)
 
     config = {
         "lookback_days": lookback_days,

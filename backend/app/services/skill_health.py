@@ -29,9 +29,7 @@ _LOG = get_logger("aifolimizer.services.skill_health")
 
 _CTX = Path(__file__).resolve().parents[2] / ".claude" / "context"
 _SCORED_FILE = _CTX / "scored_recommendations.jsonl"
-_AUDIT_FILE = (
-    Path(__file__).resolve().parents[2] / ".cache" / "skill_health_audit.jsonl"
-)
+_AUDIT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "skill_health_audit.jsonl"
 
 DEFAULT_HIT_RATE_FLOOR = 0.40
 DEFAULT_PF_FLOOR = 0.9
@@ -77,9 +75,7 @@ def _per_skill_stats(rows: list[dict]) -> dict[str, dict[str, float]]:
         wins = [x for x in returns if x > 0]
         losses = [x for x in returns if x <= 0]
         loss_sum = abs(sum(losses))
-        pf = (sum(wins) / loss_sum) if loss_sum > 0 else (
-            float("inf") if wins else 0.0
-        )
+        pf = (sum(wins) / loss_sum) if loss_sum > 0 else (float("inf") if wins else 0.0)
         out[skill] = {
             "n": float(len(returns)),
             "hit_rate": len(wins) / len(returns),
@@ -113,16 +109,14 @@ def enforce(
         n = int(s["n"])
         if n < min_samples:
             continue
-        inspected.append({
-            "skill": skill,
-            "n": n,
-            "hit_rate": round(s["hit_rate"], 3),
-            "profit_factor": (
-                round(s["profit_factor"], 3)
-                if s["profit_factor"] != float("inf")
-                else "inf"
-            ),
-        })
+        inspected.append(
+            {
+                "skill": skill,
+                "n": n,
+                "hit_rate": round(s["hit_rate"], 3),
+                "profit_factor": (round(s["profit_factor"], 3) if s["profit_factor"] != float("inf") else "inf"),
+            }
+        )
         if s["hit_rate"] >= hit_rate_floor or s["profit_factor"] >= pf_floor:
             continue
         try:
@@ -141,18 +135,17 @@ def enforce(
             "skill": skill,
             "n": n,
             "hit_rate": round(s["hit_rate"], 3),
-            "profit_factor": (
-                round(s["profit_factor"], 3)
-                if s["profit_factor"] != float("inf")
-                else None
-            ),
+            "profit_factor": (round(s["profit_factor"], 3) if s["profit_factor"] != float("inf") else None),
             "action": "disabled",
         }
         _append_audit(row)
         muted.append(row)
         _LOG.warning(
             "skill_health: muted %s (hit=%.2f pf=%s n=%d)",
-            skill, s["hit_rate"], row["profit_factor"], n,
+            skill,
+            s["hit_rate"],
+            row["profit_factor"],
+            n,
         )
 
     return {

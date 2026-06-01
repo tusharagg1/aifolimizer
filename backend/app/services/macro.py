@@ -3,6 +3,7 @@
 FRED CSV endpoints are public, no API key needed.
 Market breadth uses yfinance (VIX, SPY regime).
 """
+
 from __future__ import annotations
 
 import csv
@@ -30,18 +31,18 @@ _SERIES = {
     "cpi_us": "CPIAUCSL",
     # FX
     "cad_usd": "DEXCAUS",
-    "usd_index": "DTWEXBGS",           # Trade-weighted USD broad index
+    "usd_index": "DTWEXBGS",  # Trade-weighted USD broad index
     # Canada
     "boc_overnight": "IRSTCB01CAM156N",
     "canada_cpi": "CPALCY01CAM659N",
-    "canada_unemployment": "LRUNTTTTCAM156S",   # Canada unemployment (OECD, monthly)
-    "canada_housing_prices": "QCAR628BIS",       # Canada residential property prices (BIS, quarterly)
+    "canada_unemployment": "LRUNTTTTCAM156S",  # Canada unemployment (OECD, monthly)
+    "canada_housing_prices": "QCAR628BIS",  # Canada residential property prices (BIS, quarterly)
     # Global rates
-    "ecb_rate": "ECBDFR",              # ECB deposit facility rate
+    "ecb_rate": "ECBDFR",  # ECB deposit facility rate
     # Commodities (FRED — slight lag; supplemented by yfinance real-time below)
-    "gold_usd": "GOLDAMGBD228NLBM",    # Gold London AM fix USD/troy oz
-    "wti_crude_usd": "DCOILWTICO",     # WTI crude USD/barrel
-    "copper_usd_lb": "PCOPPUSDM",      # Copper USD/metric ton (World Bank, monthly)
+    "gold_usd": "GOLDAMGBD228NLBM",  # Gold London AM fix USD/troy oz
+    "wti_crude_usd": "DCOILWTICO",  # WTI crude USD/barrel
+    "copper_usd_lb": "PCOPPUSDM",  # Copper USD/metric ton (World Bank, monthly)
 }
 
 
@@ -74,12 +75,12 @@ _COMMODITY_TTL = 300  # 5 min — real-time prices
 _commodity_cache: tuple[float, dict] | None = None
 
 _COMMODITY_TICKERS = {
-    "gold_spot_usd": "GC=F",      # Gold futures (front month)
-    "wti_spot_usd": "CL=F",       # WTI crude futures
-    "silver_spot_usd": "SI=F",    # Silver futures
-    "natural_gas_usd": "NG=F",    # Natural gas futures
-    "dxy": "DX-Y.NYB",            # US Dollar Index
-    "tsx_composite": "^GSPTSE",   # Toronto Stock Exchange Composite
+    "gold_spot_usd": "GC=F",  # Gold futures (front month)
+    "wti_spot_usd": "CL=F",  # WTI crude futures
+    "silver_spot_usd": "SI=F",  # Silver futures
+    "natural_gas_usd": "NG=F",  # Natural gas futures
+    "dxy": "DX-Y.NYB",  # US Dollar Index
+    "tsx_composite": "^GSPTSE",  # Toronto Stock Exchange Composite
 }
 
 
@@ -94,8 +95,11 @@ def _commodity_snapshot() -> dict[str, Any]:
     try:
         tickers = list(_COMMODITY_TICKERS.values())
         df = yf.download(
-            tickers, period="2d", interval="1d",
-            progress=False, auto_adjust=True,
+            tickers,
+            period="2d",
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
         )
         if df is not None and not df.empty:
             if isinstance(df.columns, pd.MultiIndex):
@@ -212,8 +216,11 @@ def market_breadth() -> dict[str, Any]:
     # SPY regime vs 200-day SMA
     try:
         spy_df = yf.download(
-            "SPY", period="1y", interval="1d",
-            progress=False, auto_adjust=True,
+            "SPY",
+            period="1y",
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
         )
         if spy_df is not None and not spy_df.empty:
             if isinstance(spy_df.columns, pd.MultiIndex):
@@ -237,26 +244,16 @@ def market_breadth() -> dict[str, Any]:
     spy_regime = out.get("spy_regime", "bull")
     if spy_regime == "bull" and vix_regime in ("normal", "low"):
         out["market_regime"] = "bull_low_fear"
-        out["regime_signal"] = (
-            "Risk-on. Momentum and growth strategies favored."
-        )
+        out["regime_signal"] = "Risk-on. Momentum and growth strategies favored."
     elif spy_regime == "bull" and vix_regime == "elevated":
         out["market_regime"] = "bull_high_fear"
-        out["regime_signal"] = (
-            "Bull trend intact but fear elevated — "
-            "potential pullback or buying opportunity."
-        )
+        out["regime_signal"] = "Bull trend intact but fear elevated — potential pullback or buying opportunity."
     elif spy_regime == "bear" and vix_regime == "elevated":
         out["market_regime"] = "bear_high_fear"
-        out["regime_signal"] = (
-            "Bear market with elevated fear — "
-            "defensive positioning recommended."
-        )
+        out["regime_signal"] = "Bear market with elevated fear — defensive positioning recommended."
     else:
         out["market_regime"] = "bear_low_fear"
-        out["regime_signal"] = (
-            "Complacent bear — caution, volatility expansion risk."
-        )
+        out["regime_signal"] = "Complacent bear — caution, volatility expansion risk."
 
     # Yield curve: 2Y/10Y spread — strongest free recession predictor
     try:
@@ -264,7 +261,7 @@ def market_breadth() -> dict[str, Any]:
         r2 = _fred_csv("DGS2")
         if r10 and r2:
             spread = round(r10[1] - r2[1], 3)
-            out["yield_curve_spread"] = spread        # positive = normal, negative = inverted
+            out["yield_curve_spread"] = spread  # positive = normal, negative = inverted
             out["yield_curve_inverted"] = spread < 0
             if spread < -0.5:
                 out["yield_curve_signal"] = "deeply_inverted"

@@ -14,6 +14,7 @@ Pub/sub channels:
   events:signal_change               When scheduler detects a signal flip
   events:weights_updated             When weights tuner writes a new version
 """
+
 from __future__ import annotations
 
 import logging

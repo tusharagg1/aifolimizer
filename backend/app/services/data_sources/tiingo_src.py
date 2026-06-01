@@ -22,9 +22,16 @@ from app.services.data_sources.base import (
 _BASE = "https://api.tiingo.com"
 
 _PERIOD_DAYS = {
-    "1mo": 31, "3mo": 93, "6mo": 186, "1y": 365,
-    "2y": 365 * 2, "3y": 365 * 3, "5y": 365 * 5,
-    "10y": 365 * 10, "ytd": 365, "max": 365 * 30,
+    "1mo": 31,
+    "3mo": 93,
+    "6mo": 186,
+    "1y": 365,
+    "2y": 365 * 2,
+    "3y": 365 * 3,
+    "5y": 365 * 5,
+    "10y": 365 * 10,
+    "ytd": 365,
+    "max": 365 * 30,
 }
 
 
@@ -51,9 +58,7 @@ class TiingoSource(DataSource):
             return s.split(".")[0] + "-CA"
         return s
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if not self.is_configured():
             raise SourceUnavailable("tiingo: no API key")
         if interval != "1d":

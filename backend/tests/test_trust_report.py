@@ -22,9 +22,7 @@ def _block(universe, results):
 
 
 def test_evidence_tier_experimental_below_30():
-    tier, n, why = trust_report._evidence_tier(
-        {"7d": {"count": 2}, "30d": {"count": 2}, "90d": {"count": 2}}
-    )
+    tier, n, why = trust_report._evidence_tier({"7d": {"count": 2}, "30d": {"count": 2}, "90d": {"count": 2}})
     assert tier == "EXPERIMENTAL"
     assert n == 2
     assert "<30" in why
@@ -54,15 +52,30 @@ def test_universe_str_truncates_long_lists():
 def test_render_markdown_has_banner_caveat_and_two_blocks():
     holdings_rows = [
         {
-            "skill": "portfolio_health", "strategy_spec": "buy_hold",
-            "cagr_pct": 10.0, "sharpe": 1.0, "sortino": 1.2,
-            "max_drawdown_pct": -12.0, "hit_rate_pct": 60.0,
+            "skill": "portfolio_health",
+            "strategy_spec": "buy_hold",
+            "cagr_pct": 10.0,
+            "sharpe": 1.0,
+            "sortino": 1.2,
+            "max_drawdown_pct": -12.0,
+            "hit_rate_pct": 60.0,
             "alpha_vs_spy_pct": 2.0,
         }
     ]
     broad_universe = [
-        "XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLU",
-        "XLRE", "XLB", "XLC", "SPY", "QQQ",
+        "XLK",
+        "XLF",
+        "XLV",
+        "XLY",
+        "XLP",
+        "XLE",
+        "XLI",
+        "XLU",
+        "XLRE",
+        "XLB",
+        "XLC",
+        "SPY",
+        "QQQ",
     ]
     blocks = [
         ("Headline — Your Holdings", "sub a", _block(["AAPL", "MSFT"], holdings_rows)),
@@ -79,9 +92,9 @@ def test_render_markdown_has_banner_caveat_and_two_blocks():
     assert "Survivorship-bias caveat" in md
     assert "Headline — Your Holdings" in md
     assert "Mechanics — Unbiased Broad Basket" in md
-    assert "(13 total)" in md            # broad universe truncated w/ count
-    assert "shifted one bar" in md       # look-ahead-free disclosure
-    assert "portfolio_health" in md      # row rendered
+    assert "(13 total)" in md  # broad universe truncated w/ count
+    assert "shifted one bar" in md  # look-ahead-free disclosure
+    assert "portfolio_health" in md  # row rendered
 
 
 def test_latest_results_label_filter(tmp_path, monkeypatch):

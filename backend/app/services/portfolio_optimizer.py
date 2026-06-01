@@ -7,6 +7,7 @@ how much of each position to add/trim to maximise risk-adjusted return.
 No API key required. Uses yfinance price history + analyst targets
 as forward-looking return views (Black-Litterman blend when available).
 """
+
 from __future__ import annotations
 
 import time
@@ -56,6 +57,7 @@ def optimize(
     """
     from pypfopt import EfficientFrontier, risk_models, expected_returns
     from pypfopt.black_litterman import BlackLittermanModel
+
     symbols = [p["symbol"] for p in positions]
     current_weights = {p["symbol"]: (p.get("weight") or 0) / 100 for p in positions}
 
@@ -102,7 +104,7 @@ def optimize(
         # the previous w>=0.01 floor consumed ~30% of capital on a 30-name book
         # before optimization could place a single dollar based on signal.
         ef = EfficientFrontier(mu, S)
-        ef.add_constraint(lambda w: w <= 0.35)        # max 35% per position
+        ef.add_constraint(lambda w: w <= 0.35)  # max 35% per position
         ef.max_sharpe(risk_free_rate=risk_free_rate)
         optimal_weights = ef.clean_weights()
 
@@ -117,20 +119,22 @@ def optimize(
             opt_w = round(optimal_weights.get(sym, 0) * 100, 1)
             cur_w = round(current_weights.get(sym, 0) * 100, 1)
             diff = round(opt_w - cur_w, 1)
-            if abs(diff) >= 0.5:   # only surface meaningful changes
+            if abs(diff) >= 0.5:  # only surface meaningful changes
                 if diff > 2:
                     action = "INCREASE"
                 elif diff < -2:
                     action = "DECREASE"
                 else:
                     action = "TRIM" if diff < 0 else "ADD"
-                changes.append({
-                    "symbol": sym,
-                    "current_weight": cur_w,
-                    "optimal_weight": opt_w,
-                    "change": diff,
-                    "action": action,
-                })
+                changes.append(
+                    {
+                        "symbol": sym,
+                        "current_weight": cur_w,
+                        "optimal_weight": opt_w,
+                        "change": diff,
+                        "action": action,
+                    }
+                )
 
         changes.sort(key=lambda x: abs(x["change"]), reverse=True)
 

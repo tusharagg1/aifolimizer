@@ -1,4 +1,5 @@
 """`_classify_subset` no longer leaks redundant precision/recall/f1."""
+
 from __future__ import annotations
 
 from app.services.signal_history import _classify_subset

@@ -199,14 +199,16 @@ def get_cross_ticker_lessons(max_lessons: int = 3) -> list[dict]:
         entry = r.get("entry_price") or 0
         out = r.get("outcome_price") or 0
         pnl_pct = round((out - entry) / entry * 100, 2) if entry else None
-        lessons.append({
-            "ticker": r.get("ticker"),
-            "action": r.get("action"),
-            "outcome": r.get("outcome"),
-            "pnl_pct": pnl_pct,
-            "reflection": r.get("reflection"),
-            "date": (r.get("outcome_utc") or r.get("created_utc", ""))[:10],
-        })
+        lessons.append(
+            {
+                "ticker": r.get("ticker"),
+                "action": r.get("action"),
+                "outcome": r.get("outcome"),
+                "pnl_pct": pnl_pct,
+                "reflection": r.get("reflection"),
+                "date": (r.get("outcome_utc") or r.get("created_utc", ""))[:10],
+            }
+        )
     return lessons
 
 
@@ -237,6 +239,7 @@ def _parse_utc(utc_str: str) -> float:
     """Parse ISO-8601 UTC string to epoch float. Returns 0 on failure."""
     try:
         import datetime
+
         dt = datetime.datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%SZ")
         return dt.replace(tzinfo=datetime.timezone.utc).timestamp()
     except Exception:

@@ -56,9 +56,7 @@ class YFinanceSource(DataSource):
         except Exception as e:
             raise SourceUnavailable(f"yfinance quote {symbol}: {e}") from e
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         try:
             df = yf.Ticker(symbol).history(period=period, interval=interval, auto_adjust=False)
             if df is None or df.empty:
@@ -136,6 +134,7 @@ def _iso(ts) -> str | None:
         return None
     try:
         from datetime import datetime, timezone
+
         return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
     except Exception:
         return None

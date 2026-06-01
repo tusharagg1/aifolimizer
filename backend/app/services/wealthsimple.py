@@ -163,12 +163,7 @@ _NON_INVESTMENT_TYPES = {"PORTFOLIO_LINE_OF_CREDIT", "LINE_OF_CREDIT", "MORTGAGE
 
 
 def _is_investment_account(acc: dict) -> bool:
-    raw = str(
-        acc.get("unifiedAccountType")
-        or acc.get("type")
-        or acc.get("account_type")
-        or ""
-    ).upper()
+    raw = str(acc.get("unifiedAccountType") or acc.get("type") or acc.get("account_type") or "").upper()
     return not any(skip in raw for skip in _NON_INVESTMENT_TYPES)
 
 
@@ -182,18 +177,16 @@ def _build_profile(accounts_raw: list[dict]) -> UserContext:
         cash = _money(acc.get("cash") or acc.get("available_to_trade") or acc.get("available_balance") or 0)
         nlv = _nested(acc, "financials", "currentCombined", "netLiquidationValue")
         market_value = _money(
-            acc.get("market_value")
-            or acc.get("net_liquidation_value")
-            or acc.get("total_value")
-            or nlv
-            or 0
+            acc.get("market_value") or acc.get("net_liquidation_value") or acc.get("total_value") or nlv or 0
         )
-        accounts.append(Account(
-            type=acc_type,
-            currency=currency,
-            cash_balance=cash,
-            invested_value=market_value,
-        ))
+        accounts.append(
+            Account(
+                type=acc_type,
+                currency=currency,
+                cash_balance=cash,
+                invested_value=market_value,
+            )
+        )
 
     total_cash = sum(a.cash_balance for a in accounts)
     total_invested = sum(a.invested_value for a in accounts)
@@ -348,10 +341,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
     # — independent HTTPs, ~200ms each. Run them in a small pool so total
     # cost is roughly one account's latency rather than N sequential calls.
     investment_accounts = [
-        acc for acc in accounts_raw
-        if isinstance(acc, dict)
-        and _is_investment_account(acc)
-        and acc.get("id")
+        acc for acc in accounts_raw if isinstance(acc, dict) and _is_investment_account(acc) and acc.get("id")
     ]
 
     # Hoist FX out of the per-account loop — FX cache is process-wide; calling
@@ -376,21 +366,15 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                             from app.services.market_data import (
                                 _get_cad_per_usd,
                             )
+
                             cad_per_usd = _get_cad_per_usd()
-                        total_cash_cad = round(
-                            cad_cash + usd_cash_balance * cad_per_usd, 2
-                        )
+                        total_cash_cad = round(cad_cash + usd_cash_balance * cad_per_usd, 2)
                     else:
                         total_cash_cad = cad_cash
                     acc["cash"] = total_cash_cad
-                    _debug(
-                        f"[WS] cash loaded for {acc_type}"
-                        f" (cad+usd_converted={total_cash_cad})"
-                    )
+                    _debug(f"[WS] cash loaded for {acc_type} (cad+usd_converted={total_cash_cad})")
             except Exception as e:
-                _LOG.warning(
-                    f"[WS] balances failed {acc_type}: {type(e).__name__}"
-                )
+                _LOG.warning(f"[WS] balances failed {acc_type}: {type(e).__name__}")
         try:
             pnl = ws.get_account_unrealized_pnl(acc_id, "CAD")
             _debug(f"[WS] pnl({acc_type}): {pnl}")
@@ -400,10 +384,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         except Exception as e:
             _LOG.warning(f"[WS] pnl failed {acc_type}: {type(e).__name__}")
 
-        nlv = _money(
-            _nested(acc, "financials", "currentCombined", "netLiquidationValue")
-            or 0
-        )
+        nlv = _money(_nested(acc, "financials", "currentCombined", "netLiquidationValue") or 0)
         entry = {
             "cash_balance": float(acc.get("cash") or 0),
             "usd_cash_balance": usd_cash_balance,
@@ -417,9 +398,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
     if investment_accounts:
         max_workers = min(8, len(investment_accounts))
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for acc_type, entry, acc_pnl in pool.map(
-                _enrich_account, investment_accounts
-            ):
+            for acc_type, entry, acc_pnl in pool.map(_enrich_account, investment_accounts):
                 per_account[acc_type] = entry
                 total_unrealized_pnl_cad += acc_pnl
 
@@ -440,18 +419,12 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                 rate = sr.get("rate")
                 if rate is not None:
                     simple_return_pct = float(rate) * 100
-        _debug(
-            f"[WS] net_deposits_cad={net_deposits_cad} "
-            f"simple_return_pct={simple_return_pct}"
-        )
+        _debug(f"[WS] net_deposits_cad={net_deposits_cad} simple_return_pct={simple_return_pct}")
     except Exception as e:
         _LOG.warning(f"[WS] identity financials failed: {type(e).__name__}: {e}")
 
     profile = _build_profile(accounts_raw)
-    _debug(
-        f"[WS] profile cash/invested:"
-        f" {[(a.cash_balance, a.invested_value) for a in profile.accounts]}"
-    )
+    _debug(f"[WS] profile cash/invested: {[(a.cash_balance, a.invested_value) for a in profile.accounts]}")
 
     _sessions[sid] = {
         "state": "authed",
@@ -583,10 +556,7 @@ def _to_position_dict(item: dict) -> dict:
     symbol = str(symbol).upper().replace("TSX:", "").replace("NASDAQ:", "").replace("NYSE:", "")
 
     name = (
-        stock.get("name")
-        or (security.get("name") if isinstance(security, dict) else "")
-        or item.get("name")
-        or symbol
+        stock.get("name") or (security.get("name") if isinstance(security, dict) else "") or item.get("name") or symbol
     )
 
     try:
@@ -594,13 +564,7 @@ def _to_position_dict(item: dict) -> dict:
     except Exception:
         quantity = 0.0
 
-    mv_raw = (
-        item.get("totalValue")
-        or item.get("marketValue")
-        or item.get("market_value")
-        or item.get("value")
-        or 0
-    )
+    mv_raw = item.get("totalValue") or item.get("marketValue") or item.get("market_value") or item.get("value") or 0
     market_currency = _extract_currency(mv_raw)
     market_value = _money(mv_raw)
 
@@ -613,12 +577,7 @@ def _to_position_dict(item: dict) -> dict:
     )
     avg_price = _money(ap_raw)
 
-    bv_raw = (
-        item.get("bookValue")
-        or item.get("marketBookValue")
-        or item.get("book_value")
-        or 0
-    )
+    bv_raw = item.get("bookValue") or item.get("marketBookValue") or item.get("book_value") or 0
     book_currency = _extract_currency(bv_raw, default=market_currency)
     book_value = _money(bv_raw)
 
@@ -653,19 +612,14 @@ def get_all_positions(session_id: str) -> list[dict]:
     accounts_raw: list[dict] = session.get("accounts_raw", [])
 
     # IDs of accounts we want to include (skip credit / loan accounts)
-    investment_ids = {
-        str(acc.get("id") or "")
-        for acc in accounts_raw
-        if _is_investment_account(acc) and acc.get("id")
-    }
+    investment_ids = {str(acc.get("id") or "") for acc in accounts_raw if _is_investment_account(acc) and acc.get("id")}
 
     ws = WealthsimpleAPI.from_token(ws_session, persist_session_fct=_noop_persist, username=email)
     raw_positions = _fetch_identity_positions(ws)
 
     if investment_ids:
         raw_positions = [
-            p for p in raw_positions
-            if not _position_account_id(p) or _position_account_id(p) in investment_ids
+            p for p in raw_positions if not _position_account_id(p) or _position_account_id(p) in investment_ids
         ]
 
     _debug(f"[WS] get_all_positions: {len(raw_positions)} positions across {len(investment_ids)} accounts")

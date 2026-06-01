@@ -81,19 +81,21 @@ def _fifo_pair(transactions: list[dict]) -> list[dict]:
                 holding = max(0, (exit_dt - entry_dt).days)
                 ep = float(buy.get("price", 0))
                 ret_pct = (xp - ep) / ep * 100 if ep > 0 else 0.0
-                roundtrips.append({
-                    "symbol": sym,
-                    "entry_date": entry_dt.strftime("%Y-%m-%d"),
-                    "exit_date": exit_dt.strftime("%Y-%m-%d"),
-                    "entry_price": round(ep, 4),
-                    "exit_price": round(xp, 4),
-                    "quantity": round(consumed, 6),
-                    "holding_days": holding,
-                    "entry_hour": entry_dt.hour,
-                    "entry_dow": entry_dt.weekday(),
-                    "return_pct": round(ret_pct, 2),
-                    "profitable": ret_pct > 0,
-                })
+                roundtrips.append(
+                    {
+                        "symbol": sym,
+                        "entry_date": entry_dt.strftime("%Y-%m-%d"),
+                        "exit_date": exit_dt.strftime("%Y-%m-%d"),
+                        "entry_price": round(ep, 4),
+                        "exit_price": round(xp, 4),
+                        "quantity": round(consumed, 6),
+                        "holding_days": holding,
+                        "entry_hour": entry_dt.hour,
+                        "entry_dow": entry_dt.weekday(),
+                        "return_pct": round(ret_pct, 2),
+                        "profitable": ret_pct > 0,
+                    }
+                )
                 buy_remaining -= consumed
                 sell_remaining -= consumed
                 if buy_remaining <= 1e-9:
@@ -133,11 +135,9 @@ def _kmeans_numpy(
             if mask.any():
                 centroids[ki] = X[mask].mean(axis=0)
 
-    inertia = float(sum(
-        np.linalg.norm(X[labels == ki] - centroids[ki]) ** 2
-        for ki in range(k)
-        if (labels == ki).any()
-    ))
+    inertia = float(
+        sum(np.linalg.norm(X[labels == ki] - centroids[ki]) ** 2 for ki in range(k) if (labels == ki).any())
+    )
     return labels, inertia
 
 
@@ -146,10 +146,9 @@ def _cluster_trades(roundtrips: list[dict], max_k: int = 4) -> list[dict]:
     if len(roundtrips) < 6:
         return []
 
-    features = np.array([
-        [r["holding_days"], r["entry_hour"], r["entry_dow"], r["return_pct"]]
-        for r in roundtrips
-    ], dtype=float)
+    features = np.array(
+        [[r["holding_days"], r["entry_hour"], r["entry_dow"], r["return_pct"]] for r in roundtrips], dtype=float
+    )
     X, _, _ = _normalize(features)
 
     # Elbow: pick k where marginal inertia drop flattens
@@ -178,23 +177,25 @@ def _cluster_trades(roundtrips: list[dict], max_k: int = 4) -> list[dict]:
         hold = [r["holding_days"] for r in cluster]
         rets = [r["return_pct"] for r in cluster]
         hours = [r["entry_hour"] for r in cluster]
-        rules.append({
-            "cluster": ki,
-            "n_trades": len(cluster),
-            "win_rate_pct": round(sum(1 for r in cluster if r["profitable"]) / len(cluster) * 100, 1),
-            "avg_return_pct": round(float(np.mean(rets)), 2),
-            "holding_days_min": int(min(hold)),
-            "holding_days_max": int(max(hold)),
-            "holding_days_median": int(np.median(hold)),
-            "entry_hour_mode": int(np.bincount(hours).argmax()),
-            "symbols": list({r["symbol"] for r in cluster}),
-            "behavioral_rule": (
-                f"Hold {int(np.median(hold))}d median "
-                f"(range {min(hold)}–{max(hold)}d); "
-                f"enter around hour {int(np.bincount(hours).argmax())}; "
-                f"win-rate {round(sum(1 for r in cluster if r['profitable']) / len(cluster) * 100, 1)}%"
-            ),
-        })
+        rules.append(
+            {
+                "cluster": ki,
+                "n_trades": len(cluster),
+                "win_rate_pct": round(sum(1 for r in cluster if r["profitable"]) / len(cluster) * 100, 1),
+                "avg_return_pct": round(float(np.mean(rets)), 2),
+                "holding_days_min": int(min(hold)),
+                "holding_days_max": int(max(hold)),
+                "holding_days_median": int(np.median(hold)),
+                "entry_hour_mode": int(np.bincount(hours).argmax()),
+                "symbols": list({r["symbol"] for r in cluster}),
+                "behavioral_rule": (
+                    f"Hold {int(np.median(hold))}d median "
+                    f"(range {min(hold)}–{max(hold)}d); "
+                    f"enter around hour {int(np.bincount(hours).argmax())}; "
+                    f"win-rate {round(sum(1 for r in cluster if r['profitable']) / len(cluster) * 100, 1)}%"
+                ),
+            }
+        )
     return rules
 
 

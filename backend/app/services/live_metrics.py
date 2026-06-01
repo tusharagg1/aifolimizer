@@ -22,6 +22,7 @@ closed rec back to the regime that was active at its entry timestamp
 Persists snapshots into `live_kpi_snapshots` hypertable so trend over
 time is queryable.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,6 +37,7 @@ _TX_COST_BPS = 5.0  # mirror skill_backtest default
 
 
 # ── pure helpers ───────────────────────────────────────────────────────────
+
 
 @dataclass
 class KPIs:
@@ -119,10 +121,7 @@ def compute_from_closed_recs(
     window_days: int = 30,
 ) -> KPIs:
     """Pure: compute KPIs from list of closed recommendations."""
-    closed = [
-        r for r in recs
-        if r.get("return_pct") is not None and r.get("status") != "open"
-    ]
+    closed = [r for r in recs if r.get("return_pct") is not None and r.get("status") != "open"]
     if not closed:
         return KPIs(window_days=window_days)
 
@@ -168,12 +167,15 @@ def compute_from_closed_recs(
 
 # ── DB-backed orchestration ────────────────────────────────────────────────
 
+
 async def kpis(
-    tenant_hash: str, window_days: int = 30,
+    tenant_hash: str,
+    window_days: int = 30,
 ) -> dict[str, Any]:
     """Fetch closed recs + equity curve over window → compute → persist."""
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return KPIs(window_days=window_days).to_dict()
@@ -194,7 +196,8 @@ async def kpis(
                   AND r.exit_date > current_date
                        - ($2::TEXT || ' days')::INTERVAL
                 """,
-                tenant_hash, str(window_days),
+                tenant_hash,
+                str(window_days),
             )
             equity_rows = await conn.fetch(
                 """
@@ -203,15 +206,16 @@ async def kpis(
                   AND date > current_date - ($2::TEXT || ' days')::INTERVAL
                 ORDER BY date ASC
                 """,
-                tenant_hash, str(window_days),
+                tenant_hash,
+                str(window_days),
             )
 
         recs = [dict(r) for r in rec_rows]
-        equity_curve = [
-            float(r["total_value_cad"]) for r in equity_rows
-        ]
+        equity_curve = [float(r["total_value_cad"]) for r in equity_rows]
         kpi = compute_from_closed_recs(
-            recs, equity_curve=equity_curve, window_days=window_days,
+            recs,
+            equity_curve=equity_curve,
+            window_days=window_days,
         )
         await _persist(tenant_hash, kpi)
         return kpi.to_dict()
@@ -224,6 +228,7 @@ async def _persist(tenant_hash: str, kpi: KPIs) -> None:
     try:
         from app.db.pool import get_pool
         import json
+
         pool = get_pool()
         if pool is None:
             return
@@ -241,11 +246,19 @@ async def _persist(tenant_hash: str, kpi: KPIs) -> None:
                 )
                 ON CONFLICT (tenant_hash, window_days, ts) DO NOTHING
                 """,
-                kpi.ts, tenant_hash, kpi.window_days,
-                kpi.expectancy_pct, kpi.profit_factor, kpi.sharpe, kpi.sortino,
-                kpi.max_drawdown_pct, kpi.hit_rate,
-                kpi.avg_win_pct, kpi.avg_loss_pct,
-                kpi.n_trades, kpi.after_cost_drag_bps,
+                kpi.ts,
+                tenant_hash,
+                kpi.window_days,
+                kpi.expectancy_pct,
+                kpi.profit_factor,
+                kpi.sharpe,
+                kpi.sortino,
+                kpi.max_drawdown_pct,
+                kpi.hit_rate,
+                kpi.avg_win_pct,
+                kpi.avg_loss_pct,
+                kpi.n_trades,
+                kpi.after_cost_drag_bps,
                 json.dumps(kpi.regime_breakdown),
             )
     except Exception as e:
@@ -253,10 +266,12 @@ async def _persist(tenant_hash: str, kpi: KPIs) -> None:
 
 
 async def latest(
-    tenant_hash: str, window_days: int = 30,
+    tenant_hash: str,
+    window_days: int = 30,
 ) -> dict[str, Any] | None:
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return None
@@ -267,7 +282,8 @@ async def latest(
                 WHERE tenant_hash = $1 AND window_days = $2
                 ORDER BY ts DESC LIMIT 1
                 """,
-                tenant_hash, window_days,
+                tenant_hash,
+                window_days,
             )
         if not row:
             return None
@@ -275,8 +291,14 @@ async def latest(
         d["ts"] = d["ts"].isoformat() if d.get("ts") else None
         # Coerce numerics for JSON
         for k in (
-            "expectancy_pct", "profit_factor", "sharpe", "sortino",
-            "max_drawdown_pct", "hit_rate", "avg_win_pct", "avg_loss_pct",
+            "expectancy_pct",
+            "profit_factor",
+            "sharpe",
+            "sortino",
+            "max_drawdown_pct",
+            "hit_rate",
+            "avg_win_pct",
+            "avg_loss_pct",
             "after_cost_drag_bps",
         ):
             if d.get(k) is not None:

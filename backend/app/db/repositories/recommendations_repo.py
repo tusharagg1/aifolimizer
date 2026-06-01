@@ -1,4 +1,5 @@
 """recommendations repository."""
+
 from __future__ import annotations
 
 import json
@@ -32,16 +33,26 @@ async def insert(rec: dict[str, Any]) -> Optional[int]:
             rec.get("tenant_hash", ""),
             rec.get("date") or date.today(),
             rec.get("ts") or datetime.utcnow(),
-            rec.get("skill", ""), rec.get("model_version", "v1"),
-            rec.get("ticker", ""), rec.get("action", ""), rec.get("conviction", ""),
-            rec.get("horizon_days"), rec.get("thesis"), rec.get("invalidation"),
-            rec.get("entry_price"), rec.get("target_pct"), rec.get("stop_pct"),
-            rec.get("expected_upside_pct"), rec.get("expected_downside_pct"),
-            rec.get("account"), rec.get("sector_etf"),
+            rec.get("skill", ""),
+            rec.get("model_version", "v1"),
+            rec.get("ticker", ""),
+            rec.get("action", ""),
+            rec.get("conviction", ""),
+            rec.get("horizon_days"),
+            rec.get("thesis"),
+            rec.get("invalidation"),
+            rec.get("entry_price"),
+            rec.get("target_pct"),
+            rec.get("stop_pct"),
+            rec.get("expected_upside_pct"),
+            rec.get("expected_downside_pct"),
+            rec.get("account"),
+            rec.get("sector_etf"),
             rec.get("benchmark_symbol"),
             json.dumps(rec.get("benchmarks_entry")) if rec.get("benchmarks_entry") is not None else None,
             json.dumps(rec.get("features")) if rec.get("features") is not None else None,
-            rec.get("rationale_hash"), rec.get("status", "open"),
+            rec.get("rationale_hash"),
+            rec.get("status", "open"),
         )
     return row["id"] if row else None
 
@@ -57,15 +68,12 @@ async def open_recs(tenant_hash: Optional[str] = None) -> list[dict[str, Any]]:
                 tenant_hash,
             )
         else:
-            rows = await conn.fetch(
-                "SELECT * FROM recommendations WHERE status = 'open'"
-            )
+            rows = await conn.fetch("SELECT * FROM recommendations WHERE status = 'open'")
     return [dict(r) for r in rows]
 
 
 async def mark_closed(
-    rec_id: int, *, exit_price: float, exit_date: date,
-    return_pct: float, win: bool, status: str
+    rec_id: int, *, exit_price: float, exit_date: date, return_pct: float, win: bool, status: str
 ) -> None:
     pool = get_pool()
     if pool is None:
@@ -78,13 +86,16 @@ async def mark_closed(
                 return_pct = $4, win = $5
             WHERE id = $6
             """,
-            status, exit_price, exit_date, return_pct, win, rec_id,
+            status,
+            exit_price,
+            exit_date,
+            return_pct,
+            win,
+            rec_id,
         )
 
 
-async def track_record_windows(
-    windows_days: list[int], tenant_hash: Optional[str] = None
-) -> dict[int, dict[str, Any]]:
+async def track_record_windows(windows_days: list[int], tenant_hash: Optional[str] = None) -> dict[int, dict[str, Any]]:
     pool = get_pool()
     if pool is None:
         return {}
@@ -102,7 +113,8 @@ async def track_record_windows(
                       AND status <> 'open'
                       AND exit_date > current_date - ($2::TEXT || ' days')::INTERVAL
                     """,
-                    tenant_hash, str(w),
+                    tenant_hash,
+                    str(w),
                 )
             else:
                 row = await conn.fetchrow(

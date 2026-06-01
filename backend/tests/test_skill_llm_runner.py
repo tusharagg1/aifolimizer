@@ -3,6 +3,7 @@
 LLM calls are mocked — tests verify wrapper semantics, JSON parsing,
 graceful degrade, and snapshot shape.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +15,7 @@ from app.services import skill_llm_runner as r
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def _patch_llm(monkeypatch):
     """Default: providers available, _call_llm_json returns a canned dict."""
@@ -24,18 +26,23 @@ def _patch_llm(monkeypatch):
 def _set_llm_response(monkeypatch, payload):
     async def _fake(prompt, system, *, task=None):
         return payload
+
     monkeypatch.setattr(r, "_call_llm_json", _fake)
 
 
 # ── adversarial-research ────────────────────────────────────────────────────
 
+
 def test_adversarial_research_buy_verdict(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "verdict": "buy",
-        "bull_thesis": "secular AI tailwind",
-        "bear_thesis": "rich multiple",
-        "key_risk": "regulatory",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "verdict": "buy",
+            "bull_thesis": "secular AI tailwind",
+            "bear_thesis": "rich multiple",
+            "key_risk": "regulatory",
+        },
+    )
     snap = asyncio.run(
         r.run_adversarial_research("NVDA", {"weight": 5.0, "sector": "Tech"}),
     )
@@ -57,6 +64,7 @@ def test_adversarial_research_no_providers(monkeypatch):
 def test_adversarial_research_llm_failure(monkeypatch):
     async def _fail(prompt, system, *, task=None):
         return None
+
     monkeypatch.setattr(r, "_call_llm_json", _fail)
     snap = asyncio.run(r.run_adversarial_research("AAPL", {}))
     assert snap["status"] == "error"
@@ -65,18 +73,25 @@ def test_adversarial_research_llm_failure(monkeypatch):
 
 # ── earnings-postmortem ─────────────────────────────────────────────────────
 
+
 def test_earnings_postmortem_thesis_broken(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "verdict": "miss",
-        "thesis_change": "broken",
-        "action": "exit",
-        "reason": "guidance cut 20%",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "verdict": "miss",
+            "thesis_change": "broken",
+            "action": "exit",
+            "reason": "guidance cut 20%",
+        },
+    )
     snap = asyncio.run(
-        r.run_earnings_postmortem("SHOP.TO", {
-            "earnings_date": "2026-05-15",
-            "surprise_pct": -12.5,
-        }),
+        r.run_earnings_postmortem(
+            "SHOP.TO",
+            {
+                "earnings_date": "2026-05-15",
+                "surprise_pct": -12.5,
+            },
+        ),
     )
     assert snap["status"] == "ok"
     assert snap["actionable"][0]["symbol"] == "SHOP.TO"
@@ -86,12 +101,16 @@ def test_earnings_postmortem_thesis_broken(monkeypatch):
 
 # ── stock-compare ───────────────────────────────────────────────────────────
 
+
 def test_stock_compare_picks_winner(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "winner": "MSFT",
-        "reason": "broader AI moat",
-        "loser_action": "trim",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "winner": "MSFT",
+            "reason": "broader AI moat",
+            "loser_action": "trim",
+        },
+    )
     snap = asyncio.run(r.run_stock_compare("MSFT", "GOOG"))
     assert snap["status"] == "ok"
     actionable_syms = [a["symbol"] for a in snap["actionable"]]
@@ -105,6 +124,7 @@ def test_stock_compare_picks_winner(monkeypatch):
 
 
 # ── JSON parsing ────────────────────────────────────────────────────────────
+
 
 def test_parse_json_safe_fenced_code():
     text = '```json\n{"verdict": "buy"}\n```'
@@ -132,13 +152,17 @@ def test_parse_json_safe_recovers_json_from_prose():
 
 # ── risk-assessment ─────────────────────────────────────────────────────────
 
+
 def test_risk_assessment_elevated(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "risk_level": "elevated",
-        "top_risk": "concentration",
-        "action": "reduce",
-        "reason": "single position 35%",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "risk_level": "elevated",
+            "top_risk": "concentration",
+            "action": "reduce",
+            "reason": "single position 35%",
+        },
+    )
     snap = asyncio.run(r.run_risk_assessment({"top_weight_pct": 35.0}))
     assert snap["skill"] == "risk-assessment"
     assert snap["status"] == "ok"
@@ -148,23 +172,32 @@ def test_risk_assessment_elevated(monkeypatch):
 
 
 def test_risk_assessment_low_emits_no_alert(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "risk_level": "low", "top_risk": "macro",
-        "action": "hold", "reason": "diversified",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "risk_level": "low",
+            "top_risk": "macro",
+            "action": "hold",
+            "reason": "diversified",
+        },
+    )
     snap = asyncio.run(r.run_risk_assessment({}))
     assert snap["alerts"] == []
 
 
 # ── portfolio-health ────────────────────────────────────────────────────────
 
+
 def test_portfolio_health_unhealthy(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "health": "unhealthy",
-        "top_issue": "concentration",
-        "action": "rebalance",
-        "reason": "65% in tech",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "health": "unhealthy",
+            "top_issue": "concentration",
+            "action": "rebalance",
+            "reason": "65% in tech",
+        },
+    )
     snap = asyncio.run(r.run_portfolio_health({"top_sector_pct": 65}))
     assert snap["summary"]["health"] == "unhealthy"
     assert snap["actionable"][0]["recommendation"] == "rebalance"
@@ -172,23 +205,32 @@ def test_portfolio_health_unhealthy(monkeypatch):
 
 
 def test_portfolio_health_healthy_no_alert(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "health": "healthy", "top_issue": "none",
-        "action": "hold", "reason": "well diversified",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "health": "healthy",
+            "top_issue": "none",
+            "action": "hold",
+            "reason": "well diversified",
+        },
+    )
     snap = asyncio.run(r.run_portfolio_health({}))
     assert snap["alerts"] == []
 
 
 # ── macro-impact ────────────────────────────────────────────────────────────
 
+
 def test_macro_impact_risk_off(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "regime": "risk_off",
-        "posture": "defense",
-        "action": "rotate_defensive",
-        "reason": "Fed funds > 10y, yield inverted",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "regime": "risk_off",
+            "posture": "defense",
+            "action": "rotate_defensive",
+            "reason": "Fed funds > 10y, yield inverted",
+        },
+    )
     snap = asyncio.run(r.run_macro_impact({"fed_funds": 5.5, "ten_y_yield": 4.2}))
     assert snap["summary"]["regime"] == "risk_off"
     assert snap["summary"]["posture"] == "defense"
@@ -197,13 +239,17 @@ def test_macro_impact_risk_off(monkeypatch):
 
 # ── daily-briefing ──────────────────────────────────────────────────────────
 
+
 def test_daily_briefing(monkeypatch):
-    _set_llm_response(monkeypatch, {
-        "headline": "Tech rebound continues, watch NVDA earnings",
-        "top_concern": "VIX still 22",
-        "top_opportunity": "Energy oversold",
-        "action_today": "hold and monitor NVDA pre-market",
-    })
+    _set_llm_response(
+        monkeypatch,
+        {
+            "headline": "Tech rebound continues, watch NVDA earnings",
+            "top_concern": "VIX still 22",
+            "top_opportunity": "Energy oversold",
+            "action_today": "hold and monitor NVDA pre-market",
+        },
+    )
     snap = asyncio.run(r.run_daily_briefing({"date": "2026-05-24"}))
     assert snap["summary"]["headline"].startswith("Tech rebound")
     assert "VIX" in snap["summary"]["top_concern"]
@@ -211,6 +257,7 @@ def test_daily_briefing(monkeypatch):
 
 
 # ── no-providers fallback ───────────────────────────────────────────────────
+
 
 def test_risk_no_providers_returns_error(monkeypatch):
     monkeypatch.setattr(r, "_providers_available", lambda: False)

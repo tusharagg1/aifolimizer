@@ -2,6 +2,7 @@
 Chart pattern detection: double top/bottom, head & shoulders, inverse H&S.
 Uses local pivot points on daily close price — no external deps beyond numpy/pandas.
 """
+
 import time
 import pandas as pd
 import yfinance as yf
@@ -14,9 +15,7 @@ _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600
 
 
-def _find_pivots(
-    high: pd.Series, low: pd.Series, order: int = 5
-) -> tuple[list[int], list[int]]:
+def _find_pivots(high: pd.Series, low: pd.Series, order: int = 5) -> tuple[list[int], list[int]]:
     """Indices of local highs (from High series) and local lows (from Low series).
 
     Using intraday High for peak detection and Low for trough detection so spike
@@ -25,8 +24,8 @@ def _find_pivots(
     highs, lows = [], []
     n = len(high)
     for i in range(order, n - order):
-        h_win = high.iloc[i - order: i + order + 1]
-        l_win = low.iloc[i - order: i + order + 1]
+        h_win = high.iloc[i - order : i + order + 1]
+        l_win = low.iloc[i - order : i + order + 1]
         if high.iloc[i] == h_win.max():
             highs.append(i)
         if low.iloc[i] == l_win.min():
@@ -248,8 +247,15 @@ def detect_patterns(symbol: str, period: str = "1y") -> dict:
             result = fn(*args)
             if result:
                 # convert idx → date for frontend
-                for key_name in ("peak1_idx", "peak2_idx", "trough1_idx", "trough2_idx",
-                                 "left_shoulder_idx", "head_idx", "right_shoulder_idx"):
+                for key_name in (
+                    "peak1_idx",
+                    "peak2_idx",
+                    "trough1_idx",
+                    "trough2_idx",
+                    "left_shoulder_idx",
+                    "head_idx",
+                    "right_shoulder_idx",
+                ):
                     if key_name in result:
                         idx = result.pop(key_name)
                         result[key_name.replace("_idx", "_date")] = dates[idx] if idx < len(dates) else None

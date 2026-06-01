@@ -68,17 +68,13 @@ class StooqSource(DataSource):
     def is_configured(self) -> bool:
         return bool(self.api_key)
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if not self.is_configured():
             raise SourceUnavailable("stooq: no STOOQ_KEY")
         if interval != "1d":
             raise SourceUnavailable("stooq supports daily interval only")
         ssym = _stooq_symbol(symbol)
-        url = (
-            f"https://stooq.com/q/d/l/?s={ssym}&i=d&apikey={self.api_key}"
-        )
+        url = f"https://stooq.com/q/d/l/?s={ssym}&i=d&apikey={self.api_key}"
         try:
             resp = httpx.get(url, timeout=10.0)
             resp.raise_for_status()
@@ -117,15 +113,9 @@ class StooqSource(DataSource):
     def get_quote(self, symbol: str) -> Quote:
         bars = self.get_history(symbol, period="1mo", interval="1d")
         if len(bars) < 2:
-            raise SourceUnavailable(
-                f"stooq: insufficient bars for quote {symbol}"
-            )
+            raise SourceUnavailable(f"stooq: insufficient bars for quote {symbol}")
         last, prev = bars[-1], bars[-2]
-        change_pct = (
-            ((last.close - prev.close) / prev.close * 100)
-            if prev.close
-            else None
-        )
+        change_pct = ((last.close - prev.close) / prev.close * 100) if prev.close else None
         return Quote(
             symbol=symbol,
             price=last.close,

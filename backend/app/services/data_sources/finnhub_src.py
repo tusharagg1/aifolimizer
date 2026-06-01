@@ -65,9 +65,7 @@ class FinnhubSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if not self.is_configured():
             raise SourceUnavailable("finnhub: no API key")
         if interval != "1d":

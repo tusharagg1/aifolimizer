@@ -6,6 +6,7 @@ PII guard: portfolio / WS credentials / account ids must never reach
 Sentry servers. `send_default_pii=False` plus a custom `before_send`
 filter drops any event whose serialized form contains forbidden tokens.
 """
+
 from __future__ import annotations
 
 import json

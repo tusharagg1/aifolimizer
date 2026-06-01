@@ -2,6 +2,7 @@
 
 Zero external dependencies — pure stdlib. Adapted from ai-portfolio-analyzer reference.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -115,7 +116,9 @@ def correlation(left: list[float], right: list[float]) -> float | None:
     return cov / math.sqrt(x_var * y_var)
 
 
-def correlation_matrix(symbol_returns: dict[str, list[float]], min_observations: int = 30) -> dict[str, dict[str, float | None]]:
+def correlation_matrix(
+    symbol_returns: dict[str, list[float]], min_observations: int = 30
+) -> dict[str, dict[str, float | None]]:
     matrix: dict[str, dict[str, float | None]] = {}
     for left_symbol, left_returns in symbol_returns.items():
         matrix[left_symbol] = {}
@@ -145,9 +148,7 @@ def weighted_portfolio_returns(symbol_returns: dict[str, list[float]], weights: 
     return out
 
 
-def calmar_ratio(
-    values: list[float], periods: int = TRADING_DAYS
-) -> float | None:
+def calmar_ratio(values: list[float], periods: int = TRADING_DAYS) -> float | None:
     """CAGR divided by absolute max drawdown. Penalises deep-drawdown strategies."""
     if len(values) < 2 or values[0] <= 0:
         return None
@@ -165,9 +166,7 @@ def calmar_ratio(
     return round(cagr / abs(dd), 3)
 
 
-def omega_ratio(
-    returns: list[float], threshold: float = 0.0
-) -> float | None:
+def omega_ratio(returns: list[float], threshold: float = 0.0) -> float | None:
     """Probability-weighted gains above threshold / losses below it."""
     if len(returns) < 2:
         return None
@@ -178,9 +177,7 @@ def omega_ratio(
     return round(gains / losses, 3)
 
 
-def monthly_return_breakdown(
-    dates: list[str], values: list[float]
-) -> list[dict[str, Any]]:
+def monthly_return_breakdown(dates: list[str], values: list[float]) -> list[dict[str, Any]]:
     """
     Monthly return table from daily NAV series.
 
@@ -231,6 +228,7 @@ def portfolio_risk_metrics(symbol_returns: dict[str, list[float]], weights: dict
 
 # ── Deterministic bucketing (adapted from AI-Trader experiments.py, MIT) ──────
 
+
 def stable_bucket(key: str, n_buckets: int = 1_000_000) -> int:
     """SHA-256 deterministic bucket assignment. Same key always → same bucket.
 
@@ -257,6 +255,7 @@ def deterministic_split_idx(symbol: str, n_points: int, train_frac: float = 0.7)
 
 # ── Alpha factors (Qlib-inspired, pure stdlib) ────────────────────────────────
 
+
 def momentum_factor(prices: list[float], lookback: int = 252, skip: int = 21) -> float | None:
     """12-1 month price momentum (Jegadeesh-Titman).
 
@@ -281,7 +280,7 @@ def mean_reversion_factor(returns: list[float], window: int = 20) -> float | Non
     """
     if len(returns) < window + 1:
         return None
-    stats_window = returns[-window - 1:-1]
+    stats_window = returns[-window - 1 : -1]
     mu = mean(stats_window)
     sd = stdev(stats_window)
     if sd == 0:

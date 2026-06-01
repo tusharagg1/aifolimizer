@@ -32,9 +32,7 @@ def _sharpe(returns: np.ndarray, ann_factor: float = math.sqrt(252)) -> float:
     return float(returns.mean() / std * ann_factor)
 
 
-def _block_resample(
-    returns: np.ndarray, block: int, rng: np.random.Generator
-) -> np.ndarray:
+def _block_resample(returns: np.ndarray, block: int, rng: np.random.Generator) -> np.ndarray:
     """Stationary block bootstrap: stitch contiguous blocks to length n.
 
     Sampling blocks (not individual points) preserves autocorrelation, so the
@@ -93,10 +91,7 @@ def block_bootstrap_significance(
     observed = _sharpe(daily_returns)
 
     centered = daily_returns - daily_returns.mean()  # zero-drift null
-    null_sharpes = np.array([
-        _sharpe(_block_resample(centered, effective_block, rng))
-        for _ in range(n_sims)
-    ])
+    null_sharpes = np.array([_sharpe(_block_resample(centered, effective_block, rng)) for _ in range(n_sims)])
 
     p_upper = float(np.mean(null_sharpes >= observed))
     p_lower = float(np.mean(null_sharpes <= observed))
@@ -145,17 +140,11 @@ def order_dependence_check(
 
     rng = np.random.default_rng(seed)
     observed = _sharpe(daily_returns)
-    permuted = np.array([
-        _sharpe(rng.permutation(daily_returns))
-        for _ in range(n_sims)
-    ])
+    permuted = np.array([_sharpe(rng.permutation(daily_returns)) for _ in range(n_sims)])
     return {
         "observed_sharpe": round(observed, 3),
         "permuted_sharpe_std": round(float(permuted.std()), 6),
-        "note": (
-            "diagnostic only — not a significance test; Sharpe is "
-            "order-invariant by construction."
-        ),
+        "note": ("diagnostic only — not a significance test; Sharpe is order-invariant by construction."),
     }
 
 
@@ -180,10 +169,7 @@ def bootstrap_sharpe_ci(
     rng = np.random.default_rng(seed)
     n = len(daily_returns)
 
-    sharpes = np.array([
-        _sharpe(rng.choice(daily_returns, size=n, replace=True))
-        for _ in range(n_sims)
-    ])
+    sharpes = np.array([_sharpe(rng.choice(daily_returns, size=n, replace=True)) for _ in range(n_sims)])
 
     alpha = (1 - confidence) / 2
     return {

@@ -7,9 +7,11 @@ def compute_health_score(portfolio: PortfolioResponse) -> dict:
 
     if not positions:
         return {
-            "score": 0, "grade": "N/A",
+            "score": 0,
+            "grade": "N/A",
             "verdict": "No positions found",
-            "breakdown": {}, "inputs": {},
+            "breakdown": {},
+            "inputs": {},
         }
 
     # 1. Diversification (0-30): more holdings = better, max at 15

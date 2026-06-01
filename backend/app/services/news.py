@@ -32,33 +32,25 @@ def _fetch_one_yfinance(symbol: str) -> list:
         out = []
         for a in articles[:5]:
             content = a.get("content", {})
-            title = (
-                content.get("title")
-                if isinstance(content, dict)
-                else a.get("title", "")
-            )
+            title = content.get("title") if isinstance(content, dict) else a.get("title", "")
             publisher = (
                 content.get("provider", {}).get("displayName", "")
                 if isinstance(content, dict)
                 else a.get("publisher", "")
             )
             pub_date = (
-                content.get("pubDate", "")
-                if isinstance(content, dict)
-                else _fmt_date(a.get("providerPublishTime", ""))
+                content.get("pubDate", "") if isinstance(content, dict) else _fmt_date(a.get("providerPublishTime", ""))
             )
-            url = (
-                content.get("canonicalUrl", {}).get("url", "")
-                if isinstance(content, dict)
-                else a.get("link", "")
-            )
+            url = content.get("canonicalUrl", {}).get("url", "") if isinstance(content, dict) else a.get("link", "")
             if title:
-                out.append({
-                    "title": title,
-                    "publisher": publisher,
-                    "published": pub_date,
-                    "url": url,
-                })
+                out.append(
+                    {
+                        "title": title,
+                        "publisher": publisher,
+                        "published": pub_date,
+                        "url": url,
+                    }
+                )
         return out
     except Exception as e:
         _LOG.warning(f"[news] yfinance {symbol}: {e}")

@@ -13,6 +13,7 @@ Each runner emits four sections:
   alerts:      warnings sorted by urgency
   key_insights: top 3 takeaways for the daily briefing composer
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -39,14 +40,17 @@ _SNAP_DIR.mkdir(parents=True, exist_ok=True)
 # Active tenant for the current run — set by run_all_skills so composite
 # runners (daily-briefing) read the correct namespace.
 _active_tenant: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "active_tenant", default=None,
+    "active_tenant",
+    default=None,
 )
 
-LLM_ONLY_SKILLS = frozenset({
-    "adversarial-research",
-    "earnings-postmortem",
-    "stock-compare",
-})
+LLM_ONLY_SKILLS = frozenset(
+    {
+        "adversarial-research",
+        "earnings-postmortem",
+        "stock-compare",
+    }
+)
 
 _DEFAULT_TTLS = {
     "portfolio-health": 30,
@@ -65,17 +69,17 @@ _DEFAULT_TTLS = {
 # +1 favored, -1 disfavored, 0 neutral. Used by macro-impact to flag
 # sector exposure that fights the current regime.
 _SECTOR_REGIME_BIAS: dict[str, dict[str, int]] = {
-    "Technology":             {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
-    "Financials":             {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
-    "Healthcare":             {"bull_low_fear": 0, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 0},
-    "Consumer Defensive":     {"bull_low_fear": -1, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 1},
-    "Consumer Cyclical":      {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
-    "Energy":                 {"bull_low_fear": 0, "bull_high_fear": 0, "bear_low_fear": 0, "bear_high_fear": 0},
-    "Utilities":              {"bull_low_fear": -1, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 1},
-    "Real Estate":            {"bull_low_fear": 0, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
-    "Industrials":            {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Technology": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Financials": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Healthcare": {"bull_low_fear": 0, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 0},
+    "Consumer Defensive": {"bull_low_fear": -1, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 1},
+    "Consumer Cyclical": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Energy": {"bull_low_fear": 0, "bull_high_fear": 0, "bear_low_fear": 0, "bear_high_fear": 0},
+    "Utilities": {"bull_low_fear": -1, "bull_high_fear": 1, "bear_low_fear": 1, "bear_high_fear": 1},
+    "Real Estate": {"bull_low_fear": 0, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Industrials": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
     "Communication Services": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": 0},
-    "Basic Materials":        {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
+    "Basic Materials": {"bull_low_fear": 1, "bull_high_fear": 0, "bear_low_fear": -1, "bear_high_fear": -1},
 }
 
 
@@ -113,10 +117,13 @@ def _snapshot(
 def _positions_as_dicts(portfolio: PortfolioResponse) -> list[dict]:
     return [
         {
-            "symbol": p.symbol, "name": p.name, "weight": p.weight,
+            "symbol": p.symbol,
+            "name": p.name,
+            "weight": p.weight,
             "market_value_cad": p.market_value_cad,
             "total_return_pct": p.total_return_pct,
-            "currency": p.currency, "asset_class": p.asset_class,
+            "currency": p.currency,
+            "asset_class": p.asset_class,
             "sector": p.sector,
         }
         for p in portfolio.positions
@@ -126,6 +133,7 @@ def _positions_as_dicts(portfolio: PortfolioResponse) -> list[dict]:
 # ──────────────────────────────────────────────────────────────────────────────
 # portfolio-health
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _run_portfolio_health(portfolio: PortfolioResponse) -> dict:
     try:
@@ -140,11 +148,14 @@ def _run_portfolio_health(portfolio: PortfolioResponse) -> dict:
             if p.total_return_pct < -25:
                 issues.append(f"drawdown {p.total_return_pct:.0f}%")
             if issues:
-                flags.append({
-                    "symbol": p.symbol, "weight": p.weight,
-                    "total_return_pct": p.total_return_pct,
-                    "issues": issues,
-                })
+                flags.append(
+                    {
+                        "symbol": p.symbol,
+                        "weight": p.weight,
+                        "total_return_pct": p.total_return_pct,
+                        "issues": issues,
+                    }
+                )
         insights = []
         score = health.get("score") or 0
         grade = health.get("grade") or "—"
@@ -175,6 +186,7 @@ def _run_portfolio_health(portfolio: PortfolioResponse) -> dict:
 # risk-assessment
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _fetch_returns_for(symbols: list[str], lookback_days: int = 252) -> dict[str, list[float]]:
     """Fetch daily simple returns for each symbol. Returns dict — empty if data missing."""
     out: dict[str, list[float]] = {}
@@ -198,8 +210,7 @@ def _run_risk_assessment(portfolio: PortfolioResponse) -> dict:
     try:
         total_value = sum(p.market_value_cad for p in portfolio.positions)
         if total_value <= 0:
-            return _snapshot("risk-assessment", status="error",
-                             error="portfolio total value <= 0")
+            return _snapshot("risk-assessment", status="error", error="portfolio total value <= 0")
         # Use top 15 by weight to keep compute bounded
         top = sorted(portfolio.positions, key=lambda p: -p.weight)[:15]
         symbols = [p.symbol for p in top]
@@ -207,7 +218,8 @@ def _run_risk_assessment(portfolio: PortfolioResponse) -> dict:
         symbol_returns = _fetch_returns_for(symbols)
         if not symbol_returns:
             return _snapshot(
-                "risk-assessment", status="ok",
+                "risk-assessment",
+                status="ok",
                 summary={"n_symbols": 0, "note": "no return data"},
             )
         metrics = quant.portfolio_risk_metrics(symbol_returns, weights)
@@ -217,14 +229,11 @@ def _run_risk_assessment(portfolio: PortfolioResponse) -> dict:
         mdd = metrics.get("max_drawdown_pct")
         var = metrics.get("var_95_pct")
         if vol is not None and vol > 35:
-            alerts.append({"level": "warn",
-                           "message": f"Annualized vol {vol:.1f}% — elevated risk"})
+            alerts.append({"level": "warn", "message": f"Annualized vol {vol:.1f}% — elevated risk"})
         if mdd is not None and mdd < -25:
-            alerts.append({"level": "warn",
-                           "message": f"Max drawdown {mdd:.1f}% — significant historical pain"})
+            alerts.append({"level": "warn", "message": f"Max drawdown {mdd:.1f}% — significant historical pain"})
         if var is not None and var < -3:
-            alerts.append({"level": "info",
-                           "message": f"VaR(95) {var:.2f}% daily — 1-in-20 days expected loss"})
+            alerts.append({"level": "info", "message": f"VaR(95) {var:.2f}% daily — 1-in-20 days expected loss"})
         insights = []
         if metrics.get("sharpe") is not None:
             insights.append(f"Sharpe {metrics['sharpe']:.2f}")
@@ -250,6 +259,7 @@ def _run_risk_assessment(portfolio: PortfolioResponse) -> dict:
 # macro-impact
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_macro_impact(portfolio: PortfolioResponse) -> dict:
     try:
         snap = macro_svc.macro_snapshot()
@@ -261,38 +271,39 @@ def _run_macro_impact(portfolio: PortfolioResponse) -> dict:
         misaligned_weight = 0.0
         for sector, weight in sector_exp.items():
             bias = _SECTOR_REGIME_BIAS.get(sector, {}).get(regime, 0)
-            alignment.append({
-                "sector": sector, "weight_pct": round(weight, 2),
-                "regime_bias": bias,
-                "verdict": (
-                    "favored" if bias > 0 else
-                    "neutral" if bias == 0 else
-                    "disfavored"
-                ),
-            })
+            alignment.append(
+                {
+                    "sector": sector,
+                    "weight_pct": round(weight, 2),
+                    "regime_bias": bias,
+                    "verdict": ("favored" if bias > 0 else "neutral" if bias == 0 else "disfavored"),
+                }
+            )
             if bias < 0:
                 misaligned_weight += weight
         alignment.sort(key=lambda x: -x["weight_pct"])
         alerts = []
         if regime in ("bear_high_fear", "bear_low_fear"):
-            alerts.append({
-                "level": "warn",
-                "message": f"Regime {regime} — defensive bias recommended",
-            })
+            alerts.append(
+                {
+                    "level": "warn",
+                    "message": f"Regime {regime} — defensive bias recommended",
+                }
+            )
         if misaligned_weight > 30:
-            alerts.append({
-                "level": "warn",
-                "message": (
-                    f"{misaligned_weight:.0f}% of portfolio in disfavored sectors "
-                    f"for {regime} regime"
-                ),
-            })
+            alerts.append(
+                {
+                    "level": "warn",
+                    "message": (f"{misaligned_weight:.0f}% of portfolio in disfavored sectors for {regime} regime"),
+                }
+            )
         if snap.get("portfolio_signal"):
-            alerts.append({
-                "level": "info",
-                "message": f"Macro signal: {snap['portfolio_signal']} "
-                           f"({snap.get('portfolio_signal_strength')})",
-            })
+            alerts.append(
+                {
+                    "level": "info",
+                    "message": f"Macro signal: {snap['portfolio_signal']} ({snap.get('portfolio_signal_strength')})",
+                }
+            )
         insights = [f"Regime: {regime}"]
         if snap.get("vix") is not None:
             insights.append(f"VIX {snap['vix']:.1f}")
@@ -317,6 +328,7 @@ def _run_macro_impact(portfolio: PortfolioResponse) -> dict:
 # dividend-strategy
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_dividend_strategy(portfolio: PortfolioResponse) -> dict:
     try:
         symbols = [p.symbol for p in portfolio.positions]
@@ -331,27 +343,28 @@ def _run_dividend_strategy(portfolio: PortfolioResponse) -> dict:
             payout = f.get("payout_ratio")
             if not dy or dy <= 0:
                 continue
-            sustainable = (payout is None or payout < 0.75)
+            sustainable = payout is None or payout < 0.75
             position_income = (p.market_value_cad or 0) * dy
             annual_income_cad += position_income
             weighted_yield += dy * (p.weight or 0)
-            divs.append({
-                "symbol": p.symbol,
-                "weight_pct": p.weight,
-                "dividend_yield_pct": round(dy * 100, 2),
-                "payout_ratio_pct": round(payout * 100, 1) if payout else None,
-                "annual_income_cad": round(position_income, 2),
-                "sustainable": sustainable,
-            })
+            divs.append(
+                {
+                    "symbol": p.symbol,
+                    "weight_pct": p.weight,
+                    "dividend_yield_pct": round(dy * 100, 2),
+                    "payout_ratio_pct": round(payout * 100, 1) if payout else None,
+                    "annual_income_cad": round(position_income, 2),
+                    "sustainable": sustainable,
+                }
+            )
         divs.sort(key=lambda x: -x["annual_income_cad"])
-        portfolio_yield_pct = (
-            round(weighted_yield / total_w * 100, 2) if total_w else None
-        )
+        portfolio_yield_pct = round(weighted_yield / total_w * 100, 2) if total_w else None
         unsustainable = [d for d in divs if not d["sustainable"]]
         alerts = [
-            {"level": "warn",
-             "message": f"{d['symbol']} payout ratio {d['payout_ratio_pct']}% — "
-                        "dividend may be at risk"}
+            {
+                "level": "warn",
+                "message": f"{d['symbol']} payout ratio {d['payout_ratio_pct']}% — dividend may be at risk",
+            }
             for d in unsustainable[:3]
         ]
         insights = [
@@ -379,8 +392,7 @@ def _run_dividend_strategy(portfolio: PortfolioResponse) -> dict:
 # sector-rotation
 # ──────────────────────────────────────────────────────────────────────────────
 
-_SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE",
-                "XLI", "XLU", "XLRE", "XLB", "XLC"]
+_SECTOR_ETFS = ["XLK", "XLF", "XLV", "XLY", "XLP", "XLE", "XLI", "XLU", "XLRE", "XLB", "XLC"]
 
 
 def _sector_momentum() -> dict[str, dict[str, float | None]]:
@@ -441,6 +453,7 @@ def _run_sector_rotation(portfolio: PortfolioResponse) -> dict:
 # tax-loss-review (Canadian rules: 30-day superficial-loss window both sides)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_tax_loss_review(portfolio: PortfolioResponse) -> dict:
     try:
         cands = portfolio_analytics.tax_loss_candidates(portfolio)
@@ -452,16 +465,20 @@ def _run_tax_loss_review(portfolio: PortfolioResponse) -> dict:
             f"Loss harvest potential ${abs(total_loss_cad):,.0f} CAD",
             f"Est. tax saved ${est_tax_saving:,.0f} (50% inclusion × 30% bracket)",
         ]
-        alerts = [
-            {
-                "level": "info",
-                "message": (
-                    "Superficial-loss rule: do not repurchase same security "
-                    "within 30 days before or after sale (or spouse/RRSP "
-                    "buy in same window). Use a non-identical correlated proxy."
-                ),
-            },
-        ] if cands else []
+        alerts = (
+            [
+                {
+                    "level": "info",
+                    "message": (
+                        "Superficial-loss rule: do not repurchase same security "
+                        "within 30 days before or after sale (or spouse/RRSP "
+                        "buy in same window). Use a non-identical correlated proxy."
+                    ),
+                },
+            ]
+            if cands
+            else []
+        )
         return _snapshot(
             "tax-loss-review",
             summary={
@@ -481,6 +498,7 @@ def _run_tax_loss_review(portfolio: PortfolioResponse) -> dict:
 # cash-deployment (with Kelly dollar sizing)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
     try:
         cash = portfolio.summary.cash_available or 0.0
@@ -488,7 +506,8 @@ def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
         recs = rec_svc.get_recommendations(_positions_as_dicts(portfolio))
         # Only consider acceptable-entry BUY/ADD with positive risk_reward
         candidates = [
-            r for r in recs
+            r
+            for r in recs
             if r.get("action") in ("BUY", "ADD")
             and r.get("entry_timing") == "acceptable"
             and (r.get("risk_reward") or 0) > 0
@@ -496,10 +515,12 @@ def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
         # Exclude already-overweight
         candidates = [c for c in candidates if (c.get("weight") or 0) < 15]
         # Rank: signal_quality desc, then score desc
-        candidates.sort(key=lambda r: (
-            -(r.get("signal_quality") or 0),
-            -(r.get("score") or 0),
-        ))
+        candidates.sort(
+            key=lambda r: (
+                -(r.get("signal_quality") or 0),
+                -(r.get("score") or 0),
+            )
+        )
         # Dollar-size with Kelly% of CASH available
         sized: list[dict] = []
         cash_remaining = cash
@@ -512,27 +533,26 @@ def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
             if allocation < 50:
                 continue
             cash_remaining -= allocation
-            sized.append({
-                "symbol": r["symbol"],
-                "action": r["action"],
-                "score": r["score"],
-                "confidence": r.get("confidence"),
-                "signal_quality": r.get("signal_quality"),
-                "current_price": r.get("current_price"),
-                "stop_loss": r.get("stop_loss"),
-                "take_profit": r.get("take_profit"),
-                "risk_reward": r.get("risk_reward"),
-                "kelly_pct": kelly,
-                "allocation_cad": allocation,
-                "reasons": (r.get("reasons") or [])[:3],
-            })
+            sized.append(
+                {
+                    "symbol": r["symbol"],
+                    "action": r["action"],
+                    "score": r["score"],
+                    "confidence": r.get("confidence"),
+                    "signal_quality": r.get("signal_quality"),
+                    "current_price": r.get("current_price"),
+                    "stop_loss": r.get("stop_loss"),
+                    "take_profit": r.get("take_profit"),
+                    "risk_reward": r.get("risk_reward"),
+                    "kelly_pct": kelly,
+                    "allocation_cad": allocation,
+                    "reasons": (r.get("reasons") or [])[:3],
+                }
+            )
         insights = [
             f"Cash available ${cash:,.0f} CAD",
             f"{len(sized)} BUY/ADD candidates sized" if sized else "no qualified candidates",
-            (
-                f"Top allocation: {sized[0]['symbol']} "
-                f"${sized[0]['allocation_cad']:,.0f}"
-            ) if sized else "—",
+            (f"Top allocation: {sized[0]['symbol']} ${sized[0]['allocation_cad']:,.0f}") if sized else "—",
         ]
         return _snapshot(
             "cash-deployment",
@@ -554,27 +574,19 @@ def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
 # stock-analysis (top buy/sell pulls from recommendations engine)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_stock_analysis(portfolio: PortfolioResponse) -> dict:
     try:
         recs = rec_svc.get_recommendations(_positions_as_dicts(portfolio))
         by_action: dict[str, int] = {}
         for r in recs:
             by_action[r["action"]] = by_action.get(r["action"], 0) + 1
-        buys = sorted([r for r in recs if r["action"] in ("BUY", "ADD")],
-                      key=lambda x: -(x.get("score") or 0))[:5]
-        sells = sorted([r for r in recs if r["action"] in ("SELL", "TRIM")],
-                       key=lambda x: x.get("score") or 99)[:5]
-        hedges = [
-            {"symbol": r["symbol"], "reason": r["hedge_reason"]}
-            for r in recs if r.get("hedge_flag")
-        ]
+        buys = sorted([r for r in recs if r["action"] in ("BUY", "ADD")], key=lambda x: -(x.get("score") or 0))[:5]
+        sells = sorted([r for r in recs if r["action"] in ("SELL", "TRIM")], key=lambda x: x.get("score") or 99)[:5]
+        hedges = [{"symbol": r["symbol"], "reason": r["hedge_reason"]} for r in recs if r.get("hedge_flag")]
         insights = [
-            f"{by_action.get('BUY', 0)} BUY · {by_action.get('SELL', 0)} SELL · "
-            f"{by_action.get('NO_EDGE', 0)} NO_EDGE",
-            (
-                f"Top BUY: {buys[0]['symbol']} ({buys[0].get('score'):.1f})"
-                if buys else "no BUYs"
-            ),
+            f"{by_action.get('BUY', 0)} BUY · {by_action.get('SELL', 0)} SELL · {by_action.get('NO_EDGE', 0)} NO_EDGE",
+            (f"Top BUY: {buys[0]['symbol']} ({buys[0].get('score'):.1f})" if buys else "no BUYs"),
             f"{len(hedges)} hedge flag{'s' if len(hedges) != 1 else ''}",
         ]
         return _snapshot(
@@ -587,10 +599,7 @@ def _run_stock_analysis(portfolio: PortfolioResponse) -> dict:
                 "hedge_flags": hedges,
             },
             actionable=recs,
-            alerts=[
-                {"level": "warn", "message": f"{h['symbol']}: {h['reason']}"}
-                for h in hedges
-            ],
+            alerts=[{"level": "warn", "message": f"{h['symbol']}: {h['reason']}"} for h in hedges],
             key_insights=insights,
         )
     except Exception as e:
@@ -600,6 +609,7 @@ def _run_stock_analysis(portfolio: PortfolioResponse) -> dict:
 # ──────────────────────────────────────────────────────────────────────────────
 # earnings-analyzer
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
     try:
@@ -615,18 +625,21 @@ def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
             position_at_risk = None
             if expected_move and p.market_value_cad:
                 position_at_risk = round(
-                    p.market_value_cad * expected_move / 100, 2,
+                    p.market_value_cad * expected_move / 100,
+                    2,
                 )
-            upcoming.append({
-                "symbol": p.symbol,
-                "earnings_date": f.get("earnings_date"),
-                "days_to_earnings": days,
-                "weight_pct": p.weight,
-                "market_value_cad": p.market_value_cad,
-                "expected_move_pct": expected_move,
-                "position_at_risk_cad": position_at_risk,
-                "eps_estimate": f.get("earnings_estimate_eps"),
-            })
+            upcoming.append(
+                {
+                    "symbol": p.symbol,
+                    "earnings_date": f.get("earnings_date"),
+                    "days_to_earnings": days,
+                    "weight_pct": p.weight,
+                    "market_value_cad": p.market_value_cad,
+                    "expected_move_pct": expected_move,
+                    "position_at_risk_cad": position_at_risk,
+                    "eps_estimate": f.get("earnings_estimate_eps"),
+                }
+            )
         upcoming.sort(key=lambda x: x["days_to_earnings"])
         imminent = [u for u in upcoming if u["days_to_earnings"] <= 7]
         alerts = [
@@ -635,8 +648,7 @@ def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
                 "message": (
                     f"{u['symbol']} earnings in {u['days_to_earnings']}d — "
                     f"±{u.get('expected_move_pct') or '?'}% expected move"
-                    + (f", ${u['position_at_risk_cad']:,.0f} CAD at risk"
-                       if u.get("position_at_risk_cad") else "")
+                    + (f", ${u['position_at_risk_cad']:,.0f} CAD at risk" if u.get("position_at_risk_cad") else "")
                 ),
             }
             for u in imminent
@@ -666,6 +678,7 @@ def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
 # daily-briefing (composite — synthesizes other snapshots)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _run_daily_briefing(portfolio: PortfolioResponse) -> dict:
     try:
         tenant = _active_tenant.get()
@@ -673,8 +686,12 @@ def _run_daily_briefing(portfolio: PortfolioResponse) -> dict:
         all_alerts: list[dict] = []
         all_insights: list[str] = []
         for s in (
-            "macro-impact", "portfolio-health", "stock-analysis",
-            "earnings-analyzer", "cash-deployment", "risk-assessment",
+            "macro-impact",
+            "portfolio-health",
+            "stock-analysis",
+            "earnings-analyzer",
+            "cash-deployment",
+            "risk-assessment",
             "tax-loss-review",
         ):
             snap = read_snapshot(s, tenant_id=tenant)
@@ -697,11 +714,10 @@ def _run_daily_briefing(portfolio: PortfolioResponse) -> dict:
         ph = composed.get("portfolio-health", {}).get("summary") or {}
         if ea.get("n_imminent_7d", 0) > 0:
             next_action = (
-                f"Review {ea['n_imminent_7d']} position(s) with earnings ≤7d — "
-                "trim or hedge before binary event"
+                f"Review {ea['n_imminent_7d']} position(s) with earnings ≤7d — trim or hedge before binary event"
             )
         elif sa.get("by_action", {}).get("SELL", 0) > 0:
-            top = (sa.get("top_sells") or [])
+            top = sa.get("top_sells") or []
             sym = top[0]["symbol"] if top else "?"
             next_action = f"Review SELL signal on {sym} — thesis broken or deteriorating"
         elif ph.get("n_warnings", 0) > 0:
@@ -742,6 +758,7 @@ SKILL_RUNNERS: dict[str, Callable[[PortfolioResponse], dict]] = {
 # Snapshot store
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _tenant_dir(tenant_id: str | None) -> Path:
     """Resolve the snapshot directory for a tenant.
 
@@ -753,6 +770,7 @@ def _tenant_dir(tenant_id: str | None) -> Path:
     if not tenant_id:
         return _SNAP_DIR
     import hashlib
+
     h = hashlib.sha1(tenant_id.encode("utf-8")).hexdigest()[:16]
     d = _SNAP_DIR / "tenants" / h
     d.mkdir(parents=True, exist_ok=True)
@@ -807,6 +825,7 @@ def list_snapshots(*, tenant_id: str | None = None) -> list[dict]:
 # Parallel runner
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def run_all_skills(
     portfolio: PortfolioResponse,
     *,
@@ -831,18 +850,13 @@ def run_all_skills(
         pass
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(SKILL_RUNNERS[s], portfolio): s
-            for s in parallel_skills
-            if s in SKILL_RUNNERS
-        }
+        futures = {pool.submit(SKILL_RUNNERS[s], portfolio): s for s in parallel_skills if s in SKILL_RUNNERS}
         for fut in concurrent.futures.as_completed(futures):
             s = futures[fut]
             try:
                 snap = fut.result(timeout=60)
             except Exception as e:
-                snap = _snapshot(s, status="error",
-                                 error=f"runner timeout/exception: {e}")
+                snap = _snapshot(s, status="error", error=f"runner timeout/exception: {e}")
             out[s] = snap
             if persist:
                 try:

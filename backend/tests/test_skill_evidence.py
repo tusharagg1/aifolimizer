@@ -1,4 +1,5 @@
 """Unit tests for skill_evidence (Phase 1)."""
+
 from __future__ import annotations
 
 from app.services import skill_evidence
@@ -23,10 +24,12 @@ def test_empty_inputs_zero_consensus_zero_confidence():
 
 def test_single_skill_bullish_vote():
     snaps = {
-        "stock-analysis": _snap(actionable=[
-            {"symbol": "AAPL", "action": "BUY"},
-            {"symbol": "TSLA", "action": "HOLD"},
-        ]),
+        "stock-analysis": _snap(
+            actionable=[
+                {"symbol": "AAPL", "action": "BUY"},
+                {"symbol": "TSLA", "action": "HOLD"},
+            ]
+        ),
     }
     out = skill_evidence.build(snaps, ["AAPL", "TSLA"])
     assert out["AAPL"]["stock_analysis"] == 1
@@ -40,15 +43,21 @@ def test_single_skill_bullish_vote():
 
 def test_bearish_votes_aggregate():
     snaps = {
-        "stock-analysis": _snap(actionable=[
-            {"symbol": "MSFT", "action": "SELL"},
-        ]),
-        "tax-loss-review": _snap(actionable=[
-            {"symbol": "MSFT", "unrealized_loss_pct": -12},
-        ]),
-        "portfolio-health": _snap(actionable=[
-            {"symbol": "MSFT", "issues": ["drawdown"]},
-        ]),
+        "stock-analysis": _snap(
+            actionable=[
+                {"symbol": "MSFT", "action": "SELL"},
+            ]
+        ),
+        "tax-loss-review": _snap(
+            actionable=[
+                {"symbol": "MSFT", "unrealized_loss_pct": -12},
+            ]
+        ),
+        "portfolio-health": _snap(
+            actionable=[
+                {"symbol": "MSFT", "issues": ["drawdown"]},
+            ]
+        ),
     }
     out = skill_evidence.build(snaps, ["MSFT"])
     assert out["MSFT"]["stock_analysis"] == -1
@@ -61,9 +70,11 @@ def test_bearish_votes_aggregate():
 def test_missing_skill_does_not_count_as_negative():
     # Symbol has no opinion from any skill but cash-deployment ran successfully
     snaps = {
-        "cash-deployment": _snap(actionable=[
-            {"symbol": "NVDA", "allocation_cad": 1000},
-        ]),
+        "cash-deployment": _snap(
+            actionable=[
+                {"symbol": "NVDA", "allocation_cad": 1000},
+            ]
+        ),
     }
     out = skill_evidence.build(snaps, ["NVDA", "XEQT.TO"])
     # NVDA bullish
@@ -92,10 +103,12 @@ def test_error_status_skill_skipped():
 
 def test_dividend_unsustainable_is_bearish():
     snaps = {
-        "dividend-strategy": _snap(actionable=[
-            {"symbol": "T", "unsustainable": True},
-            {"symbol": "JNJ"},
-        ]),
+        "dividend-strategy": _snap(
+            actionable=[
+                {"symbol": "T", "unsustainable": True},
+                {"symbol": "JNJ"},
+            ]
+        ),
     }
     out = skill_evidence.build(snaps, ["T", "JNJ"])
     assert out["T"]["dividend"] == -1

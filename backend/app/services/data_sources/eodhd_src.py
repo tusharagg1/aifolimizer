@@ -36,11 +36,26 @@ def _eod_symbol(symbol: str) -> str:
 
 
 _SUFFIX_CCY = {
-    "US": "USD", "TO": "CAD", "V": "CAD", "CN": "CAD", "NEO": "CAD",
-    "L": "GBP", "LSE": "GBP",
-    "DE": "EUR", "PA": "EUR", "MI": "EUR", "AS": "EUR", "MC": "EUR",
-    "BR": "EUR", "LS": "EUR", "VI": "EUR", "HE": "EUR",
-    "SW": "CHF", "CO": "DKK", "OL": "NOK", "ST": "SEK",
+    "US": "USD",
+    "TO": "CAD",
+    "V": "CAD",
+    "CN": "CAD",
+    "NEO": "CAD",
+    "L": "GBP",
+    "LSE": "GBP",
+    "DE": "EUR",
+    "PA": "EUR",
+    "MI": "EUR",
+    "AS": "EUR",
+    "MC": "EUR",
+    "BR": "EUR",
+    "LS": "EUR",
+    "VI": "EUR",
+    "HE": "EUR",
+    "SW": "CHF",
+    "CO": "DKK",
+    "OL": "NOK",
+    "ST": "SEK",
 }
 
 
@@ -96,19 +111,25 @@ class EODHDSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if not self.is_configured():
             raise SourceUnavailable("eodhd: no key")
         if interval != "1d":
             raise SourceUnavailable("eodhd: daily only on free tier")
         sym = _eod_symbol(symbol)
         from datetime import date, timedelta
+
         days_map = {
-            "1mo": 31, "3mo": 93, "6mo": 186, "1y": 365,
-            "2y": 730, "3y": 1095, "5y": 1825, "10y": 3650,
-            "ytd": 365, "max": 365 * 30,
+            "1mo": 31,
+            "3mo": 93,
+            "6mo": 186,
+            "1y": 365,
+            "2y": 730,
+            "3y": 1095,
+            "5y": 1825,
+            "10y": 3650,
+            "ytd": 365,
+            "max": 365 * 30,
         }
         days = days_map.get(period, 365)
         start = (date.today() - timedelta(days=days)).isoformat()
@@ -132,21 +153,20 @@ class EODHDSource(DataSource):
         bars: list[PriceBar] = []
         for row in data:
             try:
-                bars.append(PriceBar(
-                    symbol=symbol,
-                    date=str(row.get("date") or "")[:10],
-                    open=float(row.get("open") or 0.0),
-                    high=float(row.get("high") or 0.0),
-                    low=float(row.get("low") or 0.0),
-                    close=float(row.get("close") or 0.0),
-                    volume=float(row.get("volume") or 0.0),
-                    adj_close=float(
-                        row.get("adjusted_close")
-                        or row.get("close") or 0.0
-                    ),
-                    source=self.name,
-                    as_of=time.time(),
-                ))
+                bars.append(
+                    PriceBar(
+                        symbol=symbol,
+                        date=str(row.get("date") or "")[:10],
+                        open=float(row.get("open") or 0.0),
+                        high=float(row.get("high") or 0.0),
+                        low=float(row.get("low") or 0.0),
+                        close=float(row.get("close") or 0.0),
+                        volume=float(row.get("volume") or 0.0),
+                        adj_close=float(row.get("adjusted_close") or row.get("close") or 0.0),
+                        source=self.name,
+                        as_of=time.time(),
+                    )
+                )
             except (TypeError, ValueError):
                 continue
         if not bars:

@@ -10,6 +10,7 @@ Measures:
 Run:
   .venv\\Scripts\\python -m pytest tests/test_signal_kpi.py -v
 """
+
 from __future__ import annotations
 
 import math
@@ -32,14 +33,24 @@ _POS = {
 }
 
 _BULL_TECH = {
-    "stage": 2, "minervini_score": 6, "rsi_14": 52.0,
-    "macd_hist": 0.4, "trend": "uptrend",
-    "sma_50": 88.0, "current_price": 100.0, "pct_from_52w_high": -5.0,
+    "stage": 2,
+    "minervini_score": 6,
+    "rsi_14": 52.0,
+    "macd_hist": 0.4,
+    "trend": "uptrend",
+    "sma_50": 88.0,
+    "current_price": 100.0,
+    "pct_from_52w_high": -5.0,
 }
 _BEAR_TECH = {
-    "stage": 4, "minervini_score": 1, "rsi_14": 78.0,
-    "macd_hist": -0.4, "trend": "downtrend",
-    "sma_50": 112.0, "current_price": 100.0, "pct_from_52w_high": -2.0,
+    "stage": 4,
+    "minervini_score": 1,
+    "rsi_14": 78.0,
+    "macd_hist": -0.4,
+    "trend": "downtrend",
+    "sma_50": 112.0,
+    "current_price": 100.0,
+    "pct_from_52w_high": -2.0,
 }
 _BULL_FUND = {
     "analyst_recommendation": "strong_buy",
@@ -59,6 +70,7 @@ _BEAR_MACRO = {"market_regime": "bear_high_fear", "vix": 36.0, "fear_greed_score
 
 
 # ── 1. EV Formula Accuracy ───────────────────────────────────────────────────
+
 
 class TestEVFormulaAccuracy:
     """Verify EV = win_prob × gain − (1−win_prob) × loss, half-Kelly sizing."""
@@ -94,12 +106,10 @@ class TestEVFormulaAccuracy:
 
     def test_ev_scales_linearly_with_position_size(self):
         rec_small = _score_position(
-            "T", {**_POS, "market_value_cad": 5_000.0},
-            _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4
+            "T", {**_POS, "market_value_cad": 5_000.0}, _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4
         )
         rec_large = _score_position(
-            "T", {**_POS, "market_value_cad": 10_000.0},
-            _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4
+            "T", {**_POS, "market_value_cad": 10_000.0}, _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4
         )
         if rec_small["ev_dollars"] and rec_large["ev_dollars"]:
             ratio = rec_large["ev_dollars"] / rec_small["ev_dollars"]
@@ -128,8 +138,7 @@ class TestEVFormulaAccuracy:
 
     def test_max_loss_matches_manual_calc(self):
         rec = _score_position("T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4)
-        if not (rec["max_loss_dollars"] and rec["kelly_pct"]
-                and rec["stop_loss"] and rec["current_price"]):
+        if not (rec["max_loss_dollars"] and rec["kelly_pct"] and rec["stop_loss"] and rec["current_price"]):
             pytest.skip("No max-loss output")
         stop_gap = (rec["current_price"] - rec["stop_loss"]) / rec["current_price"]
         manual_max_loss = round(10_000.0 * (rec["kelly_pct"] / 100) * stop_gap, 2)
@@ -146,6 +155,7 @@ class TestEVFormulaAccuracy:
 
 
 # ── 2. RSI Signal Quality ────────────────────────────────────────────────────
+
 
 class TestRSISignalQuality:
     """RSI<30 buy / RSI>70 sell signal: hit-rate on synthetic mean-reverting series."""
@@ -225,9 +235,7 @@ class TestRSISignalQuality:
             prices_list.append(p + theta * (mu - p) + sigma * rng.normal())
         prices = pd.Series(prices_list, dtype=float)
         rate = self._overbought_hit_rate(prices, fwd=10)
-        assert rate > 0.50, (
-            f"RSI>70 hit rate {rate:.1%} ≤ 50% on mean-reverting (sigma=5)"
-        )
+        assert rate > 0.50, f"RSI>70 hit rate {rate:.1%} ≤ 50% on mean-reverting (sigma=5)"
 
     def test_rsi_range_0_to_100(self):
         prices = self._make_mean_reverting(n=200)
@@ -239,7 +247,7 @@ class TestRSISignalQuality:
         # Small noise prevents all-zero loss EWM; persistent 1%/day → RSI stays high
         rng = np.random.default_rng(0)
         prices = pd.Series(
-            [100.0 * (1.01 ** i) + rng.normal(0, 0.05) for i in range(100)],
+            [100.0 * (1.01**i) + rng.normal(0, 0.05) for i in range(100)],
             dtype=float,
         )
         rsi = self._rsi(prices).dropna()
@@ -247,7 +255,7 @@ class TestRSISignalQuality:
         assert rsi.iloc[-10:].mean() > 70
 
     def test_rsi_extreme_downtrend_stays_oversold(self):
-        prices = pd.Series([100.0 * (0.99 ** i) for i in range(60)], dtype=float)
+        prices = pd.Series([100.0 * (0.99**i) for i in range(60)], dtype=float)
         rsi = self._rsi(prices).dropna()
         assert rsi.iloc[-10:].mean() < 30
 
@@ -257,12 +265,11 @@ class TestRSISignalQuality:
         rate_mr = self._oversold_hit_rate(mr, fwd=10)
         rate_tr = self._oversold_hit_rate(tr, fwd=10)
         # RSI mean-reversion signal should have higher hit rate on OU than GBM
-        assert rate_mr > rate_tr, (
-            f"OU hit rate {rate_mr:.1%} ≤ GBM {rate_tr:.1%} — RSI works better on mean-reverting"
-        )
+        assert rate_mr > rate_tr, f"OU hit rate {rate_mr:.1%} ≤ GBM {rate_tr:.1%} — RSI works better on mean-reverting"
 
 
 # ── 3. Recommendation Prediction Accuracy ────────────────────────────────────
+
 
 class TestRecommendationPredictionAccuracy:
     """Precision/recall-style KPI: given known signal environments,
@@ -281,7 +288,13 @@ class TestRecommendationPredictionAccuracy:
             (_BULL_TECH, {"analyst_recommendation": "buy", "analyst_target_price": 118.0}, _BULL_MACRO, 0.2, "bullish"),
             (_BEAR_TECH, _BEAR_FUND, _BEAR_MACRO, -0.5, "bearish"),
             (_BEAR_TECH, _BEAR_FUND, _BEAR_MACRO, -0.3, "bearish"),
-            (_BEAR_TECH, {"analyst_recommendation": "sell", "analyst_target_price": 78.0}, _BEAR_MACRO, -0.2, "bearish"),
+            (
+                _BEAR_TECH,
+                {"analyst_recommendation": "sell", "analyst_target_price": 78.0},
+                _BEAR_MACRO,
+                -0.2,
+                "bearish",
+            ),
         ]
 
     def test_directional_precision_100pct_on_unambiguous_setups(self):
@@ -304,9 +317,7 @@ class TestRecommendationPredictionAccuracy:
                 correct += 1 if action in ("SELL", "TRIM", "WATCH") else 0
         assert total > 0, "All scenarios returned NO_EDGE — gate may be too strict"
         precision = correct / total
-        assert precision == 1.0, (
-            f"Directional precision {precision:.0%} on unambiguous setups — expected 100%"
-        )
+        assert precision == 1.0, f"Directional precision {precision:.0%} on unambiguous setups — expected 100%"
 
     def test_high_confidence_calls_are_directionally_correct(self):
         """All high-confidence recs must match signal direction."""
@@ -327,28 +338,36 @@ class TestRecommendationPredictionAccuracy:
         ]
         for tech, fund, macro, sent in conflicting:
             rec = _score_position("T", _POS, tech, fund, macro, sent)
-            assert rec["confidence"] != "high", (
-                f"Conflicting signals produced high confidence: action={rec['action']}"
-            )
+            assert rec["confidence"] != "high", f"Conflicting signals produced high confidence: action={rec['action']}"
 
     def test_score_monotone_with_signal_strength(self):
         """More bullish signals → higher score. Test 4 increasing-bullish setups."""
         setups = [
             # Weakest bullish
-            ({"stage": 1, "rsi_14": 50.0, "macd_hist": 0.1, "trend": None,
-              "sma_50": 98.0, "current_price": 100.0},
-             {"analyst_recommendation": "hold"}, _BULL_MACRO, 0.0),
+            (
+                {"stage": 1, "rsi_14": 50.0, "macd_hist": 0.1, "trend": None, "sma_50": 98.0, "current_price": 100.0},
+                {"analyst_recommendation": "hold"},
+                _BULL_MACRO,
+                0.0,
+            ),
             # Mild bullish
-            ({"stage": 2, "rsi_14": 52.0, "macd_hist": 0.3, "trend": "uptrend",
-              "sma_50": 90.0, "current_price": 100.0},
-             {"analyst_recommendation": "hold"}, _BULL_MACRO, 0.1),
+            (
+                {
+                    "stage": 2,
+                    "rsi_14": 52.0,
+                    "macd_hist": 0.3,
+                    "trend": "uptrend",
+                    "sma_50": 90.0,
+                    "current_price": 100.0,
+                },
+                {"analyst_recommendation": "hold"},
+                _BULL_MACRO,
+                0.1,
+            ),
             # Strong bullish
-            ({**_BULL_TECH},
-             {"analyst_recommendation": "buy", "analyst_target_price": 120.0},
-             _BULL_MACRO, 0.3),
+            ({**_BULL_TECH}, {"analyst_recommendation": "buy", "analyst_target_price": 120.0}, _BULL_MACRO, 0.3),
             # Strongest bullish
-            ({**_BULL_TECH},
-             _BULL_FUND, _BULL_MACRO, 0.5),
+            ({**_BULL_TECH}, _BULL_FUND, _BULL_MACRO, 0.5),
         ]
         scores = []
         for tech, fund, macro, sent in setups:
@@ -357,19 +376,25 @@ class TestRecommendationPredictionAccuracy:
 
         for i in range(len(scores) - 1):
             assert scores[i] <= scores[i + 1], (
-                f"Score not monotone: setup[{i}]={scores[i]} > setup[{i+1}]={scores[i+1]}"
+                f"Score not monotone: setup[{i}]={scores[i]} > setup[{i + 1}]={scores[i + 1]}"
             )
 
     def test_bearish_score_monotone_with_signal_strength(self):
         setups = [
             # Weakest bearish
-            ({"stage": 3, "rsi_14": 60.0, "macd_hist": -0.1, "trend": None,
-              "sma_50": 102.0, "current_price": 100.0},
-             {"analyst_recommendation": "hold"}, _BEAR_MACRO, 0.0),
+            (
+                {"stage": 3, "rsi_14": 60.0, "macd_hist": -0.1, "trend": None, "sma_50": 102.0, "current_price": 100.0},
+                {"analyst_recommendation": "hold"},
+                _BEAR_MACRO,
+                0.0,
+            ),
             # Stronger bearish
-            ({**_BEAR_TECH, "rsi_14": 72.0},
-             {"analyst_recommendation": "sell", "analyst_target_price": 85.0},
-             _BEAR_MACRO, -0.2),
+            (
+                {**_BEAR_TECH, "rsi_14": 72.0},
+                {"analyst_recommendation": "sell", "analyst_target_price": 85.0},
+                _BEAR_MACRO,
+                -0.2,
+            ),
             # Strongest bearish
             (_BEAR_TECH, _BEAR_FUND, _BEAR_MACRO, -0.5),
         ]
@@ -380,11 +405,12 @@ class TestRecommendationPredictionAccuracy:
 
         for i in range(len(scores) - 1):
             assert scores[i] >= scores[i + 1], (
-                f"Score not monotone: setup[{i}]={scores[i]} < setup[{i+1}]={scores[i+1]}"
+                f"Score not monotone: setup[{i}]={scores[i]} < setup[{i + 1}]={scores[i + 1]}"
             )
 
 
 # ── 4. Multi-Factor Convergence Lift ─────────────────────────────────────────
+
 
 class TestConvergenceLift:
     """Verify multi-factor convergence gate raises confidence vs single-factor.
@@ -394,17 +420,19 @@ class TestConvergenceLift:
     """
 
     _NEUTRAL_TECH = {
-        "stage": None, "rsi_14": 50.0, "macd_hist": 0.0,
-        "trend": None, "sma_50": 100.0, "current_price": 100.0,
+        "stage": None,
+        "rsi_14": 50.0,
+        "macd_hist": 0.0,
+        "trend": None,
+        "sma_50": 100.0,
+        "current_price": 100.0,
     }
     _NEUTRAL_FUND = {"analyst_recommendation": "hold"}
     _NEUTRAL_MACRO = {"market_regime": "bull_low_fear", "vix": 18.0}
 
     def test_single_bullish_signal_not_high_confidence(self):
         # Only tech is bullish; fund and macro neutral
-        rec = _score_position(
-            "T", _POS, _BULL_TECH, self._NEUTRAL_FUND, self._NEUTRAL_MACRO, 0.0
-        )
+        rec = _score_position("T", _POS, _BULL_TECH, self._NEUTRAL_FUND, self._NEUTRAL_MACRO, 0.0)
         assert rec["confidence"] in ("low", "medium"), (
             f"Single bullish signal produced high confidence: {rec['confidence']}"
         )
@@ -415,9 +443,7 @@ class TestConvergenceLift:
         assert rec["confidence"] in ("high", "medium")
 
     def test_convergence_produces_stronger_action_than_single(self):
-        single = _score_position(
-            "T", _POS, _BULL_TECH, self._NEUTRAL_FUND, self._NEUTRAL_MACRO, 0.0
-        )
+        single = _score_position("T", _POS, _BULL_TECH, self._NEUTRAL_FUND, self._NEUTRAL_MACRO, 0.0)
         converged = _score_position("T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.5)
         assert converged["score"] > single["score"]
 
@@ -437,16 +463,13 @@ class TestConvergenceLift:
     def test_sentiment_contributes_to_convergence(self):
         strong_pos_sent = 0.8  # > 0.3 threshold → bullish direction
         zero_sent = 0.0
-        rec_sent = _score_position(
-            "T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, strong_pos_sent
-        )
-        rec_no_sent = _score_position(
-            "T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, zero_sent
-        )
+        rec_sent = _score_position("T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, strong_pos_sent)
+        rec_no_sent = _score_position("T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, zero_sent)
         assert rec_sent["score"] >= rec_no_sent["score"]
 
 
 # ── 5. Backtest Metrics vs Industry Benchmarks ───────────────────────────────
+
 
 class TestBacktestBenchmarks:
     """Validate backtest KPI values from known historical results.
@@ -459,6 +482,7 @@ class TestBacktestBenchmarks:
     def test_sharpe_above_1_is_mathematically_valid(self):
         # earnings_analyzer claimed Sharpe 1.47 — verify Sharpe can exceed 1
         from app.services.backtest import _sharpe
+
         # Simulate a high-Sharpe equity curve (consistent 0.15%/day return, small noise)
         rng = np.random.default_rng(0)
         returns = pd.Series(0.0015 + rng.normal(0, 0.005, 756))
@@ -467,6 +491,7 @@ class TestBacktestBenchmarks:
 
     def test_cagr_double_in_3yr_is_valid(self):
         from app.services.backtest import _cagr
+
         # 41% CAGR over 3yr claimed by earnings_analyzer
         # 3yr at 41% CAGR → end = 1.41^3 ≈ 2.80×
         cagr = _cagr(1.0, 2.80, 3 * 365)
@@ -474,6 +499,7 @@ class TestBacktestBenchmarks:
 
     def test_max_drawdown_worst_skill_bound(self):
         from app.services.backtest import _max_drawdown
+
         # tax_loss_review claimed -7.45% max DD (best risk-adjusted)
         # Construct equity curve that drops 7.5% from peak
         equity = pd.Series([1.0, 1.05, 1.10, 1.05, 1.02, 1.025, 1.03])
@@ -490,8 +516,9 @@ class TestBacktestBenchmarks:
     def test_tx_cost_drag_on_high_churn_is_measurable(self):
         """5 bps/leg × 2 legs × N trades. Verify fee drag scales with trade count."""
         from app.services.backtest import _run_buy_hold
+
         close = pd.Series(
-            [100.0 * (1.0005 ** i) for i in range(756)],
+            [100.0 * (1.0005**i) for i in range(756)],
             index=pd.date_range("2022-01-01", periods=756, freq="B"),
         )
         no_fee = _run_buy_hold(close, tx_cost_bps=0.0)

@@ -22,9 +22,7 @@ from app.security import get_logger
 
 _LOG = get_logger("aifolimizer.services.threshold_tuner")
 
-_OUT_FILE = (
-    Path(__file__).resolve().parents[2] / ".cache" / "signal_thresholds.json"
-)
+_OUT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "signal_thresholds.json"
 
 DEFAULT_BUY_THR = 7.5
 DEFAULT_SELL_BELOW = 3.5
@@ -71,9 +69,7 @@ def recalibrate(*, horizon: int = 21, min_count: int = 10) -> dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
     try:
-        report = signal_history.calibrate_signal_thresholds(
-            horizon=horizon, min_count=min_count
-        )
+        report = signal_history.calibrate_signal_thresholds(horizon=horizon, min_count=min_count)
     except Exception as e:
         return {"status": "error", "error": f"calibrate failed: {e}"}
 
@@ -102,15 +98,12 @@ def recalibrate(*, horizon: int = 21, min_count: int = 10) -> dict[str, Any]:
     sell_target = float(best.get("sell_below_thr") or sell_now)
 
     # Cap per-night movement so a single noisy run doesn't yank thresholds.
-    buy_new = max(
-        buy_now - MAX_STEP, min(buy_now + MAX_STEP, buy_target)
-    )
-    sell_new = max(
-        sell_now - MAX_STEP, min(sell_now + MAX_STEP, sell_target)
-    )
+    buy_new = max(buy_now - MAX_STEP, min(buy_now + MAX_STEP, buy_target))
+    sell_new = max(sell_now - MAX_STEP, min(sell_now + MAX_STEP, sell_target))
 
     _persist(
-        buy_new, sell_new,
+        buy_new,
+        sell_new,
         {
             "n_scored": n_scored,
             "from": {"buy_thr": buy_now, "sell_below_thr": sell_now},
@@ -121,7 +114,11 @@ def recalibrate(*, horizon: int = 21, min_count: int = 10) -> dict[str, Any]:
 
     _LOG.info(
         "threshold_tuner: %.2f→%.2f buy / %.2f→%.2f sell (n=%d, gain=%.2f%%)",
-        buy_now, buy_new, sell_now, sell_new, n_scored,
+        buy_now,
+        buy_new,
+        sell_now,
+        sell_new,
+        n_scored,
         (best_exp - current_exp) * 100,
     )
     return {

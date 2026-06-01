@@ -12,6 +12,7 @@ resolve() returns one trustworthy identity record per ticker plus a `valid`
 flag callers use to reject unknown symbols. It reads `.info` (works for ETFs)
 rather than the fundamentals endpoint.
 """
+
 from __future__ import annotations
 
 import time
@@ -41,9 +42,16 @@ def _asset_class(quote_type: str | None) -> str:
 
 def _unverified(req: str, reason: str) -> dict:
     return {
-        "symbol": req, "requested": req, "name": None, "quote_type": None,
-        "asset_class": "stock", "exchange": None, "currency": None,
-        "price": None, "valid": False, "reason": reason,
+        "symbol": req,
+        "requested": req,
+        "name": None,
+        "quote_type": None,
+        "asset_class": "stock",
+        "exchange": None,
+        "currency": None,
+        "price": None,
+        "valid": False,
+        "reason": reason,
     }
 
 
@@ -75,11 +83,7 @@ def resolve(symbol: str) -> dict:
     name = info.get("longName") or info.get("shortName")
     quote_type = info.get("quoteType")
     canonical = (info.get("symbol") or "").upper()
-    price = (
-        info.get("regularMarketPrice")
-        or info.get("currentPrice")
-        or info.get("previousClose")
-    )
+    price = info.get("regularMarketPrice") or info.get("currentPrice") or info.get("previousClose")
 
     # Yahoo returns an essentially empty info dict for unknown tickers.
     if not name and price is None and not canonical:

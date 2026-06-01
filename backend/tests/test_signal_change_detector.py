@@ -1,4 +1,5 @@
 """Unit tests for signal_change_detector (Phase 4)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -118,8 +119,8 @@ def test_multiple_symbols_handled():
     out = scd.detect_changes(
         prev,
         [
-            _sig("A", "BUY", 8.0, "high"),   # material flip
-            _sig("B", "BUY", 8.1, "high"),   # no change
+            _sig("A", "BUY", 8.0, "high"),  # material flip
+            _sig("B", "BUY", 8.1, "high"),  # no change
             _sig("C", "SELL", 2.0, "high"),  # new strong-action symbol
         ],
         _TS,

@@ -15,6 +15,7 @@ Adding a new skill agent:
   3. Register entry below with trigger + runner reference
   4. Scheduler picks it up on next tick — no scheduler.py edit needed
 """
+
 from __future__ import annotations
 
 import time
@@ -28,17 +29,17 @@ ModelPref = Literal["fast", "reasoning", "auto"]
 
 @dataclass
 class AgentSpec:
-    name: str                            # matches .claude/skills/<name>/SKILL.md
-    description: str                     # short for dashboard card
+    name: str  # matches .claude/skills/<name>/SKILL.md
+    description: str  # short for dashboard card
     trigger: TriggerType
-    runner_ref: str                      # "module.path:function" lazy-resolved
-    schedule: str | None = None          # cron expr (UTC) when trigger=cron
+    runner_ref: str  # "module.path:function" lazy-resolved
+    schedule: str | None = None  # cron expr (UTC) when trigger=cron
     event_types: list[str] = field(default_factory=list)  # when trigger=event
     model_pref: ModelPref = "fast"
-    auto_execute: bool = True            # False = propose only, user confirms
+    auto_execute: bool = True  # False = propose only, user confirms
     output_sinks: list[str] = field(default_factory=lambda: ["snapshot"])
-    horizon_days: int | None = None      # forward-scoring horizon for win-rate
-    category: str = "general"            # ui grouping: trading|portfolio|research|behavioral
+    horizon_days: int | None = None  # forward-scoring horizon for win-rate
+    category: str = "general"  # ui grouping: trading|portfolio|research|behavioral
 
 
 # ── In-memory operational state (per skill) ───────────────────────────────────
@@ -49,13 +50,16 @@ _RUNTIME_STATE: dict[str, dict[str, Any]] = {}
 
 
 def _state(name: str) -> dict[str, Any]:
-    return _RUNTIME_STATE.setdefault(name, {
-        "enabled": True,
-        "snoozed_until_ts": None,
-        "last_run_ts": None,
-        "last_run_status": None,
-        "manual_runs_count": 0,
-    })
+    return _RUNTIME_STATE.setdefault(
+        name,
+        {
+            "enabled": True,
+            "snoozed_until_ts": None,
+            "last_run_ts": None,
+            "last_run_status": None,
+            "manual_runs_count": 0,
+        },
+    )
 
 
 def mark_run(name: str, status: str) -> None:
@@ -115,7 +119,6 @@ REGISTRY: dict[str, AgentSpec] = {
         category="behavioral",
         horizon_days=7,
     ),
-
     # ─ Trading skills (event/intra-day) ─────────────────────────────────────
     "stock-analysis": AgentSpec(
         name="stock-analysis",
@@ -168,7 +171,6 @@ REGISTRY: dict[str, AgentSpec] = {
         category="trading",
         horizon_days=14,
     ),
-
     # ─ Portfolio health (cron) ───────────────────────────────────────────────
     "daily-briefing": AgentSpec(
         name="daily-briefing",
@@ -210,7 +212,6 @@ REGISTRY: dict[str, AgentSpec] = {
         category="portfolio",
         horizon_days=30,
     ),
-
     # ─ Wealth-building (monthly) ────────────────────────────────────────────
     "auto-rebalance": AgentSpec(
         name="auto-rebalance",
@@ -262,18 +263,20 @@ def list_agents() -> list[dict[str, Any]]:
     out = []
     for spec in REGISTRY.values():
         state = runtime_state(spec.name)
-        out.append({
-            "name": spec.name,
-            "description": spec.description,
-            "trigger": spec.trigger,
-            "schedule": spec.schedule,
-            "event_types": spec.event_types,
-            "model_pref": spec.model_pref,
-            "auto_execute": spec.auto_execute,
-            "category": spec.category,
-            "horizon_days": spec.horizon_days,
-            **state,
-        })
+        out.append(
+            {
+                "name": spec.name,
+                "description": spec.description,
+                "trigger": spec.trigger,
+                "schedule": spec.schedule,
+                "event_types": spec.event_types,
+                "model_pref": spec.model_pref,
+                "auto_execute": spec.auto_execute,
+                "category": spec.category,
+                "horizon_days": spec.horizon_days,
+                **state,
+            }
+        )
     return out
 
 
@@ -298,13 +301,11 @@ def cron_agents() -> list[AgentSpec]:
 
 
 def event_agents_for(event_type: str) -> list[AgentSpec]:
-    return [
-        s for s in REGISTRY.values()
-        if s.trigger == "event" and event_type in s.event_types
-    ]
+    return [s for s in REGISTRY.values() if s.trigger == "event" and event_type in s.event_types]
 
 
 # ── Cron-due check (minimal cron parser — supports 5-field standard) ─────────
+
 
 def _cron_field_match(field: str, value: int) -> bool:
     """Match one cron field against an int. Supports: *, N, A-B, A,B,C, */N."""
@@ -353,7 +354,4 @@ def is_cron_due(schedule: str, now: datetime | None = None) -> bool:
 
 def cron_due_agents(now: datetime | None = None) -> list[AgentSpec]:
     """Cron agents whose schedule matches current minute AND are active."""
-    return [
-        s for s in cron_agents()
-        if is_cron_due(s.schedule or "", now) and is_active(s.name)
-    ]
+    return [s for s in cron_agents() if is_cron_due(s.schedule or "", now) and is_active(s.name)]

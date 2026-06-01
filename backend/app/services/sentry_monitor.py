@@ -5,6 +5,7 @@ counts, last-seen, stack frames. Used by:
   - MCP tool (`get_sentry_issues`) for Claude-on-demand triage
   - Scheduled RQ job (`sentry_digest`) for hourly passive monitoring
 """
+
 from __future__ import annotations
 
 import logging

@@ -7,6 +7,7 @@ LLM calls + Redis + Postgres are mocked. Tests verify:
   - Snapshot persistence path
   - Threshold edge cases
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +20,7 @@ from app.services import event_dispatcher as ed
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def _reset_local_dedup():
@@ -49,15 +51,21 @@ def _stub_skill_runners(monkeypatch):
         async def _stub(*args, **kwargs):
             calls.append((skill_name, args, kwargs))
             return {
-                "skill": skill_name, "status": "ok",
+                "skill": skill_name,
+                "status": "ok",
                 "computed_at": datetime.now(tz=timezone.utc),
                 "expires_at": datetime.now(tz=timezone.utc),
-                "ttl_minutes": 60, "summary": {}, "actionable": [],
-                "alerts": [], "key_insights": [],
+                "ttl_minutes": 60,
+                "summary": {},
+                "actionable": [],
+                "alerts": [],
+                "key_insights": [],
             }
+
         return _stub
 
     from app.services import skill_llm_runner as slr
+
     monkeypatch.setattr(slr, "run_macro_impact", _make_stub("macro-impact"))
     monkeypatch.setattr(slr, "run_risk_assessment", _make_stub("risk-assessment"))
     monkeypatch.setattr(slr, "run_portfolio_health", _make_stub("portfolio-health"))
@@ -66,6 +74,7 @@ def _stub_skill_runners(monkeypatch):
 
     async def _persist_stub(thash, snapshot):
         calls.append(("__persist__", (thash, snapshot["skill"]), {}))
+
     monkeypatch.setattr(ed, "_persist", _persist_stub)
     monkeypatch.setattr(ed, "_push_telegram", lambda *a, **k: None)
     return calls
@@ -73,11 +82,18 @@ def _stub_skill_runners(monkeypatch):
 
 # ── regime flip ─────────────────────────────────────────────────────────────
 
+
 def _regime(composite, trend="up", vol="low", macro="risk_on"):
     return types.SimpleNamespace(
-        composite=composite, trend=trend, volatility=vol, macro=macro,
-        vix=15.0, spy_vs_sma200_pct=5.0,
-        ten_y_yield=4.0, fed_funds=4.5, confidence=0.8,
+        composite=composite,
+        trend=trend,
+        volatility=vol,
+        macro=macro,
+        vix=15.0,
+        spy_vs_sma200_pct=5.0,
+        ten_y_yield=4.0,
+        fed_funds=4.5,
+        confidence=0.8,
     )
 
 
@@ -119,6 +135,7 @@ def test_regime_flip_dedup_same_day(_no_redis, _stub_skill_runners):
 
 # ── earnings surprise ───────────────────────────────────────────────────────
 
+
 def test_earnings_surprise_dispatches_above_threshold(_no_redis, _stub_skill_runners):
     result = asyncio.run(
         ed.on_earnings_surprise("th_abc", "NVDA", 12.5),
@@ -148,6 +165,7 @@ def test_earnings_surprise_dedup(_no_redis, _stub_skill_runners):
 
 
 # ── drawdown breach ─────────────────────────────────────────────────────────
+
 
 def test_drawdown_breach_dispatches_to_halt(_no_redis, _stub_skill_runners):
     result = asyncio.run(
@@ -181,6 +199,7 @@ def test_drawdown_breach_skips_when_status_unchanged(_no_redis, _stub_skill_runn
 
 
 # ── crowding flip ───────────────────────────────────────────────────────────
+
 
 def test_crowding_flip_dispatches_above_delta(_no_redis, _stub_skill_runners):
     result = asyncio.run(

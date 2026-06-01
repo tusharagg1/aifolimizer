@@ -10,6 +10,7 @@ Each agent in agent_registry.py exposes:
 
 Reads last-run state from registry + skill_snapshots for output payload.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -128,7 +129,8 @@ async def force_run(
 
 @router.post("/{name}/enable")
 async def enable_agent(
-    name: str, enabled: bool = Query(True),
+    name: str,
+    enabled: bool = Query(True),
 ) -> dict[str, Any]:
     if ar.get_agent(name) is None:
         raise HTTPException(404, f"unknown agent: {name}")
@@ -165,6 +167,7 @@ async def recent_events(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
     """
     try:
         from app.services import event_dispatcher
+
         events = getattr(event_dispatcher, "recent_events", None)
         if callable(events):
             return {"events": events(limit=limit)}
@@ -184,21 +187,14 @@ async def dashboard_summary(request: Request) -> dict[str, Any]:
     return {
         "total": len(agents),
         "enabled": sum(1 for a in agents if a.get("enabled")),
-        "snoozed": sum(
-            1 for a in agents
-            if a.get("snoozed_until_ts") and a["snoozed_until_ts"] > now
-        ),
-        "ran_last_24h": sum(
-            1 for a in agents
-            if a.get("last_run_ts") and (now - a["last_run_ts"]) < 86400
-        ),
+        "snoozed": sum(1 for a in agents if a.get("snoozed_until_ts") and a["snoozed_until_ts"] > now),
+        "ran_last_24h": sum(1 for a in agents if a.get("last_run_ts") and (now - a["last_run_ts"]) < 86400),
         "by_trigger": {
             "cron": sum(1 for a in agents if a.get("trigger") == "cron"),
             "event": sum(1 for a in agents if a.get("trigger") == "event"),
             "manual": sum(1 for a in agents if a.get("trigger") == "manual"),
         },
         "by_category": {
-            cat: sum(1 for a in agents if a.get("category") == cat)
-            for cat in {a.get("category") for a in agents}
+            cat: sum(1 for a in agents if a.get("category") == cat) for cat in {a.get("category") for a in agents}
         },
     }

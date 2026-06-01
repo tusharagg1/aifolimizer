@@ -12,6 +12,7 @@ Rules:
   - Output schema matches codified skills (summary / actionable / alerts /
     key_insights) so skill_evidence._MAPPERS picks them up identically.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,7 +61,8 @@ def _snapshot(
 
 
 _THINK_TAG_RE = __import__("re").compile(
-    r"<think>.*?</think>", __import__("re").DOTALL | __import__("re").IGNORECASE,
+    r"<think>.*?</think>",
+    __import__("re").DOTALL | __import__("re").IGNORECASE,
 )
 
 
@@ -82,7 +84,7 @@ def _parse_json_safe(text: str | None) -> dict | None:
         end = text.rfind("}")
         if start >= 0 and end > start:
             try:
-                return json.loads(text[start:end + 1])
+                return json.loads(text[start : end + 1])
             except json.JSONDecodeError:
                 return None
         return None
@@ -106,7 +108,10 @@ def _providers_available() -> bool:
 
 
 async def _call_llm_json(
-    prompt: str, system: str, *, task: str | None = None,
+    prompt: str,
+    system: str,
+    *,
+    task: str | None = None,
 ) -> dict | None:
     """Best-effort: call first available provider, parse JSON, return dict.
 
@@ -121,8 +126,12 @@ async def _call_llm_json(
     for provider in llm_router._available_providers():
         try:
             text = await llm_router._call_provider(
-                provider, prompt, system=system,
-                max_tokens=max_tok, temperature=0.3, task=task,
+                provider,
+                prompt,
+                system=system,
+                max_tokens=max_tok,
+                temperature=0.3,
+                task=task,
             )
             data = _parse_json_safe(text)
             if data is not None:
@@ -130,7 +139,9 @@ async def _call_llm_json(
                 return data
         except Exception as e:
             log.warning(
-                "llm provider %s failed: %s", provider["name"], e,
+                "llm provider %s failed: %s",
+                provider["name"],
+                e,
             )
             llm_router._record_error(provider["name"])
     return None
@@ -141,60 +152,60 @@ async def _call_llm_json(
 _ADV_SYSTEM = (
     "You are a balanced equity research analyst. For the given ticker, "
     "produce JSON with these exact keys: "
-    "{\"verdict\":\"buy|hold|sell\","
-    "\"conviction\":\"low|medium|high\","
-    "\"bull_thesis\":\"<one sentence>\","
-    "\"bear_thesis\":\"<one sentence>\","
-    "\"key_risk\":\"<one sentence>\","
-    "\"price_target\":<float or null>,"
-    "\"stop\":<float or null>,"
-    "\"bull_invalidation\":\"<exact condition that kills bull thesis>\"}. "
+    '{"verdict":"buy|hold|sell",'
+    '"conviction":"low|medium|high",'
+    '"bull_thesis":"<one sentence>",'
+    '"bear_thesis":"<one sentence>",'
+    '"key_risk":"<one sentence>",'
+    '"price_target":<float or null>,'
+    '"stop":<float or null>,'
+    '"bull_invalidation":"<exact condition that kills bull thesis>"}. '
     "price_target and stop must be numeric when price is provided. "
     "No prose outside the JSON object."
 )
 
 _EARN_SYSTEM = (
     "You are an earnings post-mortem analyst. Given a ticker that just "
-    "reported, produce JSON {\"verdict\":\"beat|miss|in_line\","
-    "\"thesis_change\":\"confirmed|weakened|broken\","
-    "\"action\":\"hold|add|trim|exit\",\"reason\":\"...\"}. No prose "
+    'reported, produce JSON {"verdict":"beat|miss|in_line",'
+    '"thesis_change":"confirmed|weakened|broken",'
+    '"action":"hold|add|trim|exit","reason":"..."}. No prose '
     "outside the JSON object."
 )
 
 _COMP_SYSTEM = (
     "You are a head-to-head equity analyst. Given two tickers, produce "
-    "JSON {\"winner\":\"<ticker>\",\"reason\":\"...\","
-    "\"loser_action\":\"hold|trim|exit\"}. No prose outside the JSON object."
+    'JSON {"winner":"<ticker>","reason":"...",'
+    '"loser_action":"hold|trim|exit"}. No prose outside the JSON object.'
 )
 
 _RISK_SYSTEM = (
     "You are a Bridgewater-style portfolio risk analyst. Given a portfolio "
-    "snapshot, produce JSON {\"risk_level\":\"low|moderate|elevated|high\","
-    "\"top_risk\":\"concentration|drawdown|correlation|macro|liquidity\","
-    "\"action\":\"hold|reduce|hedge|rebalance\",\"reason\":\"...\"}. "
+    'snapshot, produce JSON {"risk_level":"low|moderate|elevated|high",'
+    '"top_risk":"concentration|drawdown|correlation|macro|liquidity",'
+    '"action":"hold|reduce|hedge|rebalance","reason":"..."}. '
     "No prose outside the JSON object."
 )
 
 _HEALTH_SYSTEM = (
     "You are a BlackRock portfolio health analyst. Given allocation + "
-    "concentration data, produce JSON {\"health\":\"healthy|attention|"
-    "unhealthy\",\"top_issue\":\"concentration|sector_skew|cash_drag|"
-    "duplication|none\",\"action\":\"hold|rebalance|trim_top|add_diversifier\","
-    "\"reason\":\"...\"}. No prose outside the JSON object."
+    'concentration data, produce JSON {"health":"healthy|attention|'
+    'unhealthy","top_issue":"concentration|sector_skew|cash_drag|'
+    'duplication|none","action":"hold|rebalance|trim_top|add_diversifier",'
+    '"reason":"..."}. No prose outside the JSON object.'
 )
 
 _MACRO_SYSTEM = (
     "You are a McKinsey macro strategist. Given macro indicators "
-    "(rates, inflation, FX, regime), produce JSON {\"regime\":\"risk_on|"
-    "risk_off|stagflation|recovery|late_cycle\",\"posture\":\"offense|"
-    "neutral|defense\",\"action\":\"hold|rotate_defensive|rotate_growth|"
-    "raise_cash\",\"reason\":\"...\"}. No prose outside the JSON object."
+    '(rates, inflation, FX, regime), produce JSON {"regime":"risk_on|'
+    'risk_off|stagflation|recovery|late_cycle","posture":"offense|'
+    'neutral|defense","action":"hold|rotate_defensive|rotate_growth|'
+    'raise_cash","reason":"..."}. No prose outside the JSON object.'
 )
 
 _BRIEFING_SYSTEM = (
     "You are a CIO writing a 1-paragraph morning briefing. Given portfolio + "
-    "regime + alerts, produce JSON {\"headline\":\"...\",\"top_concern\":"
-    "\"...\",\"top_opportunity\":\"...\",\"action_today\":\"...\"}. "
+    'regime + alerts, produce JSON {"headline":"...","top_concern":'
+    '"...","top_opportunity":"...","action_today":"..."}. '
     "Be specific, cite numbers. No prose outside the JSON object."
 )
 
@@ -202,10 +213,10 @@ _PRE_TRADE_SYSTEM = (
     "You are a brutally disciplined trading-desk risk officer. Given a trade "
     "intent, run the pre-trade-check gates: FOMO-rip, crowding, sizing, stop "
     "discipline, concentration, stage, re-entry. Produce JSON "
-    "{\"verdict\":\"PASS|REJECT\",\"reason\":\"<one line>\",\"failed_gates\":"
-    "[...],\"warnings\":[...],\"suggested_entry\":<float>,\"suggested_stop\":"
-    "<float>,\"position_pct_of_nav\":<float>,"
-    "\"max_loss_pct_of_nav\":<float>}. "
+    '{"verdict":"PASS|REJECT","reason":"<one line>","failed_gates":'
+    '[...],"warnings":[...],"suggested_entry":<float>,"suggested_stop":'
+    '<float>,"position_pct_of_nav":<float>,'
+    '"max_loss_pct_of_nav":<float>}. '
     "Size is given in % of NAV only — never request or quote dollar amounts. "
     "Never recommend size > 5% of NAV. "
     "Never recommend re-entry on a stop-hit ticker without explicit new "
@@ -214,10 +225,10 @@ _PRE_TRADE_SYSTEM = (
 
 _WEEKLY_MIRROR_SYSTEM = (
     "You are a cold honest performance auditor. Given a week of trading + "
-    "portfolio state, produce JSON {\"verdict\":\"CONTINUE|COOL_OFF|SUSPEND\","
-    "\"reason\":\"<one line>\",\"win_rate_30d\":<float>,\"r_multiple_30d\":"
-    "<float>,\"trading_vs_core_diff_pct\":<float>,\"top_pattern\":\"...\","
-    "\"next_actions\":[\"<bullet>\",...]}. Verdict thresholds: CONTINUE if "
+    'portfolio state, produce JSON {"verdict":"CONTINUE|COOL_OFF|SUSPEND",'
+    '"reason":"<one line>","win_rate_30d":<float>,"r_multiple_30d":'
+    '<float>,"trading_vs_core_diff_pct":<float>,"top_pattern":"...",'
+    '"next_actions":["<bullet>",...]}. Verdict thresholds: CONTINUE if '
     "win_rate_30d>=50 AND r_multiple>=1.5; SUSPEND if win_rate<40 OR "
     "r_multiple<1.0; else COOL_OFF. All P&L figures are in % of NAV; never "
     "request or quote dollar amounts. No hedging. No prose outside JSON."
@@ -225,10 +236,10 @@ _WEEKLY_MIRROR_SYSTEM = (
 
 _REBALANCE_SYSTEM = (
     "You are a wealth-management rebalancer. Given target allocation, current "
-    "weights, and per-account cash %, produce JSON {\"deployment\":[{\"ticker\":"
-    "\"...\",\"account_label\":\"...\",\"pct_of_nav\":<float>,\"action\":"
-    "\"BUY|TRIM\"},...],\"drift_summary\":\"...\",\"cash_remaining_pct\":<float>,"
-    "\"next_review_days\":<int>}. All sizing in % of NAV — never request or "
+    'weights, and per-account cash %, produce JSON {"deployment":[{"ticker":'
+    '"...","account_label":"...","pct_of_nav":<float>,"action":'
+    '"BUY|TRIM"},...],"drift_summary":"...","cash_remaining_pct":<float>,'
+    '"next_review_days":<int>}. All sizing in % of NAV — never request or '
     "quote dollar amounts. Never recommend selling a core holding "
     "unless drift > 15pp above target. Rebalance via new cash by default. "
     "No prose outside the JSON object."
@@ -255,7 +266,9 @@ def _adv_prompt(ticker: str, context: dict) -> str:
     if context.get("crowding_score"):
         lines.append(f"Crowding score: {context['crowding_score']}")
     if context.get("reflection"):
-        lines.append(f"\n## Prior Calls on {ticker}\n{context['reflection']}\nLearn from these. Don't repeat losing patterns.")
+        lines.append(
+            f"\n## Prior Calls on {ticker}\n{context['reflection']}\nLearn from these. Don't repeat losing patterns."
+        )
     lines.append("Produce the JSON verdict object now.")
     return "\n".join(lines)
 
@@ -270,10 +283,7 @@ def _earn_prompt(ticker: str, context: dict) -> str:
 
 
 def _comp_prompt(a: str, b: str) -> str:
-    return (
-        f"Ticker A: {a}\nTicker B: {b}\n"
-        "Pick the winner for a 6-12 month hold. Produce the JSON object now."
-    )
+    return f"Ticker A: {a}\nTicker B: {b}\nPick the winner for a 6-12 month hold. Produce the JSON object now."
 
 
 def _risk_prompt(ctx: dict) -> str:
@@ -335,14 +345,17 @@ def _briefing_prompt(ctx: dict) -> str:
 
 # ── Public skill runners ───────────────────────────────────────────────────
 
+
 async def run_adversarial_research(
-    ticker: str, context: dict | None = None,
+    ticker: str,
+    context: dict | None = None,
 ) -> dict[str, Any]:
     """Bull/bear thesis + verdict for one ticker."""
     if not _providers_available():
         return _snapshot(
             "adversarial-research",
-            status="error", error="no_llm_provider",
+            status="error",
+            error="no_llm_provider",
         )
     enriched = dict(context or {})
     # Inject prior decisions on this ticker + portfolio-wide lessons so the
@@ -352,6 +365,7 @@ async def run_adversarial_research(
     if not enriched.get("reflection"):
         try:
             from app.services import decision_memory
+
             history = decision_memory.get_ticker_history(ticker, 5)
             cross = decision_memory.get_cross_ticker_lessons(3)
             chunks: list[str] = []
@@ -360,41 +374,41 @@ async def run_adversarial_research(
                 ref = h.get("reflection") or ""
                 date = (h.get("created_utc") or "")[:10]
                 action = h.get("action", "")
-                chunks.append(
-                    f"- {date} {action} → {outcome}: {ref}".strip()
-                )
+                chunks.append(f"- {date} {action} → {outcome}: {ref}".strip())
             for c in cross:
                 outcome = c.get("outcome", "?")
                 ticker_c = c.get("ticker", "?")
                 ref = c.get("reflection") or ""
-                chunks.append(
-                    f"- portfolio-lesson {ticker_c} → {outcome}: {ref}"
-                )
+                chunks.append(f"- portfolio-lesson {ticker_c} → {outcome}: {ref}")
             if chunks:
                 enriched["reflection"] = "\n".join(chunks)
         except Exception as e:
             log.debug("decision_memory injection skipped: %s", e)
     data = await _call_llm_json(
-        _adv_prompt(ticker, enriched), _ADV_SYSTEM,
+        _adv_prompt(ticker, enriched),
+        _ADV_SYSTEM,
         task="adversarial",
     )
     if data is None:
         return _snapshot(
             "adversarial-research",
-            status="error", error="llm_no_response",
+            status="error",
+            error="llm_no_response",
         )
     verdict = (data.get("verdict") or "hold").lower()
     conviction = (data.get("conviction") or "medium").lower()
     action = {"buy": "BUY", "sell": "SELL"}.get(verdict, "HOLD")
-    actionable = [{
-        "symbol": ticker,
-        "action": action,
-        "conviction": conviction,
-        "reason": data.get("bull_thesis") or data.get("reason", ""),
-        "price_target": data.get("price_target"),
-        "stop": data.get("stop"),
-        "bull_invalidation": data.get("bull_invalidation"),
-    }]
+    actionable = [
+        {
+            "symbol": ticker,
+            "action": action,
+            "conviction": conviction,
+            "reason": data.get("bull_thesis") or data.get("reason", ""),
+            "price_target": data.get("price_target"),
+            "stop": data.get("stop"),
+            "bull_invalidation": data.get("bull_invalidation"),
+        }
+    ]
     insights = [
         f"{ticker} verdict: {verdict} ({conviction} conviction)",
         f"Risk: {data.get('key_risk', '—')}",
@@ -414,43 +428,48 @@ async def run_adversarial_research(
             "bear_thesis": data.get("bear_thesis"),
         },
         actionable=actionable,
-        alerts=([{"level": "warn", "symbol": ticker,
-                  "message": data.get("key_risk") or ""}]
-                if data.get("key_risk") else []),
+        alerts=(
+            [{"level": "warn", "symbol": ticker, "message": data.get("key_risk") or ""}] if data.get("key_risk") else []
+        ),
         key_insights=insights,
     )
 
 
 async def run_earnings_postmortem(
-    ticker: str, context: dict | None = None,
+    ticker: str,
+    context: dict | None = None,
 ) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
             "earnings-postmortem",
-            status="error", error="no_llm_provider",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _earn_prompt(ticker, context or {}), _EARN_SYSTEM,
+        _earn_prompt(ticker, context or {}),
+        _EARN_SYSTEM,
         task="earnings_pm",
     )
     if data is None:
         return _snapshot(
             "earnings-postmortem",
-            status="error", error="llm_no_response",
+            status="error",
+            error="llm_no_response",
         )
     action_raw = (data.get("action") or "hold").lower()
     return _snapshot(
         "earnings-postmortem",
         summary={"verdicts": {ticker: data.get("verdict", "in_line")}},
-        actionable=[{
-            "symbol": ticker,
-            "recommendation": action_raw,
-            "thesis_change": data.get("thesis_change"),
-            "reason": data.get("reason", ""),
-        }],
+        actionable=[
+            {
+                "symbol": ticker,
+                "recommendation": action_raw,
+                "thesis_change": data.get("thesis_change"),
+                "reason": data.get("reason", ""),
+            }
+        ],
         key_insights=[
-            f"{ticker}: {data.get('verdict')} → thesis "
-            f"{data.get('thesis_change')} → {action_raw}",
+            f"{ticker}: {data.get('verdict')} → thesis {data.get('thesis_change')} → {action_raw}",
         ],
     )
 
@@ -459,15 +478,19 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
             "stock-compare",
-            status="error", error="no_llm_provider",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _comp_prompt(a, b), _COMP_SYSTEM, task="stock_compare",
+        _comp_prompt(a, b),
+        _COMP_SYSTEM,
+        task="stock_compare",
     )
     if data is None:
         return _snapshot(
             "stock-compare",
-            status="error", error="llm_no_response",
+            status="error",
+            error="llm_no_response",
         )
     winner = data.get("winner") or a
     loser = b if winner == a else a
@@ -476,11 +499,8 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
         "stock-compare",
         summary={"winner": winner, "loser": loser},
         actionable=[
-            {"symbol": winner, "action": "BUY",
-             "reason": data.get("reason", "")},
-            {"symbol": loser,
-             "recommendation": loser_act,
-             "reason": "loses comparison"},
+            {"symbol": winner, "action": "BUY", "reason": data.get("reason", "")},
+            {"symbol": loser, "recommendation": loser_act, "reason": "loses comparison"},
         ],
         key_insights=[f"{winner} > {loser}: {data.get('reason', '—')}"],
     )
@@ -489,27 +509,36 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
 async def run_risk_assessment(context: dict | None = None) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
-            "risk-assessment", status="error", error="no_llm_provider",
+            "risk-assessment",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _risk_prompt(context or {}), _RISK_SYSTEM, task="risk_assess",
+        _risk_prompt(context or {}),
+        _RISK_SYSTEM,
+        task="risk_assess",
     )
     if data is None:
         return _snapshot(
-            "risk-assessment", status="error", error="llm_no_response",
+            "risk-assessment",
+            status="error",
+            error="llm_no_response",
         )
     level = (data.get("risk_level") or "moderate").lower()
     action = (data.get("action") or "hold").lower()
     return _snapshot(
         "risk-assessment",
         summary={"risk_level": level, "top_risk": data.get("top_risk")},
-        actionable=[{
-            "recommendation": action, "reason": data.get("reason", ""),
-        }],
+        actionable=[
+            {
+                "recommendation": action,
+                "reason": data.get("reason", ""),
+            }
+        ],
         alerts=(
-            [{"level": "warn" if level in ("elevated", "high") else "info",
-              "message": f"Risk level: {level}"}]
-            if level != "low" else []
+            [{"level": "warn" if level in ("elevated", "high") else "info", "message": f"Risk level: {level}"}]
+            if level != "low"
+            else []
         ),
         key_insights=[
             f"Risk: {level} — top concern: {data.get('top_risk', '—')}",
@@ -521,28 +550,33 @@ async def run_risk_assessment(context: dict | None = None) -> dict[str, Any]:
 async def run_portfolio_health(context: dict | None = None) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
-            "portfolio-health", status="error", error="no_llm_provider",
+            "portfolio-health",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _health_prompt(context or {}), _HEALTH_SYSTEM,
+        _health_prompt(context or {}),
+        _HEALTH_SYSTEM,
         task="portfolio_health",
     )
     if data is None:
         return _snapshot(
-            "portfolio-health", status="error", error="llm_no_response",
+            "portfolio-health",
+            status="error",
+            error="llm_no_response",
         )
     health = (data.get("health") or "attention").lower()
     action = (data.get("action") or "hold").lower()
     return _snapshot(
         "portfolio-health",
         summary={"health": health, "top_issue": data.get("top_issue")},
-        actionable=[{
-            "recommendation": action, "reason": data.get("reason", ""),
-        }],
-        alerts=(
-            [{"level": "warn", "message": f"Health: {health}"}]
-            if health == "unhealthy" else []
-        ),
+        actionable=[
+            {
+                "recommendation": action,
+                "reason": data.get("reason", ""),
+            }
+        ],
+        alerts=([{"level": "warn", "message": f"Health: {health}"}] if health == "unhealthy" else []),
         key_insights=[
             f"Health: {health} — issue: {data.get('top_issue', '—')}",
             f"Action: {action} — {data.get('reason', '—')}",
@@ -553,14 +587,20 @@ async def run_portfolio_health(context: dict | None = None) -> dict[str, Any]:
 async def run_macro_impact(context: dict | None = None) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
-            "macro-impact", status="error", error="no_llm_provider",
+            "macro-impact",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _macro_prompt(context or {}), _MACRO_SYSTEM, task="macro_impact",
+        _macro_prompt(context or {}),
+        _MACRO_SYSTEM,
+        task="macro_impact",
     )
     if data is None:
         return _snapshot(
-            "macro-impact", status="error", error="llm_no_response",
+            "macro-impact",
+            status="error",
+            error="llm_no_response",
         )
     regime = (data.get("regime") or "neutral").lower()
     posture = (data.get("posture") or "neutral").lower()
@@ -568,9 +608,12 @@ async def run_macro_impact(context: dict | None = None) -> dict[str, Any]:
     return _snapshot(
         "macro-impact",
         summary={"regime": regime, "posture": posture},
-        actionable=[{
-            "recommendation": action, "reason": data.get("reason", ""),
-        }],
+        actionable=[
+            {
+                "recommendation": action,
+                "reason": data.get("reason", ""),
+            }
+        ],
         key_insights=[
             f"Regime: {regime} — posture: {posture}",
             f"Action: {action} — {data.get('reason', '—')}",
@@ -581,15 +624,20 @@ async def run_macro_impact(context: dict | None = None) -> dict[str, Any]:
 async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
     if not _providers_available():
         return _snapshot(
-            "daily-briefing", status="error", error="no_llm_provider",
+            "daily-briefing",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _briefing_prompt(context or {}), _BRIEFING_SYSTEM,
+        _briefing_prompt(context or {}),
+        _BRIEFING_SYSTEM,
         task="daily_briefing",
     )
     if data is None:
         return _snapshot(
-            "daily-briefing", status="error", error="llm_no_response",
+            "daily-briefing",
+            status="error",
+            error="llm_no_response",
         )
     return _snapshot(
         "daily-briefing",
@@ -598,10 +646,12 @@ async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
             "top_concern": data.get("top_concern", ""),
             "top_opportunity": data.get("top_opportunity", ""),
         },
-        actionable=[{
-            "recommendation": data.get("action_today", "hold"),
-            "reason": data.get("headline", ""),
-        }],
+        actionable=[
+            {
+                "recommendation": data.get("action_today", "hold"),
+                "reason": data.get("headline", ""),
+            }
+        ],
         key_insights=[
             data.get("headline", ""),
             f"Concern: {data.get('top_concern', '—')}",
@@ -645,7 +695,8 @@ def _pre_trade_prompt(ctx: dict) -> str:
             f"\n## Prior Calls on {ctx.get('ticker', 'this ticker')}\n"
             f"{ctx['reflection']}\n"
             f"Factor this track record into your discipline gates.\n"
-            if ctx.get("reflection") else ""
+            if ctx.get("reflection")
+            else ""
         )
         + "Run the pre-trade-check gates. Produce the JSON verdict now."
     )
@@ -692,15 +743,20 @@ async def run_pre_trade_check(context: dict | None = None) -> dict[str, Any]:
     """Discipline gate before any discretionary entry. Returns PASS/REJECT."""
     if not _providers_available():
         return _snapshot(
-            "pre-trade-check", status="error", error="no_llm_provider",
+            "pre-trade-check",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _pre_trade_prompt(context or {}), _PRE_TRADE_SYSTEM,
+        _pre_trade_prompt(context or {}),
+        _PRE_TRADE_SYSTEM,
         task="pre_trade_check",
     )
     if data is None:
         return _snapshot(
-            "pre-trade-check", status="error", error="llm_no_response",
+            "pre-trade-check",
+            status="error",
+            error="llm_no_response",
         )
     verdict = (data.get("verdict") or "REJECT").upper()
     return _snapshot(
@@ -714,15 +770,14 @@ async def run_pre_trade_check(context: dict | None = None) -> dict[str, Any]:
             "position_pct_of_nav": data.get("position_pct_of_nav"),
             "max_loss_pct_of_nav": data.get("max_loss_pct_of_nav"),
         },
-        actionable=[{
-            "recommendation": "PASS" if verdict == "PASS" else "BLOCK",
-            "ticker": (context or {}).get("ticker"),
-            "reason": data.get("reason", ""),
-        }],
-        alerts=(
-            [{"level": "warn", "message": f"REJECT: {data.get('reason')}"}]
-            if verdict == "REJECT" else []
-        ),
+        actionable=[
+            {
+                "recommendation": "PASS" if verdict == "PASS" else "BLOCK",
+                "ticker": (context or {}).get("ticker"),
+                "reason": data.get("reason", ""),
+            }
+        ],
+        alerts=([{"level": "warn", "message": f"REJECT: {data.get('reason')}"}] if verdict == "REJECT" else []),
         key_insights=[
             f"{verdict}: {data.get('reason', '—')}",
             f"Failed gates: {data.get('failed_gates') or 'none'}",
@@ -735,19 +790,26 @@ async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
     """Cold honest weekly performance audit. Verdict: continue/cool-off/suspend."""
     if not _providers_available():
         return _snapshot(
-            "weekly-mirror", status="error", error="no_llm_provider",
+            "weekly-mirror",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _weekly_mirror_prompt(context or {}), _WEEKLY_MIRROR_SYSTEM,
+        _weekly_mirror_prompt(context or {}),
+        _WEEKLY_MIRROR_SYSTEM,
         task="weekly_mirror",
     )
     if data is None:
         return _snapshot(
-            "weekly-mirror", status="error", error="llm_no_response",
+            "weekly-mirror",
+            status="error",
+            error="llm_no_response",
         )
     verdict = (data.get("verdict") or "COOL_OFF").upper()
     alert_level = {
-        "SUSPEND": "warn", "COOL_OFF": "info", "CONTINUE": "info",
+        "SUSPEND": "warn",
+        "COOL_OFF": "info",
+        "CONTINUE": "info",
     }.get(verdict, "info")
     return _snapshot(
         "weekly-mirror",
@@ -758,10 +820,7 @@ async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
             "trading_vs_core_diff_pct": data.get("trading_vs_core_diff_pct"),
             "top_pattern": data.get("top_pattern"),
         },
-        actionable=[
-            {"recommendation": a, "reason": ""}
-            for a in (data.get("next_actions") or [])
-        ],
+        actionable=[{"recommendation": a, "reason": ""} for a in (data.get("next_actions") or [])],
         alerts=[{"level": alert_level, "message": f"Verdict: {verdict}"}],
         key_insights=[
             f"Verdict: {verdict} — {data.get('reason', '—')}",
@@ -774,51 +833,51 @@ async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
 
 _STOCK_ANALYSIS_SYSTEM = (
     "You are a Goldman + Citadel equity analyst. Given a ticker w/ tech + "
-    "fund + crowding context, produce JSON {\"verdict\":\"BUY|HOLD|SELL|"
-    "TRIM|ADD\",\"conviction\":\"low|med|high\",\"target_price\":<float>,"
-    "\"stop\":<float>,\"thesis\":\"...\",\"top_risk\":\"...\"}. No prose."
+    'fund + crowding context, produce JSON {"verdict":"BUY|HOLD|SELL|'
+    'TRIM|ADD","conviction":"low|med|high","target_price":<float>,'
+    '"stop":<float>,"thesis":"...","top_risk":"..."}. No prose.'
 )
 
 _EARN_ANALYZER_SYSTEM = (
     "You are a JPMorgan pre-earnings analyst. Given ticker + earnings date + "
-    "fund context, produce JSON {\"hold_through\":\"yes|no|trim\","
-    "\"expected_move_pct\":<float>,\"key_metric\":\"...\",\"action\":"
-    "\"hold|trim|hedge|exit\",\"reason\":\"...\"}. No prose."
+    'fund context, produce JSON {"hold_through":"yes|no|trim",'
+    '"expected_move_pct":<float>,"key_metric":"...","action":'
+    '"hold|trim|hedge|exit","reason":"..."}. No prose.'
 )
 
 _CASH_DEPLOY_SYSTEM = (
     "You are a cash-deployment analyst. Given cash % of NAV + portfolio + "
-    "candidate setups, produce JSON {\"deployment\":[{\"ticker\":\"...\","
-    "\"pct_of_nav\":<float>,\"entry\":<float>,\"stop\":<float>,"
-    "\"setup_score\":<int>},...],\"cash_remaining_pct\":<float>,\"reason\":"
-    "\"...\"}. All sizing in % of NAV — never quote dollar amounts. Never "
+    'candidate setups, produce JSON {"deployment":[{"ticker":"...",'
+    '"pct_of_nav":<float>,"entry":<float>,"stop":<float>,'
+    '"setup_score":<int>},...],"cash_remaining_pct":<float>,"reason":'
+    '"..."}. All sizing in % of NAV — never quote dollar amounts. Never '
     "recommend single position > 5% NAV. Never add to concentration-flagged "
     "or crowding>=70 names. No prose."
 )
 
 _DIV_SYSTEM = (
     "You are a Harvard-endowment dividend strategist. Given holdings + "
-    "yield + payout context, produce JSON {\"income_health\":\"strong|ok|"
-    "weak\",\"projected_yield_pct\":<float>,\"top_risked_payer\":\"...\","
-    "\"recommendation\":\"hold|rotate|add_dividend|trim_low_yield\","
-    "\"reason\":\"...\"}. Yield expressed as % only — never quote dollar "
+    'yield + payout context, produce JSON {"income_health":"strong|ok|'
+    'weak","projected_yield_pct":<float>,"top_risked_payer":"...",'
+    '"recommendation":"hold|rotate|add_dividend|trim_low_yield",'
+    '"reason":"..."}. Yield expressed as % only — never quote dollar '
     "income amounts. No prose."
 )
 
 _SECTOR_SYSTEM = (
     "You are a Renaissance sector-rotation analyst. Given sector exposures "
-    "+ market regime, produce JSON {\"overweight\":[\"...\"],\"underweight\":"
-    "[\"...\"],\"top_rotation\":\"<from>->\\u003cto\\u003e\",\"reason\":"
-    "\"...\"}. No prose."
+    '+ market regime, produce JSON {"overweight":["..."],"underweight":'
+    '["..."],"top_rotation":"<from>->\\u003cto\\u003e","reason":'
+    '"..."}. No prose.'
 )
 
 _TAX_LOSS_SYSTEM = (
     "You are a Canadian tax-loss-harvesting analyst. Given underwater "
     "positions (loss as % of NAV) + account labels, produce JSON "
-    "{\"candidates\":[{\"ticker\":\"...\",\"loss_pct_of_nav\":<float>,"
-    "\"account_label\":\"...\",\"replacement\":\"...\","
-    "\"superficial_block_until\":\"YYYY-MM-DD\"},...],"
-    "\"total_loss_pct_of_nav\":<float>,\"reason\":\"...\"}. Loss figures in "
+    '{"candidates":[{"ticker":"...","loss_pct_of_nav":<float>,'
+    '"account_label":"...","replacement":"...",'
+    '"superficial_block_until":"YYYY-MM-DD"},...],'
+    '"total_loss_pct_of_nav":<float>,"reason":"..."}. Loss figures in '
     "% of NAV only — never quote dollar amounts. Never recommend harvesting "
     "in TFSA or RRSP (no tax benefit). Always flag superficial-loss rule. "
     "No prose."
@@ -907,29 +966,35 @@ def _generic_runner_factory(skill_name: str, prompt_fn, system_prompt, task):
     async def _runner(context: dict | None = None) -> dict[str, Any]:
         if not _providers_available():
             return _snapshot(
-                skill_name, status="error", error="no_llm_provider",
+                skill_name,
+                status="error",
+                error="no_llm_provider",
             )
         data = await _call_llm_json(
-            prompt_fn(context or {}), system_prompt, task=task,
+            prompt_fn(context or {}),
+            system_prompt,
+            task=task,
         )
         if data is None:
             return _snapshot(
-                skill_name, status="error", error="llm_no_response",
+                skill_name,
+                status="error",
+                error="llm_no_response",
             )
         return _snapshot(
             skill_name,
-            summary={k: v for k, v in data.items()
-                     if not isinstance(v, (list, dict))},
+            summary={k: v for k, v in data.items() if not isinstance(v, (list, dict))},
             actionable=(
                 data.get("deployment")
                 or data.get("candidates")
-                or [{
-                    "recommendation": data.get("action")
-                    or data.get("verdict")
-                    or data.get("recommendation", "hold"),
-                    "reason": data.get("reason")
-                    or data.get("thesis", ""),
-                }]
+                or [
+                    {
+                        "recommendation": data.get("action")
+                        or data.get("verdict")
+                        or data.get("recommendation", "hold"),
+                        "reason": data.get("reason") or data.get("thesis", ""),
+                    }
+                ]
             ),
             key_insights=[
                 f"{skill_name}: {data.get('verdict') or data.get('reason') or '—'}",
@@ -940,28 +1005,40 @@ def _generic_runner_factory(skill_name: str, prompt_fn, system_prompt, task):
 
 
 run_stock_analysis_for_ticker = _generic_runner_factory(
-    "stock-analysis", _stock_analysis_prompt,
-    _STOCK_ANALYSIS_SYSTEM, "stock_analysis",
+    "stock-analysis",
+    _stock_analysis_prompt,
+    _STOCK_ANALYSIS_SYSTEM,
+    "stock_analysis",
 )
 run_earnings_analyzer = _generic_runner_factory(
-    "earnings-analyzer", _earn_analyzer_prompt,
-    _EARN_ANALYZER_SYSTEM, "earnings_analyzer",
+    "earnings-analyzer",
+    _earn_analyzer_prompt,
+    _EARN_ANALYZER_SYSTEM,
+    "earnings_analyzer",
 )
 run_cash_deployment = _generic_runner_factory(
-    "cash-deployment", _cash_deploy_prompt,
-    _CASH_DEPLOY_SYSTEM, "cash_deployment",
+    "cash-deployment",
+    _cash_deploy_prompt,
+    _CASH_DEPLOY_SYSTEM,
+    "cash_deployment",
 )
 run_dividend_strategy = _generic_runner_factory(
-    "dividend-strategy", _div_prompt,
-    _DIV_SYSTEM, "dividend_strategy",
+    "dividend-strategy",
+    _div_prompt,
+    _DIV_SYSTEM,
+    "dividend_strategy",
 )
 run_sector_rotation = _generic_runner_factory(
-    "sector-rotation", _sector_prompt,
-    _SECTOR_SYSTEM, "sector_rotation",
+    "sector-rotation",
+    _sector_prompt,
+    _SECTOR_SYSTEM,
+    "sector_rotation",
 )
 run_tax_loss_review = _generic_runner_factory(
-    "tax-loss-review", _tax_loss_prompt,
-    _TAX_LOSS_SYSTEM, "tax_loss_review",
+    "tax-loss-review",
+    _tax_loss_prompt,
+    _TAX_LOSS_SYSTEM,
+    "tax_loss_review",
 )
 
 
@@ -969,15 +1046,20 @@ async def run_auto_rebalance(context: dict | None = None) -> dict[str, Any]:
     """Monthly core-ETF rebalance + DCA plan. Auto-execute=False by default."""
     if not _providers_available():
         return _snapshot(
-            "auto-rebalance", status="error", error="no_llm_provider",
+            "auto-rebalance",
+            status="error",
+            error="no_llm_provider",
         )
     data = await _call_llm_json(
-        _rebalance_prompt(context or {}), _REBALANCE_SYSTEM,
+        _rebalance_prompt(context or {}),
+        _REBALANCE_SYSTEM,
         task="auto_rebalance",
     )
     if data is None:
         return _snapshot(
-            "auto-rebalance", status="error", error="llm_no_response",
+            "auto-rebalance",
+            status="error",
+            error="llm_no_response",
         )
     deployments = data.get("deployment") or []
     return _snapshot(
@@ -1055,6 +1137,7 @@ async def run_stock_compare_ctx(
 
 # ── Nightly orchestrator ───────────────────────────────────────────────────
 
+
 async def run_nightly_llm_skills(
     tenant_hash: str,
     top_holdings: list[dict],
@@ -1112,21 +1195,18 @@ async def run_nightly_llm_skills(
             except Exception as e:
                 log.warning(
                     "compare failed for %s vs %s: %s",
-                    anchor, h.get("symbol"), e,
+                    anchor,
+                    h.get("symbol"),
+                    e,
                 )
                 return "compare", False
 
     tasks: list = [_run_adv(h) for h in top_holdings[:max_adv]]
-    earn_candidates = [
-        h for h in top_holdings if h.get("earnings_date")
-    ][:max_earn]
+    earn_candidates = [h for h in top_holdings if h.get("earnings_date")][:max_earn]
     tasks += [_run_earn(h) for h in earn_candidates]
     if len(top_holdings) >= 2:
         anchor = top_holdings[0]["symbol"]
-        tasks += [
-            _run_compare(anchor, h)
-            for h in top_holdings[1:max_compare_pairs + 1]
-        ]
+        tasks += [_run_compare(anchor, h) for h in top_holdings[1 : max_compare_pairs + 1]]
 
     outcomes = await asyncio.gather(*tasks, return_exceptions=False)
     for bucket, ok in outcomes:

@@ -29,21 +29,20 @@ def filter_user_context(context: dict) -> dict:
     safe_accounts = []
     for acc in context.get("accounts", []):
         acc_type = acc.get("type", "")
-        safe_accounts.append({
-            "label": _ACCOUNT_TYPE_LABELS.get(acc_type, "Investment Account"),
-            "currency": acc.get("currency", "CAD"),
-            "cash_balance": acc.get("cash_balance", 0),
-            "invested_value": acc.get("invested_value", 0),
-        })
+        safe_accounts.append(
+            {
+                "label": _ACCOUNT_TYPE_LABELS.get(acc_type, "Investment Account"),
+                "currency": acc.get("currency", "CAD"),
+                "cash_balance": acc.get("cash_balance", 0),
+                "invested_value": acc.get("invested_value", 0),
+            }
+        )
 
     return {
         "accounts": safe_accounts,
         "total_cash": context.get("total_cash", 0),
         "total_invested": context.get("total_invested", 0),
-        "account_types": [
-            _ACCOUNT_TYPE_LABELS.get(t, "Investment Account")
-            for t in context.get("account_types", [])
-        ],
+        "account_types": [_ACCOUNT_TYPE_LABELS.get(t, "Investment Account") for t in context.get("account_types", [])],
     }
 
 

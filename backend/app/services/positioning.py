@@ -44,10 +44,10 @@ _CTX_DIR = _REPO_ROOT / ".claude" / "context"
 _HISTORY_FILE = _CTX_DIR / "crowding_history.jsonl"
 
 # Crowding score weights — empirical, not derived. Tune as data accumulates.
-_W_INST = 0.35   # high inst ownership = consensus institutional pile-in
+_W_INST = 0.35  # high inst ownership = consensus institutional pile-in
 _W_SHORT = 0.20  # low short interest = bears already covered = consensus long
 _W_ANALYST = 0.20  # high analyst coverage = consensus name
-_W_NEWS = 0.25   # surging headlines = retail attention surge
+_W_NEWS = 0.25  # surging headlines = retail attention surge
 
 
 def _norm_inst(pct: float | None) -> float:
@@ -302,8 +302,7 @@ def detect_regime_shifts(
     if not _HISTORY_FILE.exists():
         return []
 
-    cutoff = (datetime.now(timezone.utc).date()
-              - timedelta(days=lookback_days)).isoformat()
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=lookback_days)).isoformat()
     wanted = set(s.upper() for s in symbols) if symbols else None
 
     # symbol -> [(date, score, label), ...] within window
@@ -340,16 +339,18 @@ def detect_regime_shifts(
         delta = round(last_s - first_s, 1)
         if abs(delta) < score_delta_threshold:
             continue
-        shifts.append({
-            "symbol": sym,
-            "from_score": first_s,
-            "to_score": last_s,
-            "from_label": first_l,
-            "to_label": last_l,
-            "delta": delta,
-            "first_seen": first_d,
-            "last_seen": last_d,
-            "direction": "crowding_up" if delta > 0 else "crowding_down",
-        })
+        shifts.append(
+            {
+                "symbol": sym,
+                "from_score": first_s,
+                "to_score": last_s,
+                "from_label": first_l,
+                "to_label": last_l,
+                "delta": delta,
+                "first_seen": first_d,
+                "last_seen": last_d,
+                "direction": "crowding_up" if delta > 0 else "crowding_down",
+            }
+        )
     shifts.sort(key=lambda s: abs(s["delta"]), reverse=True)
     return shifts

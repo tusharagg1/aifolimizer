@@ -1,4 +1,5 @@
 """Black-Scholes put theta sign — regression for audit P0."""
+
 from __future__ import annotations
 
 from app.services.options import black_scholes_greeks
@@ -12,12 +13,8 @@ def test_atm_put_theta_greater_than_call_theta() -> None:
     `r*K*e^(-rT)*N(d2)` term subtracts from call theta and adds to put
     theta. The earlier code subtracted both, mispricing protective puts.
     """
-    call = black_scholes_greeks(
-        S=100.0, K=100.0, T=0.5, sigma=0.2, r=0.05, option_type="call"
-    )
-    put = black_scholes_greeks(
-        S=100.0, K=100.0, T=0.5, sigma=0.2, r=0.05, option_type="put"
-    )
+    call = black_scholes_greeks(S=100.0, K=100.0, T=0.5, sigma=0.2, r=0.05, option_type="call")
+    put = black_scholes_greeks(S=100.0, K=100.0, T=0.5, sigma=0.2, r=0.05, option_type="put")
     assert call and put
     assert call["theta"] < 0
     assert put["theta"] > call["theta"]

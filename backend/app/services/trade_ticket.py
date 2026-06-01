@@ -4,6 +4,7 @@ Output is broker-agnostic — all fields map directly to any broker's order form
 Current workflow targets Wealthsimple UI. When adding a second broker,
 implement a format_for_broker(ticket, broker="wealthsimple") adapter here.
 """
+
 from __future__ import annotations
 
 import math
@@ -63,10 +64,7 @@ def generate_trade_ticket(
     action = action.upper()
     conviction = conviction.upper()
 
-    cache_key = (
-        f"{symbol}:{action}:{conviction}:"
-        f"{round(portfolio_value_cad)}:{account_type}"
-    )
+    cache_key = f"{symbol}:{action}:{conviction}:{round(portfolio_value_cad)}:{account_type}"
     entry = _ticket_cache.get(cache_key)
     if entry and time.time() - entry[0] < _TICKET_TTL:
         return entry[1]
@@ -105,10 +103,7 @@ def generate_trade_ticket(
             rr_mult = _CONVICTION_RR.get(conviction, 2.5)
             target_price = round(price * (1 + risk_pct * rr_mult), 4)
 
-        risk_reward = (
-            round((target_price - price) / (price - stop_price), 2)
-            if price > stop_price else None
-        )
+        risk_reward = round((target_price - price) / (price - stop_price), 2) if price > stop_price else None
 
         # ── Dollar amount ─────────────────────────────────────────────────────
         if action in ("SELL", "EXIT"):
@@ -134,18 +129,14 @@ def generate_trade_ticket(
             dollar_amount = round(quantity * price, 2)
 
         max_loss_cad = round(quantity * (price - stop_price), 2)
-        position_size_pct = (
-            round(dollar_amount / portfolio_value_cad * 100, 1)
-            if portfolio_value_cad > 0 else 0.0
-        )
+        position_size_pct = round(dollar_amount / portfolio_value_cad * 100, 1) if portfolio_value_cad > 0 else 0.0
 
         # ── Order type ────────────────────────────────────────────────────────
         if action in ("SELL", "EXIT"):
             order_type = "MARKET"
             limit_price = None
             order_note = (
-                f"Market sell {quantity} shares at ~${price:,.2f}. "
-                f"Expected proceeds: ${dollar_amount:,.2f} {currency}."
+                f"Market sell {quantity} shares at ~${price:,.2f}. Expected proceeds: ${dollar_amount:,.2f} {currency}."
             )
         else:
             order_type = "LIMIT"

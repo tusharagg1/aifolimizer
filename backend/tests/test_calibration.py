@@ -1,4 +1,5 @@
 """Unit tests for calibration (Phase 9). Pure `compute` only."""
+
 from __future__ import annotations
 
 import random
@@ -53,9 +54,12 @@ def test_brier_correctness():
 
 def test_bins_aggregate_correct_counts():
     pairs = [
-        (0.05, 1), (0.05, 0), (0.05, 0),   # bin 0
-        (0.55, 1), (0.55, 1),                # bin 5
-        (0.95, 0),                            # bin 9
+        (0.05, 1),
+        (0.05, 0),
+        (0.05, 0),  # bin 0
+        (0.55, 1),
+        (0.55, 1),  # bin 5
+        (0.95, 0),  # bin 9
     ]
     r = cal.compute(pairs)
     assert sum(b.count for b in r.bins) == 6

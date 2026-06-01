@@ -1,4 +1,5 @@
 """Entry point for the FastAPI backend."""
+
 import uvicorn
 
 if __name__ == "__main__":

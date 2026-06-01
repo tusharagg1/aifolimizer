@@ -90,7 +90,9 @@ _SKILL_PATTERNS: list[str] = [
 # Map filename -> (patterns, kind) pairs for the scanner.
 _TARGETS: list[tuple[Path, str, str]] = []
 for filename in (
-    "CLAUDE.md", "README.md", "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "AGENTS.md",
     ".claude/context/architecture.md",
     "backend/mcp_server.py",
 ):
@@ -111,8 +113,13 @@ for filename in (
 #   "highlights core 13"        — table-curation disclosure
 #   "Backtest 13 codified-rule" — describes the rule subset
 _ALLOWLIST_PREFIX_TOKENS = (
-    "core ", "codified-rule ", "codified rule ", "subset of ",
-    "highlights core ", "of 21 ", "of 80 ",
+    "core ",
+    "codified-rule ",
+    "codified rule ",
+    "subset of ",
+    "highlights core ",
+    "of 21 ",
+    "of 80 ",
 )
 
 
@@ -129,10 +136,7 @@ def count_mcp_tools() -> int:
 def count_skills() -> int:
     if not _SKILLS_DIR.is_dir():
         return 0
-    return sum(
-        1 for child in _SKILLS_DIR.iterdir()
-        if child.is_dir() and (child / "SKILL.md").is_file()
-    )
+    return sum(1 for child in _SKILLS_DIR.iterdir() if child.is_dir() and (child / "SKILL.md").is_file())
 
 
 def count_adapters() -> int:
@@ -144,10 +148,7 @@ def count_adapters() -> int:
     """
     if not _ADAPTERS_DIR.is_dir():
         return 0
-    return sum(
-        1 for child in _ADAPTERS_DIR.iterdir()
-        if child.is_file() and child.name.endswith("_src.py")
-    )
+    return sum(1 for child in _ADAPTERS_DIR.iterdir() if child.is_file() and child.name.endswith("_src.py"))
 
 
 def _line_for(text: str, start: int) -> tuple[int, str]:
@@ -165,10 +166,7 @@ def main() -> int:
         "skills": count_skills(),
         "adapters": count_adapters(),
     }
-    print(
-        f"actual: tools={actual['tools']}  skills={actual['skills']}  "
-        f"adapters={actual['adapters']}"
-    )
+    print(f"actual: tools={actual['tools']}  skills={actual['skills']}  adapters={actual['adapters']}")
 
     failures: list[str] = []
     seen: set[tuple[str, int, int]] = set()  # dedupe overlapping regex hits
@@ -187,7 +185,7 @@ def main() -> int:
             # Prefix-scoped allowlist: only skip if THIS captured number is the
             # one preceded by a subset-disclosure marker.
             number_start = m.start(1)
-            window_lower = text[max(0, number_start - 24):number_start].lower()
+            window_lower = text[max(0, number_start - 24) : number_start].lower()
             if any(window_lower.endswith(t) for t in _ALLOWLIST_PREFIX_TOKENS):
                 continue
             key = (str(path), line_no, claimed)
@@ -196,8 +194,7 @@ def main() -> int:
             seen.add(key)
             rel = path.relative_to(_ROOT).as_posix()
             failures.append(
-                f"  {rel}:{line_no}  claims {claimed} {kind}, "
-                f"actual {actual[kind]}  ({line_text.strip()[:80]!r})"
+                f"  {rel}:{line_no}  claims {claimed} {kind}, actual {actual[kind]}  ({line_text.strip()[:80]!r})"
             )
 
     if failures:

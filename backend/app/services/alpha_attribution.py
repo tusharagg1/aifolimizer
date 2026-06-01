@@ -31,21 +31,21 @@ _CTX = Path(__file__).resolve().parents[2] / ".claude" / "context"
 _HIST_FILE = _CTX / "portfolio_history.jsonl"
 
 _BENCHMARKS = {
-    "SPY":     "S&P 500 (USD)",
+    "SPY": "S&P 500 (USD)",
     "XEQT.TO": "XEQT Global Equity",
     "^GSPTSE": "TSX Composite",
-    "QQQ":     "Nasdaq-100",
+    "QQQ": "Nasdaq-100",
 }
 
 # Wealthsimple Managed published approximate annualized returns (CA, gross).
 # Source: Wealthsimple Performance Disclosure 2025.
 # Update annually — these are best-effort public figures.
 _WS_MANAGED = {
-    "conservative":  {"1y": 9.2,  "3y": 4.1,  "5y": 5.6},
-    "balanced":      {"1y": 14.8, "3y": 7.3,  "5y": 9.1},
-    "growth":        {"1y": 20.3, "3y": 10.1, "5y": 12.2},
-    "aggressive":    {"1y": 25.7, "3y": 12.8, "5y": 14.6},
-    "halal_growth":  {"1y": 18.9, "3y": 9.2,  "5y": 11.4},
+    "conservative": {"1y": 9.2, "3y": 4.1, "5y": 5.6},
+    "balanced": {"1y": 14.8, "3y": 7.3, "5y": 9.1},
+    "growth": {"1y": 20.3, "3y": 10.1, "5y": 12.2},
+    "aggressive": {"1y": 25.7, "3y": 12.8, "5y": 14.6},
+    "halal_growth": {"1y": 18.9, "3y": 9.2, "5y": 11.4},
 }
 
 
@@ -125,8 +125,12 @@ def get_alpha_attribution(
     port_mdd = _max_dd(port_series)
 
     result["portfolio_curve"] = {
-        "first_date": port_series.index[0].strftime("%Y-%m-%d") if hasattr(port_series.index[0], "strftime") else str(port_series.index[0]),
-        "last_date": port_series.index[-1].strftime("%Y-%m-%d") if hasattr(port_series.index[-1], "strftime") else str(port_series.index[-1]),
+        "first_date": port_series.index[0].strftime("%Y-%m-%d")
+        if hasattr(port_series.index[0], "strftime")
+        else str(port_series.index[0]),
+        "last_date": port_series.index[-1].strftime("%Y-%m-%d")
+        if hasattr(port_series.index[-1], "strftime")
+        else str(port_series.index[-1]),
         "total_return_pct": port_ret_total,
         "annualized_return_pct": port_ret_ann,
         "sharpe": port_sharpe,
@@ -147,14 +151,8 @@ def get_alpha_attribution(
         merged = pd.concat([daily_ret, b_daily], axis=1, join="inner").dropna()
         merged.columns = ["port", "bench"]
 
-        alpha_total = (
-            round(port_ret_total - b_ret, 2) if b_ret is not None else None
-        )
-        alpha_ann = (
-            round(port_ret_ann - b_ann, 2)
-            if (b_ann is not None and port_ret_ann is not None)
-            else None
-        )
+        alpha_total = round(port_ret_total - b_ret, 2) if b_ret is not None else None
+        alpha_ann = round(port_ret_ann - b_ann, 2) if (b_ann is not None and port_ret_ann is not None) else None
 
         beta, r2, info_ratio, tracking_err = None, None, None, None
         if len(merged) >= 20:
@@ -163,7 +161,7 @@ def get_alpha_attribution(
             if bench_var > 0:
                 beta = round(float(cov[0, 1] / bench_var), 3)
             corr = merged.corr().iloc[0, 1]
-            r2 = round(float(corr ** 2), 3)
+            r2 = round(float(corr**2), 3)
             active = merged["port"] - merged["bench"]
             tracking_err = round(float(active.std() * math.sqrt(252) * 100), 2)
             if active.std() > 0:

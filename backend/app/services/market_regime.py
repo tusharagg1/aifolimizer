@@ -14,6 +14,7 @@ Per-skill multipliers seed `regime_skill_multipliers` table on first call
 per composite — initial values are hand-picked baselines. Nightly tuner
 (Phase 11) adjusts them once enough samples accumulate per regime bucket.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,10 +27,10 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class Regime:
-    trend: str         # "up" | "down" | "sideways"
-    volatility: str    # "low" | "normal" | "high"
-    breadth: str       # "broad" | "narrow"
-    macro: str         # "risk_on" | "risk_off"
+    trend: str  # "up" | "down" | "sideways"
+    volatility: str  # "low" | "normal" | "high"
+    breadth: str  # "broad" | "narrow"
+    macro: str  # "risk_on" | "risk_off"
     composite: str
     confidence: float  # 0..1
     vix: float | None = None
@@ -58,48 +59,48 @@ class Regime:
 _INITIAL_MULTIPLIERS: dict[str, dict[str, float]] = {
     # cash-deployment (momentum-add)
     "cash-deployment": {
-        "trend_up_low_vol":     1.2,
-        "trend_up_high_vol":    0.8,
-        "sideways_low_vol":     0.8,
-        "sideways_high_vol":    0.5,
-        "trend_down_high_vol":  0.3,
-        "trend_down_low_vol":   0.6,
+        "trend_up_low_vol": 1.2,
+        "trend_up_high_vol": 0.8,
+        "sideways_low_vol": 0.8,
+        "sideways_high_vol": 0.5,
+        "trend_down_high_vol": 0.3,
+        "trend_down_low_vol": 0.6,
     },
     # tax-loss-review (mean-revert / harvest)
     "tax-loss-review": {
-        "trend_up_low_vol":     0.7,
-        "trend_up_high_vol":    1.0,
-        "sideways_low_vol":     1.1,
-        "sideways_high_vol":    1.2,
-        "trend_down_high_vol":  1.4,
-        "trend_down_low_vol":   1.3,
+        "trend_up_low_vol": 0.7,
+        "trend_up_high_vol": 1.0,
+        "sideways_low_vol": 1.1,
+        "sideways_high_vol": 1.2,
+        "trend_down_high_vol": 1.4,
+        "trend_down_low_vol": 1.3,
     },
     # dividend-strategy (low-beta income)
     "dividend-strategy": {
-        "trend_up_low_vol":     0.9,
-        "trend_up_high_vol":    1.1,
-        "sideways_low_vol":     1.1,
-        "sideways_high_vol":    1.2,
-        "trend_down_high_vol":  1.3,
-        "trend_down_low_vol":   1.2,
+        "trend_up_low_vol": 0.9,
+        "trend_up_high_vol": 1.1,
+        "sideways_low_vol": 1.1,
+        "sideways_high_vol": 1.2,
+        "trend_down_high_vol": 1.3,
+        "trend_down_low_vol": 1.2,
     },
     # stock-analysis (Minervini stage-2 momentum)
     "stock-analysis": {
-        "trend_up_low_vol":     1.3,
-        "trend_up_high_vol":    0.8,
-        "sideways_low_vol":     0.7,
-        "sideways_high_vol":    0.5,
-        "trend_down_high_vol":  0.3,
-        "trend_down_low_vol":   0.5,
+        "trend_up_low_vol": 1.3,
+        "trend_up_high_vol": 0.8,
+        "sideways_low_vol": 0.7,
+        "sideways_high_vol": 0.5,
+        "trend_down_high_vol": 0.3,
+        "trend_down_low_vol": 0.5,
     },
     # risk-assessment (defensive)
     "risk-assessment": {
-        "trend_up_low_vol":     0.9,
-        "trend_up_high_vol":    1.2,
-        "sideways_low_vol":     1.0,
-        "sideways_high_vol":    1.3,
-        "trend_down_high_vol":  1.5,
-        "trend_down_low_vol":   1.3,
+        "trend_up_low_vol": 0.9,
+        "trend_up_high_vol": 1.2,
+        "sideways_low_vol": 1.0,
+        "sideways_high_vol": 1.3,
+        "trend_down_high_vol": 1.5,
+        "trend_down_low_vol": 1.3,
     },
 }
 
@@ -134,7 +135,8 @@ def _classify_breadth(spy_vs_sma200_pct: float | None) -> str:
 
 
 def _classify_macro(
-    fed_funds: float | None, ten_y_yield: float | None,
+    fed_funds: float | None,
+    ten_y_yield: float | None,
 ) -> str:
     """Risk-off heuristic: yield curve inversion OR very tight Fed funds.
 
@@ -177,10 +179,16 @@ def classify(
     confidence = round(min(1.0, confidence), 2)
 
     return Regime(
-        trend=trend, volatility=vol, breadth=breadth, macro=macro,
-        composite=composite, confidence=confidence,
-        vix=vix, spy_vs_sma200_pct=spy_vs_sma200_pct,
-        ten_y_yield=ten_y_yield, fed_funds=fed_funds,
+        trend=trend,
+        volatility=vol,
+        breadth=breadth,
+        macro=macro,
+        composite=composite,
+        confidence=confidence,
+        vix=vix,
+        spy_vs_sma200_pct=spy_vs_sma200_pct,
+        ten_y_yield=ten_y_yield,
+        fed_funds=fed_funds,
         ts=datetime.now(tz=timezone.utc),
     )
 
@@ -188,11 +196,14 @@ def classify(
 def fetch_inputs() -> dict[str, float | None]:
     """Best-effort fetch of inputs from existing macro service."""
     out: dict[str, float | None] = {
-        "vix": None, "spy_vs_sma200_pct": None,
-        "ten_y_yield": None, "fed_funds": None,
+        "vix": None,
+        "spy_vs_sma200_pct": None,
+        "ten_y_yield": None,
+        "fed_funds": None,
     }
     try:
         from app.services.macro import market_breadth, macro_snapshot
+
         b = market_breadth() or {}
         out["vix"] = b.get("vix")
         out["spy_vs_sma200_pct"] = b.get("spy_vs_sma200_pct")
@@ -221,7 +232,8 @@ def multiplier_for(skill: str, composite: str) -> float:
         if composite in skill_tbl:
             return float(skill_tbl[composite])
     return _INITIAL_MULTIPLIERS.get(skill, {}).get(
-        composite, _DEFAULT_MULTIPLIER,
+        composite,
+        _DEFAULT_MULTIPLIER,
     )
 
 
@@ -234,13 +246,12 @@ def _load_learned_multipliers() -> dict[str, dict[str, float]] | None:
     """
     try:
         from pathlib import Path
-        path = (
-            Path(__file__).resolve().parents[2]
-            / ".cache" / "regime_multipliers.json"
-        )
+
+        path = Path(__file__).resolve().parents[2] / ".cache" / "regime_multipliers.json"
         if not path.is_file():
             return None
         import json
+
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload, dict):
             inner = payload.get("multipliers")
@@ -256,18 +267,17 @@ def _load_learned_multipliers() -> dict[str, dict[str, float]] | None:
 
 def initial_multipliers_for(composite: str) -> dict[str, float]:
     """Returns {skill: multiplier} baseline for a given regime."""
-    return {
-        skill: table.get(composite, _DEFAULT_MULTIPLIER)
-        for skill, table in _INITIAL_MULTIPLIERS.items()
-    }
+    return {skill: table.get(composite, _DEFAULT_MULTIPLIER) for skill, table in _INITIAL_MULTIPLIERS.items()}
 
 
 # ── Persistence + Redis cache ──────────────────────────────────────────────
+
 
 async def persist(regime: Regime) -> None:
     """Insert into regime_history + cache Redis regime:current."""
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is not None:
             async with pool.acquire() as conn:
@@ -282,11 +292,17 @@ async def persist(regime: Regime) -> None:
                     )
                     ON CONFLICT (ts) DO NOTHING
                     """,
-                    regime.ts, regime.trend, regime.volatility,
-                    regime.breadth, regime.macro,
-                    regime.composite, regime.confidence,
-                    regime.vix, regime.spy_vs_sma200_pct,
-                    regime.ten_y_yield, regime.fed_funds,
+                    regime.ts,
+                    regime.trend,
+                    regime.volatility,
+                    regime.breadth,
+                    regime.macro,
+                    regime.composite,
+                    regime.confidence,
+                    regime.vix,
+                    regime.spy_vs_sma200_pct,
+                    regime.ten_y_yield,
+                    regime.fed_funds,
                 )
     except Exception as e:
         log.warning("regime persist (PG) failed: %s", e)
@@ -294,6 +310,7 @@ async def persist(regime: Regime) -> None:
     try:
         from app.cache import get_redis
         import json
+
         r = get_redis()
         if r is not None:
             await r.set(
@@ -318,6 +335,7 @@ async def get_current() -> Regime | None:
     try:
         from app.cache import get_redis
         import json
+
         r = get_redis()
         if r is not None:
             blob = await r.get("regime:current")
@@ -330,27 +348,25 @@ async def get_current() -> Regime | None:
         pass
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return None
         async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM regime_history ORDER BY ts DESC LIMIT 1"
-            )
+            row = await conn.fetchrow("SELECT * FROM regime_history ORDER BY ts DESC LIMIT 1")
         if not row:
             return None
         return Regime(
-            trend=row["trend"], volatility=row["volatility"],
-            breadth=row["breadth"], macro=row["macro"],
+            trend=row["trend"],
+            volatility=row["volatility"],
+            breadth=row["breadth"],
+            macro=row["macro"],
             composite=row["composite"],
             confidence=float(row["confidence"] or 0),
             vix=float(row["vix"]) if row["vix"] else None,
-            spy_vs_sma200_pct=float(row["spy_vs_sma200_pct"])
-                if row["spy_vs_sma200_pct"] else None,
-            ten_y_yield=float(row["ten_y_yield"])
-                if row["ten_y_yield"] else None,
-            fed_funds=float(row["fed_funds"])
-                if row["fed_funds"] else None,
+            spy_vs_sma200_pct=float(row["spy_vs_sma200_pct"]) if row["spy_vs_sma200_pct"] else None,
+            ten_y_yield=float(row["ten_y_yield"]) if row["ten_y_yield"] else None,
+            fed_funds=float(row["fed_funds"]) if row["fed_funds"] else None,
             ts=row["ts"],
         )
     except Exception as e:

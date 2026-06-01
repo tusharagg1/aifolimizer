@@ -1,4 +1,5 @@
 """skill_snapshots repository."""
+
 from __future__ import annotations
 
 import json
@@ -8,9 +9,7 @@ from typing import Any, Optional
 from app.db.pool import get_pool
 
 
-async def upsert(
-    tenant_hash: str, skill: str, snapshot: dict[str, Any]
-) -> None:
+async def upsert(tenant_hash: str, skill: str, snapshot: dict[str, Any]) -> None:
     pool = get_pool()
     if pool is None:
         return
@@ -23,7 +22,8 @@ async def upsert(
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (tenant_hash, skill, computed_at) DO NOTHING
             """,
-            tenant_hash, skill,
+            tenant_hash,
+            skill,
             snapshot.get("computed_at") or datetime.utcnow(),
             snapshot.get("expires_at") or datetime.utcnow(),
             snapshot.get("status", "ok"),
@@ -48,7 +48,8 @@ async def latest(tenant_hash: str, skill: str) -> Optional[dict[str, Any]]:
             ORDER BY computed_at DESC
             LIMIT 1
             """,
-            tenant_hash, skill,
+            tenant_hash,
+            skill,
         )
     return dict(row) if row else None
 

@@ -34,9 +34,7 @@ def _patch_wl(tmp_path, monkeypatch):
 
 def test_add_symbol_rejects_unknown(tmp_path, monkeypatch):
     _patch_wl(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        sr, "resolve", lambda s: {"valid": False, "reason": "not_found"}
-    )
+    monkeypatch.setattr(sr, "resolve", lambda s: {"valid": False, "reason": "not_found"})
     with pytest.raises(ValueError):
         wl.add_symbol("ZZZZ")
 
@@ -44,10 +42,13 @@ def test_add_symbol_rejects_unknown(tmp_path, monkeypatch):
 def test_add_symbol_failopen_on_network_error(tmp_path, monkeypatch):
     _patch_wl(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        sr, "resolve",
+        sr,
+        "resolve",
         lambda s: {
-            "valid": False, "reason": "network_error",
-            "name": None, "asset_class": "stock",
+            "valid": False,
+            "reason": "network_error",
+            "name": None,
+            "asset_class": "stock",
         },
     )
     items = wl.add_symbol("AAPL")
@@ -57,10 +58,13 @@ def test_add_symbol_failopen_on_network_error(tmp_path, monkeypatch):
 def test_add_symbol_stores_identity(tmp_path, monkeypatch):
     _patch_wl(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        sr, "resolve",
+        sr,
+        "resolve",
         lambda s: {
-            "valid": True, "reason": "ok",
-            "name": "SPDR Gold Shares", "asset_class": "etf",
+            "valid": True,
+            "reason": "ok",
+            "name": "SPDR Gold Shares",
+            "asset_class": "etf",
         },
     )
     items = wl.add_symbol("GLD")

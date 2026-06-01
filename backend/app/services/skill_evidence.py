@@ -26,6 +26,7 @@ signal_history.skill_evidence JSONB.  It does NOT yet feed into scoring
 Skill name → key mapping is fixed.  When a new skill is codified, add
 a mapping function here.
 """
+
 from __future__ import annotations
 
 import logging
@@ -36,14 +37,14 @@ log = logging.getLogger(__name__)
 # Ordered list of skills that contribute evidence + their evidence-key name.
 # Order matters for skill_confidence denominator (max 8 contributors).
 _SKILL_KEYS: tuple[tuple[str, str], ...] = (
-    ("portfolio-health",   "portfolio_health"),
-    ("risk-assessment",    "risk_evidence"),
-    ("macro-impact",       "macro_evidence"),
-    ("cash-deployment",    "cash_deploy"),
-    ("stock-analysis",     "stock_analysis"),
-    ("earnings-analyzer",  "earnings"),
-    ("tax-loss-review",    "tax_loss"),
-    ("dividend-strategy",  "dividend"),
+    ("portfolio-health", "portfolio_health"),
+    ("risk-assessment", "risk_evidence"),
+    ("macro-impact", "macro_evidence"),
+    ("cash-deployment", "cash_deploy"),
+    ("stock-analysis", "stock_analysis"),
+    ("earnings-analyzer", "earnings"),
+    ("tax-loss-review", "tax_loss"),
+    ("dividend-strategy", "dividend"),
 )
 
 _MAX_SKILLS = len(_SKILL_KEYS)
@@ -52,6 +53,7 @@ _MAX_SKILLS = len(_SKILL_KEYS)
 # ---------------------------------------------------------------------------
 # Per-skill mappers — each returns dict[symbol] -> -1/+1
 # ---------------------------------------------------------------------------
+
 
 def _map_portfolio_health(snapshot: Mapping[str, Any]) -> dict[str, int]:
     """portfolio-health flags positions with issues.  -1 (need attention)."""
@@ -173,13 +175,13 @@ def _map_dividend(snapshot: Mapping[str, Any]) -> dict[str, int]:
 
 
 _MAPPERS = {
-    "portfolio-health":  _map_portfolio_health,
-    "risk-assessment":   _map_risk_assessment,
-    "macro-impact":      _map_macro_impact,
-    "cash-deployment":   _map_cash_deployment,
-    "stock-analysis":    _map_stock_analysis,
+    "portfolio-health": _map_portfolio_health,
+    "risk-assessment": _map_risk_assessment,
+    "macro-impact": _map_macro_impact,
+    "cash-deployment": _map_cash_deployment,
+    "stock-analysis": _map_stock_analysis,
     "earnings-analyzer": _map_earnings_analyzer,
-    "tax-loss-review":   _map_tax_loss,
+    "tax-loss-review": _map_tax_loss,
     "dividend-strategy": _map_dividend,
 }
 
@@ -187,6 +189,7 @@ _MAPPERS = {
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def build(
     snapshots: Mapping[str, Mapping[str, Any] | None],
@@ -220,9 +223,11 @@ def build(
     if regime_composite:
         try:
             from app.services import market_regime
+
             for skill_name, _ in _SKILL_KEYS:
                 multipliers[skill_name] = market_regime.multiplier_for(
-                    skill_name, regime_composite,
+                    skill_name,
+                    regime_composite,
                 )
         except Exception as e:
             log.warning("regime multiplier lookup failed: %s", e)
@@ -246,7 +251,9 @@ def build(
             skill_had_data[evidence_key] = True
         except Exception as e:
             log.warning(
-                "skill_evidence mapper failed for %s: %s", skill_name, e,
+                "skill_evidence mapper failed for %s: %s",
+                skill_name,
+                e,
             )
             skill_had_data[evidence_key] = False
             skill_maps[evidence_key] = {}

@@ -83,9 +83,7 @@ def _load_state() -> dict[str, str]:
 
 def _save_state(state: dict[str, str]) -> None:
     _CTX_DIR.mkdir(parents=True, exist_ok=True)
-    _STATE_FILE.write_text(
-        json.dumps(state, indent=2), encoding="utf-8"
-    )
+    _STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 def _dedup_key(rule: str, symbol: str, today: date) -> str:
@@ -96,7 +94,6 @@ def _append_history(alert: dict) -> None:
     _CTX_DIR.mkdir(parents=True, exist_ok=True)
     with _HISTORY_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(alert) + "\n")
-
 
 
 def evaluate(
@@ -123,43 +120,36 @@ def evaluate(
                 f"{pos.day_change_pct:.2f}% — weight {pos.weight:.1f}%, "
                 f"value {pos.market_value_cad:.0f} CAD."
             )
-            triggered.append({
-                "rule": "price_drop_intraday",
-                "symbol": pos.symbol,
-                "severity": sev,
-                "title": f"{pos.symbol} down {pos.day_change_pct:.1f}%",
-                "body": body,
-                "ts": now_iso,
-            })
+            triggered.append(
+                {
+                    "rule": "price_drop_intraday",
+                    "symbol": pos.symbol,
+                    "severity": sev,
+                    "title": f"{pos.symbol} down {pos.day_change_pct:.1f}%",
+                    "body": body,
+                    "ts": now_iso,
+                }
+            )
 
     # 2. Concentration warnings (delegate to portfolio_analytics)
-    conc = portfolio_analytics.concentration_warnings(
-        portfolio, single_max_pct, sector_max_pct
-    )
+    conc = portfolio_analytics.concentration_warnings(portfolio, single_max_pct, sector_max_pct)
     for w in conc:
         kind = w.get("type", "")
-        rule = (
-            "concentration_single"
-            if kind == "single_position"
-            else "concentration_sector"
-        )
+        rule = "concentration_single" if kind == "single_position" else "concentration_sector"
         label = w.get("symbol") or w.get("sector") or "unknown"
-        triggered.append({
-            "rule": rule,
-            "symbol": label,
-            "severity": "medium",
-            "title": (
-                f"Concentration: {label} "
-                f"{w.get('weight_pct', 0):.1f}%"
-            ),
-            "body": w.get("note") or json.dumps(w),
-            "ts": now_iso,
-        })
+        triggered.append(
+            {
+                "rule": rule,
+                "symbol": label,
+                "severity": "medium",
+                "title": (f"Concentration: {label} {w.get('weight_pct', 0):.1f}%"),
+                "body": w.get("note") or json.dumps(w),
+                "ts": now_iso,
+            }
+        )
 
     # 3. Technicals — RSI oversold/overbought on top N
-    top = sorted(
-        portfolio.positions, key=lambda p: p.weight, reverse=True
-    )[:top_n_for_technicals]
+    top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n_for_technicals]
     tech_symbols = [p.symbol for p in top]
     if tech_symbols:
         try:
@@ -172,37 +162,32 @@ def evaluate(
             if rsi is None:
                 continue
             if rsi <= rsi_oversold:
-                triggered.append({
-                    "rule": "rsi_oversold",
-                    "symbol": sym,
-                    "severity": "low",
-                    "title": f"{sym} RSI oversold ({rsi:.0f})",
-                    "body": (
-                        f"{sym} RSI(14) at {rsi:.1f} — potential "
-                        f"bounce setup. Review entry."
-                    ),
-                    "ts": now_iso,
-                })
+                triggered.append(
+                    {
+                        "rule": "rsi_oversold",
+                        "symbol": sym,
+                        "severity": "low",
+                        "title": f"{sym} RSI oversold ({rsi:.0f})",
+                        "body": (f"{sym} RSI(14) at {rsi:.1f} — potential bounce setup. Review entry."),
+                        "ts": now_iso,
+                    }
+                )
             elif rsi >= rsi_overbought:
-                triggered.append({
-                    "rule": "rsi_overbought",
-                    "symbol": sym,
-                    "severity": "low",
-                    "title": f"{sym} RSI overbought ({rsi:.0f})",
-                    "body": (
-                        f"{sym} RSI(14) at {rsi:.1f} — extended; "
-                        f"consider trim or hedge."
-                    ),
-                    "ts": now_iso,
-                })
+                triggered.append(
+                    {
+                        "rule": "rsi_overbought",
+                        "symbol": sym,
+                        "severity": "low",
+                        "title": f"{sym} RSI overbought ({rsi:.0f})",
+                        "body": (f"{sym} RSI(14) at {rsi:.1f} — extended; consider trim or hedge."),
+                        "ts": now_iso,
+                    }
+                )
 
     # 4. Earnings within N days
     try:
         fund_syms = [p.symbol for p in portfolio.positions]
-        fund_data = (
-            fundamentals_svc.get_fundamentals(fund_syms)
-            if fund_syms else {}
-        )
+        fund_data = fundamentals_svc.get_fundamentals(fund_syms) if fund_syms else {}
     except Exception as e:
         _LOG.warning(f"[alerts] fundamentals fetch failed: {e}")
         fund_data = {}
@@ -218,20 +203,18 @@ def evaluate(
             continue
         if today <= ed_date <= cutoff:
             days_until = (ed_date - today).days
-            triggered.append({
-                "rule": "earnings_imminent",
-                "symbol": sym,
-                "severity": "medium",
-                "title": (
-                    f"{sym} earnings in {days_until}d "
-                    f"({ed_date.isoformat()})"
-                ),
-                "body": (
-                    f"{sym} reports {ed_date.isoformat()}. Run "
-                    f"earnings_analyzer skill to decide hold-through."
-                ),
-                "ts": now_iso,
-            })
+            triggered.append(
+                {
+                    "rule": "earnings_imminent",
+                    "symbol": sym,
+                    "severity": "medium",
+                    "title": (f"{sym} earnings in {days_until}d ({ed_date.isoformat()})"),
+                    "body": (
+                        f"{sym} reports {ed_date.isoformat()}. Run earnings_analyzer skill to decide hold-through."
+                    ),
+                    "ts": now_iso,
+                }
+            )
 
     return triggered
 
@@ -291,9 +274,7 @@ def dispatch(
     }
 
 
-def read_recent_history(
-    since_hours: int = 24, limit: int = 100
-) -> list[dict]:
+def read_recent_history(since_hours: int = 24, limit: int = 100) -> list[dict]:
     """Read JSONL history. Return alerts newer than cutoff. Newest first."""
     if not _HISTORY_FILE.exists():
         return []

@@ -1,4 +1,5 @@
 """Unit tests for market_regime (Phase 8). Pure classifier — no I/O."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,35 +9,44 @@ from app.services import market_regime as mr
 
 # ── trend ───────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("pct,expected", [
-    (10.0,  "up"),
-    (5.0,   "up"),
-    (2.1,   "up"),
-    (1.5,   "sideways"),
-    (-1.0,  "sideways"),
-    (-2.1,  "down"),
-    (-10.0, "down"),
-    (None,  "sideways"),
-])
+
+@pytest.mark.parametrize(
+    "pct,expected",
+    [
+        (10.0, "up"),
+        (5.0, "up"),
+        (2.1, "up"),
+        (1.5, "sideways"),
+        (-1.0, "sideways"),
+        (-2.1, "down"),
+        (-10.0, "down"),
+        (None, "sideways"),
+    ],
+)
 def test_trend_classifier(pct, expected):
     assert mr._classify_trend(pct) == expected
 
 
 # ── volatility ──────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("vix,expected", [
-    (35,   "high"),
-    (26,   "high"),
-    (20,   "normal"),
-    (14.9, "low"),
-    (10,   "low"),
-    (None, "normal"),
-])
+
+@pytest.mark.parametrize(
+    "vix,expected",
+    [
+        (35, "high"),
+        (26, "high"),
+        (20, "normal"),
+        (14.9, "low"),
+        (10, "low"),
+        (None, "normal"),
+    ],
+)
 def test_vol_classifier(vix, expected):
     assert mr._classify_vol(vix) == expected
 
 
 # ── macro ───────────────────────────────────────────────────────────────────
+
 
 def test_macro_risk_off_when_inverted():
     assert mr._classify_macro(5.0, 4.5) == "risk_off"
@@ -56,6 +66,7 @@ def test_macro_default_risk_on_when_missing():
 
 # ── composite ───────────────────────────────────────────────────────────────
 
+
 def test_composite_combines_trend_and_vol():
     assert mr._composite("up", "low") == "trend_up_low_vol"
     assert mr._composite("down", "high") == "trend_down_high_vol"
@@ -64,10 +75,13 @@ def test_composite_combines_trend_and_vol():
 
 # ── classify integration ────────────────────────────────────────────────────
 
+
 def test_classify_bull_low_vol():
     r = mr.classify(
-        vix=12.0, spy_vs_sma200_pct=8.0,
-        ten_y_yield=4.5, fed_funds=4.0,
+        vix=12.0,
+        spy_vs_sma200_pct=8.0,
+        ten_y_yield=4.5,
+        fed_funds=4.0,
     )
     assert r.trend == "up"
     assert r.volatility == "low"
@@ -78,8 +92,10 @@ def test_classify_bull_low_vol():
 
 def test_classify_bear_high_vol():
     r = mr.classify(
-        vix=35.0, spy_vs_sma200_pct=-10.0,
-        ten_y_yield=4.0, fed_funds=5.5,
+        vix=35.0,
+        spy_vs_sma200_pct=-10.0,
+        ten_y_yield=4.0,
+        fed_funds=5.5,
     )
     assert r.trend == "down"
     assert r.volatility == "high"
@@ -89,14 +105,17 @@ def test_classify_bear_high_vol():
 
 def test_classify_neutral_confidence_lower():
     r = mr.classify(
-        vix=20.0, spy_vs_sma200_pct=1.0,
-        ten_y_yield=4.5, fed_funds=4.0,
+        vix=20.0,
+        spy_vs_sma200_pct=1.0,
+        ten_y_yield=4.5,
+        fed_funds=4.0,
     )
     assert r.composite == "sideways_normal_vol"
     assert r.confidence == 0.5
 
 
 # ── multipliers ─────────────────────────────────────────────────────────────
+
 
 def test_momentum_skill_amplified_in_uptrend():
     m = mr.multiplier_for("stock-analysis", "trend_up_low_vol")
@@ -124,13 +143,17 @@ def test_unknown_composite_returns_one():
 def test_initial_multipliers_returns_all_known_skills():
     out = mr.initial_multipliers_for("trend_up_low_vol")
     expected = {
-        "cash-deployment", "tax-loss-review", "dividend-strategy",
-        "stock-analysis", "risk-assessment",
+        "cash-deployment",
+        "tax-loss-review",
+        "dividend-strategy",
+        "stock-analysis",
+        "risk-assessment",
     }
     assert expected <= set(out.keys())
 
 
 # ── skill_evidence regime integration ───────────────────────────────────────
+
 
 def test_skill_evidence_scales_votes_by_regime():
     from app.services import skill_evidence
@@ -142,19 +165,17 @@ def test_skill_evidence_scales_votes_by_regime():
         },
     }
     out_up = skill_evidence.build(
-        snapshots, ["NVDA"], regime_composite="trend_up_low_vol",
+        snapshots,
+        ["NVDA"],
+        regime_composite="trend_up_low_vol",
     )
     out_down = skill_evidence.build(
-        snapshots, ["NVDA"], regime_composite="trend_down_high_vol",
+        snapshots,
+        ["NVDA"],
+        regime_composite="trend_down_high_vol",
     )
-    assert (
-        out_up["NVDA"]["stock_analysis"]
-        > out_down["NVDA"]["stock_analysis"]
-    )
-    assert (
-        out_up["NVDA"]["skill_consensus"]
-        > out_down["NVDA"]["skill_consensus"]
-    )
+    assert out_up["NVDA"]["stock_analysis"] > out_down["NVDA"]["stock_analysis"]
+    assert out_up["NVDA"]["skill_consensus"] > out_down["NVDA"]["skill_consensus"]
 
 
 def test_skill_evidence_unchanged_without_regime():

@@ -2,6 +2,7 @@
 
 Run:  python tests/smoke_phase0.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,9 +24,7 @@ async def main() -> None:
         async with p.acquire() as conn:
             n = await conn.fetchval("SELECT COUNT(*) FROM tenants")
             print("tenants:", n)
-            wv = await conn.fetchval(
-                "SELECT MAX(version) FROM weights"
-            )
+            wv = await conn.fetchval("SELECT MAX(version) FROM weights")
             print("weights_latest_version:", wv)
     if r is not None:
         pong = await r.ping()

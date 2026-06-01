@@ -44,26 +44,69 @@ _OUT_DIR = Path(__file__).resolve().parents[2] / ".cache" / "backtests"
 # the AAPL/MSFT/NVDA/XEQT/VFV cherry-picked set the prior backtest used.
 DEFAULT_UNIVERSE = [
     # Sector SPDRs (all 11)
-    "XLK", "XLF", "XLV", "XLY", "XLP", "XLE",
-    "XLI", "XLU", "XLRE", "XLB", "XLC",
+    "XLK",
+    "XLF",
+    "XLV",
+    "XLY",
+    "XLP",
+    "XLE",
+    "XLI",
+    "XLU",
+    "XLRE",
+    "XLB",
+    "XLC",
     # Index ETFs (broad + style + size)
-    "SPY", "QQQ", "IWM", "VTI", "VTV", "VUG", "EFA", "EEM",
+    "SPY",
+    "QQQ",
+    "IWM",
+    "VTI",
+    "VTV",
+    "VUG",
+    "EFA",
+    "EEM",
     # Canadian core
-    "XEQT.TO", "VFV.TO", "VCN.TO", "XIU.TO",
+    "XEQT.TO",
+    "VFV.TO",
+    "VCN.TO",
+    "XIU.TO",
     # Large-cap tech (some winners, some sideways)
-    "AAPL", "MSFT", "GOOGL", "META", "AMZN",
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "META",
+    "AMZN",
     # Megacap non-tech
-    "BRK-B", "JPM", "JNJ", "PG", "WMT", "XOM", "CVX",
+    "BRK-B",
+    "JPM",
+    "JNJ",
+    "PG",
+    "WMT",
+    "XOM",
+    "CVX",
     # Mid/small picks across sectors (mix of winners + laggards)
-    "F", "GE", "DIS", "BA", "INTC", "VZ", "T", "PFE", "MRK",
+    "F",
+    "GE",
+    "DIS",
+    "BA",
+    "INTC",
+    "VZ",
+    "T",
+    "PFE",
+    "MRK",
     # Cyclicals + commodities
-    "CAT", "DE", "FCX", "NEM",
+    "CAT",
+    "DE",
+    "FCX",
+    "NEM",
     # Drawdown / failure exposure (mean-revert + bear stress)
-    "PYPL", "PARA", "WBA",
+    "PYPL",
+    "PARA",
+    "WBA",
 ]
 
 
 # ---- Walk-forward + deflated Sharpe --------------------------------------
+
 
 def _deflated_sharpe(daily_ret: pd.Series, n_trials: int = 1) -> float:
     """Bailey & López de Prado deflated Sharpe ratio.
@@ -89,8 +132,7 @@ def _deflated_sharpe(daily_ret: pd.Series, n_trials: int = 1) -> float:
     n_trials = max(1, n_trials)
     # Expected max SR under N independent trials (BLP 2014 Eq 7)
     euler_mascheroni = 0.5772156649
-    e_max_sr = (1 - euler_mascheroni) * _zinv(1 - 1 / n_trials) + \
-        euler_mascheroni * _zinv(1 - 1 / (n_trials * math.e))
+    e_max_sr = (1 - euler_mascheroni) * _zinv(1 - 1 / n_trials) + euler_mascheroni * _zinv(1 - 1 / (n_trials * math.e))
     # Variance of SR estimate accounting for higher moments (BLP Eq 9)
     var_sr = (1 - skew * sr + (excess_kurt / 4) * sr * sr) / (n - 1)
     if var_sr <= 0:
@@ -104,28 +146,43 @@ def _zinv(p: float) -> float:
     if p <= 0 or p >= 1:
         return 0.0
     # Beasley-Springer-Moro approximation
-    a = [-39.69683028665376, 220.9460984245205, -275.9285104469687,
-         138.357751867269, -30.66479806614716, 2.506628277459239]
-    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866,
-         66.80131188771972, -13.28068155288572]
-    c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
-         -2.549732539343734, 4.374664141464968, 2.938163982698783]
-    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996,
-         3.754408661907416]
+    a = [
+        -39.69683028665376,
+        220.9460984245205,
+        -275.9285104469687,
+        138.357751867269,
+        -30.66479806614716,
+        2.506628277459239,
+    ]
+    b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572]
+    c = [
+        -0.007784894002430293,
+        -0.3223964580411365,
+        -2.400758277161838,
+        -2.549732539343734,
+        4.374664141464968,
+        2.938163982698783,
+    ]
+    d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416]
     p_low = 0.02425
     p_high = 1 - p_low
     if p < p_low:
         q = math.sqrt(-2 * math.log(p))
-        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-               ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+        )
     if p <= p_high:
         q = p - 0.5
         r2 = q * q
-        return (((((a[0] * r2 + a[1]) * r2 + a[2]) * r2 + a[3]) * r2 + a[4]) * r2 + a[5]) * q / \
-               (((((b[0] * r2 + b[1]) * r2 + b[2]) * r2 + b[3]) * r2 + b[4]) * r2 + 1)
+        return (
+            (((((a[0] * r2 + a[1]) * r2 + a[2]) * r2 + a[3]) * r2 + a[4]) * r2 + a[5])
+            * q
+            / (((((b[0] * r2 + b[1]) * r2 + b[2]) * r2 + b[3]) * r2 + b[4]) * r2 + 1)
+        )
     q = math.sqrt(-2 * math.log(1 - p))
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / \
-           ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+        (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1
+    )
 
 
 def _zcdf(z: float) -> float:
@@ -306,9 +363,7 @@ def _max_dd(equity: pd.Series) -> float:
     return float(((equity - peak) / peak).min() * 100)
 
 
-def _simulate(
-    close: pd.Series, signal: pd.Series, tx_cost_bps: float
-) -> tuple[pd.Series, list[Trade], list[float]]:
+def _simulate(close: pd.Series, signal: pd.Series, tx_cost_bps: float) -> tuple[pd.Series, list[Trade], list[float]]:
     """Long-only walk. Returns (equity_curve, trades, daily_returns_list).
 
     Signal at bar i is computed from data up to bar i's close, so trading on
@@ -335,15 +390,13 @@ def _simulate(
         sig_now = int(aligned["sig"].iloc[i])
         date_now = aligned.index[i].strftime("%Y-%m-%d")
 
-        equity.append(
-            equity[-1] * (price_now / price_prev) if in_pos else equity[-1]
-        )
+        equity.append(equity[-1] * (price_now / price_prev) if in_pos else equity[-1])
 
         if not in_pos and sig_now == 1:
             in_pos = True
             entry_price = price_now
             entry_date = date_now
-            equity[-1] *= (1 - fee_leg)
+            equity[-1] *= 1 - fee_leg
         elif in_pos and sig_now == 0:
             ret = (price_now - entry_price) / entry_price * 100
             trades.append(
@@ -358,7 +411,7 @@ def _simulate(
                 )
             )
             in_pos = False
-            equity[-1] *= (1 - fee_leg)
+            equity[-1] *= 1 - fee_leg
 
     if in_pos:
         last_price = float(aligned["close"].iloc[-1])
@@ -374,7 +427,7 @@ def _simulate(
                 win=ret > 0,
             )
         )
-        equity[-1] *= (1 - fee_leg)
+        equity[-1] *= 1 - fee_leg
 
     eq_series = pd.Series(equity, index=aligned.index)
     daily_ret = eq_series.pct_change().dropna().tolist()
@@ -382,6 +435,7 @@ def _simulate(
 
 
 # ---- Skill rule definitions ----------------------------------------------
+
 
 def _rule_buy_hold(close: pd.Series) -> pd.Series:
     return pd.Series(1, index=close.index)
@@ -479,19 +533,19 @@ def _rule_consensus_fade(close: pd.Series) -> pd.Series:
 
 
 SKILL_RULES: dict[str, tuple[str, Callable[[pd.Series], pd.Series]]] = {
-    "portfolio_health":     ("buy_hold (proxy)",         _rule_buy_hold),
-    "risk_assessment":      ("sma200_trend_filter",      _rule_macro_risk_off),
-    "stock_analysis":       ("sma50_trend",              _rule_sma_cross),
-    "stock_compare":        ("relative_strength_proxy",  _rule_sma_cross),
-    "macro_impact":         ("sma200_regime",            _rule_macro_risk_off),
-    "dividend_strategy":    ("sma200_quality",           _rule_dividend_buy_hold),
-    "earnings_analyzer":    ("vol_cluster_avoid",        _rule_earnings_avoid),
-    "earnings_postmortem":  ("rsi_swing_post_event",     _rule_rsi_swing),
-    "sector_rotation":      ("12m_momentum_faber",       _rule_sector_rotation),
-    "tax_loss_review":      ("bollinger_lband_revert",   _rule_bollinger_revert),
-    "adversarial_research": ("consensus_fade_top5pct",   _rule_consensus_fade),
-    "cash_deployment":      ("golden_cross_add",         _rule_golden_cross),
-    "daily_briefing":       ("macd_trend",               _rule_macd_trend),
+    "portfolio_health": ("buy_hold (proxy)", _rule_buy_hold),
+    "risk_assessment": ("sma200_trend_filter", _rule_macro_risk_off),
+    "stock_analysis": ("sma50_trend", _rule_sma_cross),
+    "stock_compare": ("relative_strength_proxy", _rule_sma_cross),
+    "macro_impact": ("sma200_regime", _rule_macro_risk_off),
+    "dividend_strategy": ("sma200_quality", _rule_dividend_buy_hold),
+    "earnings_analyzer": ("vol_cluster_avoid", _rule_earnings_avoid),
+    "earnings_postmortem": ("rsi_swing_post_event", _rule_rsi_swing),
+    "sector_rotation": ("12m_momentum_faber", _rule_sector_rotation),
+    "tax_loss_review": ("bollinger_lband_revert", _rule_bollinger_revert),
+    "adversarial_research": ("consensus_fade_top5pct", _rule_consensus_fade),
+    "cash_deployment": ("golden_cross_add", _rule_golden_cross),
+    "daily_briefing": ("macd_trend", _rule_macd_trend),
 }
 
 
@@ -500,6 +554,7 @@ def list_skills() -> list[str]:
 
 
 # ---- Runner --------------------------------------------------------------
+
 
 def backtest_skill(
     skill: str,
@@ -529,8 +584,11 @@ def backtest_skill(
 
     if not eq_curves:
         return SkillBacktest(
-            skill=skill, strategy_spec=spec, universe=universe,
-            lookback_days=lookback_days, tx_cost_bps=tx_cost_bps,
+            skill=skill,
+            strategy_spec=spec,
+            universe=universe,
+            lookback_days=lookback_days,
+            tx_cost_bps=tx_cost_bps,
             notes=notes + ["no usable symbols"],
         )
 
@@ -564,12 +622,8 @@ def backtest_skill(
         max_drawdown_pct=round(mdd, 2),
         hit_rate_pct=round(hit_rate, 2),
         num_trades=len(all_trades),
-        alpha_vs_spy_pct=(
-            round(total_ret - spy_ret, 2) if spy_ret is not None else None
-        ),
-        alpha_vs_xeqt_pct=(
-            round(total_ret - xeqt_ret, 2) if xeqt_ret is not None else None
-        ),
+        alpha_vs_spy_pct=(round(total_ret - spy_ret, 2) if spy_ret is not None else None),
+        alpha_vs_xeqt_pct=(round(total_ret - xeqt_ret, 2) if xeqt_ret is not None else None),
         bench_return_spy_pct=spy_ret,
         bench_return_xeqt_pct=xeqt_ret,
         notes=notes,
@@ -635,6 +689,7 @@ def latest_results(label: str | None = None) -> dict | None:
 
 # ---- Walk-forward backtest runner ----------------------------------------
 
+
 def walk_forward_backtest(
     skill: str,
     universe: list[str] | None = None,
@@ -698,8 +753,11 @@ def walk_forward_backtest(
 
     if not per_symbol_eq:
         return {
-            "skill": skill, "strategy_spec": spec, "error": "no usable symbols",
-            "universe_size": len(universe), "notes": notes,
+            "skill": skill,
+            "strategy_spec": spec,
+            "error": "no usable symbols",
+            "universe_size": len(universe),
+            "notes": notes,
         }
 
     portfolio_eq = pd.concat(per_symbol_eq, axis=1).ffill().mean(axis=1).dropna()
@@ -719,20 +777,21 @@ def walk_forward_backtest(
         ret_pct = (float(win_eq.iloc[-1]) / float(win_eq.iloc[0]) - 1) * 100
         sharpe = _sharpe(win_ret)
         mdd = _max_dd(win_eq)
-        window_results.append({
-            "start": win_eq.index[0].strftime("%Y-%m-%d"),
-            "end": win_eq.index[-1].strftime("%Y-%m-%d"),
-            "return_pct": round(ret_pct, 2),
-            "sharpe": round(sharpe, 2),
-            "max_dd_pct": round(mdd, 2),
-        })
+        window_results.append(
+            {
+                "start": win_eq.index[0].strftime("%Y-%m-%d"),
+                "end": win_eq.index[-1].strftime("%Y-%m-%d"),
+                "return_pct": round(ret_pct, 2),
+                "sharpe": round(sharpe, 2),
+                "max_dd_pct": round(mdd, 2),
+            }
+        )
         start_pos += step_days
 
     # Regime split — align portfolio daily returns to SPY regime label
     by_regime: dict[str, dict] = {}
     if not regimes.empty:
-        joined = pd.concat([daily_ret.rename("ret"), regimes.rename("regime")],
-                            axis=1, join="inner").dropna()
+        joined = pd.concat([daily_ret.rename("ret"), regimes.rename("regime")], axis=1, join="inner").dropna()
         for label in ("bull", "bear", "sideways"):
             subset = joined[joined["regime"] == label]["ret"]
             if subset.empty:
@@ -761,9 +820,7 @@ def walk_forward_backtest(
     pos_windows = sum(1 for w in window_results if w["return_pct"] > 0)
     win_consistency = (pos_windows / len(window_results) * 100) if window_results else 0.0
     sharpes = [w["sharpe"] for w in window_results if w["sharpe"] is not None]
-    sharpe_stability = (
-        round(float(np.std(sharpes)), 2) if sharpes else None
-    )
+    sharpe_stability = round(float(np.std(sharpes)), 2) if sharpes else None
 
     return {
         "skill": skill,
@@ -780,12 +837,8 @@ def walk_forward_backtest(
             "max_drawdown_pct": round(mdd_full, 2),
             "hit_rate_pct": round(hit, 2),
             "num_trades": len(per_symbol_trades),
-            "alpha_vs_spy_pct": (
-                round(total_ret - spy_ret, 2) if spy_ret is not None else None
-            ),
-            "alpha_vs_xeqt_pct": (
-                round(total_ret - xeqt_ret, 2) if xeqt_ret is not None else None
-            ),
+            "alpha_vs_spy_pct": (round(total_ret - spy_ret, 2) if spy_ret is not None else None),
+            "alpha_vs_xeqt_pct": (round(total_ret - xeqt_ret, 2) if xeqt_ret is not None else None),
             "win_consistency_pct": round(win_consistency, 1),
             "sharpe_stability_std": sharpe_stability,
         },
@@ -830,14 +883,17 @@ def walk_forward_all_skills(
     }
     for skill in list_skills():
         try:
-            out["results"].append(walk_forward_backtest(
-                skill, universe,
-                lookback_days=lookback_days,
-                window_days=window_days,
-                step_days=step_days,
-                tx_cost_bps=tx_cost_bps,
-                n_trials_for_dsr=n,
-            ))
+            out["results"].append(
+                walk_forward_backtest(
+                    skill,
+                    universe,
+                    lookback_days=lookback_days,
+                    window_days=window_days,
+                    step_days=step_days,
+                    tx_cost_bps=tx_cost_bps,
+                    n_trials_for_dsr=n,
+                )
+            )
         except Exception as e:
             out["results"].append({"skill": skill, "error": str(e)})
 

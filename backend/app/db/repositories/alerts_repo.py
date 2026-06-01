@@ -1,4 +1,5 @@
 """alerts repository."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -21,9 +22,12 @@ async def insert(alert: dict[str, Any]) -> None:
             """,
             alert.get("tenant_hash"),
             alert.get("ts") or datetime.utcnow(),
-            alert.get("rule", ""), alert.get("symbol"),
-            alert.get("severity"), alert.get("title"),
-            alert.get("body"), alert.get("pushed", False),
+            alert.get("rule", ""),
+            alert.get("symbol"),
+            alert.get("severity"),
+            alert.get("title"),
+            alert.get("body"),
+            alert.get("pushed", False),
             alert.get("dedup_key"),
         )
 
@@ -41,7 +45,8 @@ async def recent(tenant_hash: Optional[str], hours: int = 24) -> list[dict[str, 
                   AND ts > now() - ($2::TEXT || ' hours')::INTERVAL
                 ORDER BY ts DESC
                 """,
-                tenant_hash, str(hours),
+                tenant_hash,
+                str(hours),
             )
         else:
             rows = await conn.fetch(

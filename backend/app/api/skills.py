@@ -1,4 +1,5 @@
 """REST endpoints for codified skill snapshots + trust/accuracy helpers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -72,6 +73,7 @@ async def status():
 
 # ── Trust / accuracy reporting ────────────────────────────────────────────────
 
+
 @router.get("/trust/decay")
 async def trust_decay(
     action_filter: str | None = Query(None),
@@ -94,7 +96,8 @@ async def trust_attribution(
     """Per-sub-signal alpha attribution at the requested horizon."""
     return await asyncio.to_thread(
         signal_history.per_signal_source_attribution,
-        horizon, min_count=min_count,
+        horizon,
+        min_count=min_count,
     )
 
 

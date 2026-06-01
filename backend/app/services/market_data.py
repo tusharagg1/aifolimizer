@@ -72,6 +72,7 @@ def _get_cad_per_usd() -> float:
     # Fallback: FRED DEXCAUS (CAD per USD, daily, slightly lagged)
     try:
         import httpx
+
         resp = httpx.get(
             "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXCAUS",
             timeout=5.0,
@@ -145,11 +146,13 @@ def enrich(
     # per symbol (fast_info + .info for sector); serial calls dominated
     # enrich() latency on cold cache. The function is itself memoized, so
     # warm cache loads still short-circuit instantly.
-    unique_symbols = list({
-        (raw.get("security", {}) or {}).get("symbol")
-        for raw in raw_positions
-        if (raw.get("security", {}) or {}).get("symbol")
-    })
+    unique_symbols = list(
+        {
+            (raw.get("security", {}) or {}).get("symbol")
+            for raw in raw_positions
+            if (raw.get("security", {}) or {}).get("symbol")
+        }
+    )
     if unique_symbols:
         max_workers = min(8, len(unique_symbols))
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -209,22 +212,24 @@ def enrich(
             current_price = 0.0
         current_price_cad = round(current_price * fx, 4)
 
-        positions.append({
-            "symbol": symbol,
-            "name": security.get("name", symbol),
-            "quantity": quantity,
-            "currency": currency,
-            "book_cost": book_cost,
-            "book_cost_cad": round(book_cost * fx, 2),
-            "market_value": market_value,
-            "market_value_cad": market_value_cad,
-            "current_price": current_price,
-            "current_price_cad": current_price_cad,
-            "day_change_pct": day_change_pct,
-            "total_return_pct": total_return_pct,
-            "asset_class": _classify_asset(security_type, symbol),
-            "sector": sector,
-        })
+        positions.append(
+            {
+                "symbol": symbol,
+                "name": security.get("name", symbol),
+                "quantity": quantity,
+                "currency": currency,
+                "book_cost": book_cost,
+                "book_cost_cad": round(book_cost * fx, 2),
+                "market_value": market_value,
+                "market_value_cad": market_value_cad,
+                "current_price": current_price,
+                "current_price_cad": current_price_cad,
+                "day_change_pct": day_change_pct,
+                "total_return_pct": total_return_pct,
+                "asset_class": _classify_asset(security_type, symbol),
+                "sector": sector,
+            }
+        )
 
     # Use WS account NLV as weight denominator when available — includes crypto etc.
     weight_base = max(ws_account_total, total_market_value_cad)
@@ -233,10 +238,7 @@ def enrich(
         weight = round((p["market_value_cad"] / weight_base) * 100, 2) if weight_base else 0.0
         enriched.append(Position(**p, weight=weight))
 
-    equity_cost_cad = sum(
-        p.book_cost * (cad_per_usd if p.currency == "USD" else 1.0)
-        for p in enriched
-    )
+    equity_cost_cad = sum(p.book_cost * (cad_per_usd if p.currency == "USD" else 1.0) for p in enriched)
     # NLV already includes all cash — do not add cash_balance again.
     reported_total = ws_account_total if ws_account_total > 0 else total_market_value_cad
 
@@ -249,28 +251,22 @@ def enrich(
     if unrealized_pnl_cad and ws_account_total > 0:
         equity_nlv = ws_account_total - total_cash_cad
         total_cost_cad = round(equity_nlv - unrealized_pnl_cad, 2)
-        total_return_pct = round(
-            (unrealized_pnl_cad / total_cost_cad) * 100, 2
-        ) if total_cost_cad > 0 else 0.0
+        total_return_pct = round((unrealized_pnl_cad / total_cost_cad) * 100, 2) if total_cost_cad > 0 else 0.0
     else:
         total_cost_cad = equity_cost_cad
         equity_invested = total_market_value_cad - total_cash_cad
-        total_return_pct = round(
-            ((equity_invested - total_cost_cad) / total_cost_cad) * 100, 2
-        ) if total_cost_cad else 0.0
+        total_return_pct = (
+            round(((equity_invested - total_cost_cad) / total_cost_cad) * 100, 2) if total_cost_cad else 0.0
+        )
 
     # Account-wide return: (NLV - lifetime deposits) / deposits. Includes cash
     # interest + realized gains + dividends, not just unrealized PnL. Matches
     # what users see in the WS app top-line return.
     account_return_pct = 0.0
     if net_deposits_cad and ws_account_total > 0:
-        account_return_pct = round(
-            ((ws_account_total - net_deposits_cad) / net_deposits_cad) * 100, 2
-        )
+        account_return_pct = round(((ws_account_total - net_deposits_cad) / net_deposits_cad) * 100, 2)
 
-    day_change_cad = round(
-        sum(p.market_value_cad * p.day_change_pct / 100 for p in enriched), 2
-    )
+    day_change_cad = round(sum(p.market_value_cad * p.day_change_pct / 100 for p in enriched), 2)
 
     return PortfolioResponse(
         positions=enriched,
@@ -283,10 +279,7 @@ def enrich(
             day_change_cad=day_change_cad,
             net_deposits_cad=round(net_deposits_cad, 2),
             account_return_pct=account_return_pct,
-            simple_return_pct=(
-                round(simple_return_pct, 2)
-                if simple_return_pct is not None else None
-            ),
+            simple_return_pct=(round(simple_return_pct, 2) if simple_return_pct is not None else None),
         ),
     )
 
@@ -316,7 +309,11 @@ def fetch_returns(symbols: list[str], period: str = "1y") -> dict[str, list[floa
             if len(symbols) == 1:
                 series = data["Close"] if "Close" in data.columns else data.iloc[:, 0]
             else:
-                series = data[sym]["Close"] if (sym, "Close") in data.columns or sym in data.columns.get_level_values(0) else None
+                series = (
+                    data[sym]["Close"]
+                    if (sym, "Close") in data.columns or sym in data.columns.get_level_values(0)
+                    else None
+                )
             if series is None or series.empty:
                 out[sym] = []
                 continue

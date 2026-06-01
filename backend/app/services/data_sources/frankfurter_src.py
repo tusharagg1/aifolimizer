@@ -91,16 +91,21 @@ class FrankfurterSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if interval != "1d":
             raise SourceUnavailable("frankfurter: daily only")
         base, target = _split_pair(symbol)
         days_map = {
-            "1mo": 31, "3mo": 93, "6mo": 186, "1y": 365,
-            "2y": 730, "3y": 1095, "5y": 1825, "10y": 3650,
-            "ytd": 365, "max": 365 * 25,
+            "1mo": 31,
+            "3mo": 93,
+            "6mo": 186,
+            "1y": 365,
+            "2y": 730,
+            "3y": 1095,
+            "5y": 1825,
+            "10y": 3650,
+            "ytd": 365,
+            "max": 365 * 25,
         }
         days = days_map.get(period, 365)
         start = (date.today() - timedelta(days=days)).isoformat()
@@ -125,14 +130,20 @@ class FrankfurterSource(DataSource):
             if r is None:
                 continue
             r = float(r)
-            bars.append(PriceBar(
-                symbol=symbol,
-                date=d,
-                open=r, high=r, low=r, close=r, volume=0.0,
-                adj_close=r,
-                source=self.name,
-                as_of=time.time(),
-            ))
+            bars.append(
+                PriceBar(
+                    symbol=symbol,
+                    date=d,
+                    open=r,
+                    high=r,
+                    low=r,
+                    close=r,
+                    volume=0.0,
+                    adj_close=r,
+                    source=self.name,
+                    as_of=time.time(),
+                )
+            )
         if not bars:
             raise SourceUnavailable(f"frankfurter: no bars parsed for {symbol}")
         return bars

@@ -157,14 +157,16 @@ def _fetch_earnings_history_one(symbol: str, quarters: int) -> list[dict]:
                 outcome = "miss"
             else:
                 outcome = "meet"
-            out.append({
-                "quarter": q,
-                "eps_actual": float(eps_actual) if eps_actual is not None else None,
-                "eps_estimate": float(eps_estimate) if eps_estimate is not None else None,
-                "eps_difference": float(row.get("epsDifference")) if row.get("epsDifference") is not None else None,
-                "surprise_pct": float(surprise) * 100 if surprise is not None else None,
-                "outcome": outcome,
-            })
+            out.append(
+                {
+                    "quarter": q,
+                    "eps_actual": float(eps_actual) if eps_actual is not None else None,
+                    "eps_estimate": float(eps_estimate) if eps_estimate is not None else None,
+                    "eps_difference": float(row.get("epsDifference")) if row.get("epsDifference") is not None else None,
+                    "surprise_pct": float(surprise) * 100 if surprise is not None else None,
+                    "outcome": outcome,
+                }
+            )
         return out
     except Exception as e:
         _LOG.warning(f"[earnings_history] {symbol}: {type(e).__name__}: {e}")
@@ -210,11 +212,11 @@ def _fetch_expected_move(symbol: str, earnings_date_str: str | None, current_pri
         earnings_dt = datetime.strptime(earnings_date_str, "%Y-%m-%d").date()
         today = date_type.today()
         days_to = (earnings_dt - today).days
-        if days_to < 0 or days_to > 60:   # only flag upcoming earnings within 60 days
+        if days_to < 0 or days_to > 60:  # only flag upcoming earnings within 60 days
             return {}
 
         ticker = yf.Ticker(symbol)
-        expiries = ticker.options          # list of "YYYY-MM-DD" strings
+        expiries = ticker.options  # list of "YYYY-MM-DD" strings
         if not expiries:
             return {}
 
@@ -299,35 +301,23 @@ def get_insider_activity(symbol: str) -> dict:
                     name = str(row.get("Insider") or "")
                     title = str(row.get("Position") or "")
                     date_val = row.get("Start Date") or row.get("Date")
-                    date_str = (
-                        date_val.strftime("%Y-%m-%d")
-                        if hasattr(date_val, "strftime")
-                        else str(date_val)
-                    )
-                    is_buy = any(
-                        kw in txn_type.lower()
-                        for kw in ("purchase", "buy", "acquisition")
-                    )
-                    is_sell = any(
-                        kw in txn_type.lower()
-                        for kw in ("sale", "sell", "disposition")
-                    )
+                    date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)
+                    is_buy = any(kw in txn_type.lower() for kw in ("purchase", "buy", "acquisition"))
+                    is_sell = any(kw in txn_type.lower() for kw in ("sale", "sell", "disposition"))
                     if is_buy:
                         buys += 1
                     elif is_sell:
                         sells += 1
-                    rows.append({
-                        "date": date_str,
-                        "name": name,
-                        "title": title,
-                        "type": (
-                            "BUY" if is_buy
-                            else "SELL" if is_sell
-                            else txn_type
-                        ),
-                        "shares": shares,
-                        "value_usd": round(value, 2),
-                    })
+                    rows.append(
+                        {
+                            "date": date_str,
+                            "name": name,
+                            "title": title,
+                            "type": ("BUY" if is_buy else "SELL" if is_sell else txn_type),
+                            "shares": shares,
+                            "value_usd": round(value, 2),
+                        }
+                    )
                 result["recent_transactions"] = rows[:10]
                 total = buys + sells
                 if total > 0:
@@ -349,11 +339,13 @@ def get_insider_activity(symbol: str) -> dict:
                     name = str(row.get("Holder") or "")
                     shares = int(row.get("Shares") or 0)
                     pct = float(row.get("% Out") or 0)
-                    top.append({
-                        "holder": name,
-                        "shares": shares,
-                        "pct_held": round(pct * 100, 2),
-                    })
+                    top.append(
+                        {
+                            "holder": name,
+                            "shares": shares,
+                            "pct_held": round(pct * 100, 2),
+                        }
+                    )
                 result["top_holders"] = top
         except Exception:
             pass
@@ -393,12 +385,8 @@ def get_earnings_expected_moves(
 # ── SEC EDGAR XBRL (free, no key) ────────────────────────────────────────────
 
 _SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
-_SEC_FACTS_URL = (
-    "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
-)
-_SEC_HEADERS = {
-    "User-Agent": "aifolimizer/1.0 (open-source portfolio analytics)"
-}
+_SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+_SEC_HEADERS = {"User-Agent": "aifolimizer/1.0 (open-source portfolio analytics)"}
 _CIK_MAP: dict[str, str] = {}  # ticker → zero-padded CIK; session-scoped
 _SEC_CACHE: dict[str, tuple[dict, float]] = {}
 _SEC_TTL = 24 * 3600  # EDGAR filings don't change intraday
@@ -410,9 +398,7 @@ def _load_cik_map() -> dict[str, str]:
     if _CIK_MAP:
         return _CIK_MAP
     try:
-        req = urllib.request.Request(
-            _SEC_TICKERS_URL, headers=_SEC_HEADERS
-        )
+        req = urllib.request.Request(_SEC_TICKERS_URL, headers=_SEC_HEADERS)
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         for entry in data.values():
@@ -425,31 +411,17 @@ def _load_cik_map() -> dict[str, str]:
     return _CIK_MAP
 
 
-def _extract_annual_series(
-    facts: dict, concept: str, unit: str = "USD"
-) -> list[dict]:
+def _extract_annual_series(facts: dict, concept: str, unit: str = "USD") -> list[dict]:
     """Pull annual 10-K values for a US-GAAP concept from an XBRL facts blob."""
     try:
-        entries = (
-            facts.get("facts", {})
-                 .get("us-gaap", {})
-                 .get(concept, {})
-                 .get("units", {})
-                 .get(unit, [])
-        )
-        annual = [
-            e for e in entries
-            if e.get("form") == "10-K" and e.get("fp") == "FY"
-        ]
+        entries = facts.get("facts", {}).get("us-gaap", {}).get(concept, {}).get("units", {}).get(unit, [])
+        annual = [e for e in entries if e.get("form") == "10-K" and e.get("fp") == "FY"]
         by_year: dict[int, dict] = {}
         for e in annual:
             end = e.get("end", "")
             year = int(end[:4]) if len(end) >= 4 else 0
             filed = e.get("filed", "")
-            if year and (
-                year not in by_year
-                or filed > by_year[year].get("filed", "")
-            ):
+            if year and (year not in by_year or filed > by_year[year].get("filed", "")):
                 by_year[year] = {"year": year, "value": e.get("val")}
         return sorted(by_year.values(), key=lambda x: x["year"])[-4:]
     except Exception:
@@ -516,13 +488,8 @@ def get_sec_financials(symbol: str) -> dict:
         or _extract_annual_series(facts, "SalesRevenueNet")
     )
     net_income = _extract_annual_series(facts, "NetIncomeLoss")
-    eps = (
-        _extract_annual_series(
-            facts, "EarningsPerShareBasic", unit="USD/shares"
-        )
-        or _extract_annual_series(
-            facts, "EarningsPerShareDiluted", unit="USD/shares"
-        )
+    eps = _extract_annual_series(facts, "EarningsPerShareBasic", unit="USD/shares") or _extract_annual_series(
+        facts, "EarningsPerShareDiluted", unit="USD/shares"
     )
 
     result = {

@@ -10,6 +10,7 @@ Exit codes:
     0  notification sent (or cooldown active — silently skipped)
     1  telegram config missing
 """
+
 from __future__ import annotations
 
 import sys
@@ -25,7 +26,7 @@ load_dotenv()
 from app.core.config import settings  # noqa: E402
 
 NOTIFY_FILE = Path.home() / ".aifolimizer" / ".mfa-notify.last"
-COOLDOWN_SEC = 6 * 3600   # one heads-up per 6h while expired
+COOLDOWN_SEC = 6 * 3600  # one heads-up per 6h while expired
 TG_API = "https://api.telegram.org"
 
 
@@ -49,10 +50,7 @@ def main() -> int:
         return 1
     if time.time() - _last_sent() < COOLDOWN_SEC:
         return 0
-    text = (
-        "🔐 aifolimizer · WS session expired.\n"
-        "Run aifolimizer-launch.ps1 at your PC to re-auth via popup."
-    )
+    text = "🔐 aifolimizer · WS session expired.\nRun aifolimizer-launch.ps1 at your PC to re-auth via popup."
     try:
         r = httpx.post(
             f"{TG_API}/bot{settings.telegram_bot_token}/sendMessage",

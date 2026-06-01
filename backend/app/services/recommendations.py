@@ -12,6 +12,7 @@ when a single volatile indicator (MACD histogram, RSI) crosses a threshold.
 
 Output is cached 30 minutes — eliminates per-page-load recalculation.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -75,8 +76,11 @@ _REC_CACHE_TTL = 1800  # 30 minutes
 # ── Sub-signal weights (Phase 2). Default mirrors v3 baseline.
 # Phase 5 overwrites this from the `weights` Postgres table.
 _WEIGHTS_CACHE: dict[str, float] = {
-    "w_tech": 1.0, "w_fund": 1.0, "w_macro": 1.0,
-    "w_sentiment": 1.0, "w_skill": 0.5,
+    "w_tech": 1.0,
+    "w_fund": 1.0,
+    "w_macro": 1.0,
+    "w_sentiment": 1.0,
+    "w_skill": 0.5,
 }
 _WEIGHTS_CACHE_TS: float = 0.0
 _WEIGHTS_CACHE_TTL = 300  # 5 minutes — short to react to nightly tuner
@@ -93,6 +97,7 @@ def _load_weights() -> dict[str, float]:
     try:
         # Lazy import — avoid circular dep at module load.
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return _WEIGHTS_CACHE
@@ -108,8 +113,7 @@ def _load_weights() -> dict[str, float]:
         async def _q() -> dict | None:
             async with pool.acquire() as conn:
                 row = await conn.fetchrow(
-                    "SELECT w_tech, w_fund, w_macro, w_sentiment, w_skill "
-                    "FROM weights ORDER BY version DESC LIMIT 1"
+                    "SELECT w_tech, w_fund, w_macro, w_sentiment, w_skill FROM weights ORDER BY version DESC LIMIT 1"
                 )
             return dict(row) if row else None
 
@@ -122,25 +126,66 @@ def _load_weights() -> dict[str, float]:
         pass
     return _WEIGHTS_CACHE
 
+
 # ── News sentiment cache ───────────────────────────────────────────────────────
 _SENT_CACHE: dict[str, tuple[float, float]] = {}
 _SENT_TTL = 1800  # 30 minutes
 
-_POSITIVE = frozenset({
-    "beat", "beats", "raises", "surges", "gains", "strong", "upgrade",
-    "upgrades", "bullish", "record", "tops", "exceeds", "rally", "soars",
-    "positive", "better", "outperforms", "boosts", "grows", "growth",
-})
-_NEGATIVE = frozenset({
-    "miss", "misses", "falls", "drops", "weak", "downgrade", "downgrades",
-    "bearish", "loss", "warns", "cut", "cuts", "disappoints", "below",
-    "negative", "worse", "concern", "plunges", "slumps", "selloff", "layoffs",
-})
+_POSITIVE = frozenset(
+    {
+        "beat",
+        "beats",
+        "raises",
+        "surges",
+        "gains",
+        "strong",
+        "upgrade",
+        "upgrades",
+        "bullish",
+        "record",
+        "tops",
+        "exceeds",
+        "rally",
+        "soars",
+        "positive",
+        "better",
+        "outperforms",
+        "boosts",
+        "grows",
+        "growth",
+    }
+)
+_NEGATIVE = frozenset(
+    {
+        "miss",
+        "misses",
+        "falls",
+        "drops",
+        "weak",
+        "downgrade",
+        "downgrades",
+        "bearish",
+        "loss",
+        "warns",
+        "cut",
+        "cuts",
+        "disappoints",
+        "below",
+        "negative",
+        "worse",
+        "concern",
+        "plunges",
+        "slumps",
+        "selloff",
+        "layoffs",
+    }
+)
 
 
 def _try_llm_sentiment(symbol: str, headlines: list[str]) -> float | None:
     try:
         from app.services.llm_router import score_news_sentiment
+
         return asyncio.run(score_news_sentiment(symbol, headlines))
     except Exception:
         return None
@@ -149,16 +194,10 @@ def _try_llm_sentiment(symbol: str, headlines: list[str]) -> float | None:
 def _fetch_sentiment(symbol: str) -> float:
     """News headline polarity via LLM (falls back to keyword). Returns -1.0 to +1.0."""
     try:
-        url = (
-            f"https://news.google.com/rss/search"
-            f"?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
-        )
+        url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
         resp = httpx.get(url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
         root = ET.fromstring(resp.text)
-        raw_titles = [
-            item.findtext("title") or ""
-            for item in root.iter("item")
-        ][:15]
+        raw_titles = [item.findtext("title") or "" for item in root.iter("item")][:15]
         if not raw_titles:
             return 0.0
         llm_score = _try_llm_sentiment(symbol, raw_titles)
@@ -396,10 +435,7 @@ def _score_position(
     skill_score = max(-2.0, min(2.0, (skill_consensus / 4.0) * w_skill))
     skill_dir = _direction(skill_score, 0.25) if skill_confidence >= 0.5 else 0
     if skill_consensus != 0 and skill_confidence >= 0.5:
-        reasons.append(
-            f"Skills consensus {skill_consensus:+d} "
-            f"(confidence {skill_confidence:.0%}, w={w_skill:.2f})"
-        )
+        reasons.append(f"Skills consensus {skill_consensus:+d} (confidence {skill_confidence:.0%}, w={w_skill:.2f})")
 
     # ── Signal convergence → confidence ───────────────────────────────────────
     tech_dir = _direction(tech_score, 0.5)
@@ -408,10 +444,7 @@ def _score_position(
     sent_dir = _direction(sentiment, 0.3)
 
     # 4-of-5 gate: skill_dir included only when confidence ≥ 0.5 (handled above)
-    primary_dirs = [
-        d for d in [tech_dir, fund_dir, macro_dir, sent_dir, skill_dir]
-        if d != 0
-    ]
+    primary_dirs = [d for d in [tech_dir, fund_dir, macro_dir, sent_dir, skill_dir] if d != 0]
     if primary_dirs:
         dominant = max(set(primary_dirs), key=primary_dirs.count)
         confirming = primary_dirs.count(dominant)
@@ -444,7 +477,7 @@ def _score_position(
         + fund_score * w_fund
         + (sentiment * 0.8) * w_sent
         + macro_score * w_macro
-        + skill_score        # already weighted by w_skill above
+        + skill_score  # already weighted by w_skill above
         + overweight_penalty
         + loss_penalty
     )
@@ -594,8 +627,7 @@ def _score_position(
     # ── Signal quality score ──────────────────────────────────────────────────
     # Scored on the full reasons text so quality reflects thesis depth/specificity
     reasons_text = " ".join(reasons) + (
-        f" stop {stop_loss} target {take_profit} risk/reward {risk_reward}"
-        if stop_loss and take_profit else ""
+        f" stop {stop_loss} target {take_profit} risk/reward {risk_reward}" if stop_loss and take_profit else ""
     )
     sq = score_quality(reasons_text, symbol=symbol)
 
@@ -622,9 +654,8 @@ def _score_position(
         position_at_risk = round(position_value * expected_move_pct / 100, 0) if position_value else None
         if days_to_earnings <= 7:
             earnings_risk = "imminent"
-            reasons_entry = (
-                f"Earnings in {days_to_earnings}d — options imply ±{expected_move_pct}%"
-                + (f" (${position_at_risk:,.0f} at risk)" if position_at_risk else "")
+            reasons_entry = f"Earnings in {days_to_earnings}d — options imply ±{expected_move_pct}%" + (
+                f" (${position_at_risk:,.0f} at risk)" if position_at_risk else ""
             )
         elif days_to_earnings <= 21:
             earnings_risk = "upcoming"
@@ -633,14 +664,12 @@ def _score_position(
             earnings_risk = None
             reasons_entry = None
         if earnings_risk and reasons_entry:
-            reasons.insert(0, reasons_entry)   # bump to top of reasons list
+            reasons.insert(0, reasons_entry)  # bump to top of reasons list
             if earnings_risk == "imminent" and action == "BUY":
                 entry_timing = "wait_pullback"  # don't enter right before binary event
 
     _ev = _evidence_context()
-    evidence_tier, evidence_note = _evidence_tier(
-        action, confidence, _ev["forward_n"], _ev["calibrated"], ev_dollars
-    )
+    evidence_tier, evidence_note = _evidence_tier(action, confidence, _ev["forward_n"], _ev["calibrated"], ev_dollars)
 
     return {
         "symbol": symbol,
@@ -748,12 +777,7 @@ def _evidence_tier(
     if action == "NO_EDGE":
         return "no_edge", "No measurable edge — no clean directional signal."
     positive_ev = ev_dollars is None or ev_dollars > 0
-    if (
-        forward_n >= _MIN_FORWARD_PROVEN
-        and calibrated
-        and positive_ev
-        and confidence == "high"
-    ):
+    if forward_n >= _MIN_FORWARD_PROVEN and calibrated and positive_ev and confidence == "high":
         return (
             "proven_edge",
             f"High convergence + {forward_n} calibrated forward signals.",
@@ -761,13 +785,11 @@ def _evidence_tier(
     if forward_n >= _MIN_FORWARD_THESIS and confidence in ("high", "medium"):
         return (
             "reasonable_thesis",
-            f"Signals align; {forward_n} forward signals logged but not yet "
-            "calibrated/proven.",
+            f"Signals align; {forward_n} forward signals logged but not yet calibrated/proven.",
         )
     return (
         "experimental",
-        f"Only {forward_n} closed forward signals — experimental until "
-        f"calibrated (need ~{_MIN_FORWARD_PROVEN}).",
+        f"Only {forward_n} closed forward signals — experimental until calibrated (need ~{_MIN_FORWARD_PROVEN}).",
     )
 
 
@@ -840,12 +862,7 @@ def _decide_action(
 
     # Bullish path
     if dominant_dir == 1:
-        if (
-            score >= 7.5
-            and confirming >= 3
-            and conflicting == 0
-            and market_regime not in _REGIME_BUY_HOSTILE
-        ):
+        if score >= 7.5 and confirming >= 3 and conflicting == 0 and market_regime not in _REGIME_BUY_HOSTILE:
             return "BUY", "3+ sub-signals converge bullish, regime compatible"
         if score >= 7.5 and market_regime in _REGIME_BUY_HOSTILE:
             return "WATCH", f"Bullish setup but {market_regime} regime — defer until trend confirms"
@@ -885,8 +902,7 @@ def get_recommendations(
             str(p.get("symbol")),
             round(float(p.get("weight") or 0), 1),
             round(float(p.get("market_value_cad") or 0), -2),
-            int((skill_evidence_map.get(p.get("symbol")) or {}).get(
-                "skill_consensus") or 0),
+            int((skill_evidence_map.get(p.get("symbol")) or {}).get("skill_consensus") or 0),
         )
         for p in portfolio_positions
     )
@@ -977,34 +993,36 @@ def get_recommendations(
                 if stop:
                     stop_pct = round(abs(entry - stop) / entry * 100, 2)
                     expected_downside_pct = round((stop - entry) / entry * 100, 2)
-            contract_recs.append({
-                "symbol": rec.get("symbol"),
-                "action": action,
-                "conviction": (rec.get("confidence") or "MED").upper().replace("MEDIUM", "MED"),
-                "current_price": entry,
-                "thesis": " | ".join(rec.get("reasons") or [])[:500],
-                "invalidation": f"stop {stop} ({rec.get('stop_type')})" if stop else None,
-                "target_pct": target_pct,
-                "stop_pct": stop_pct,
-                "expected_upside_pct": expected_upside_pct,
-                "expected_downside_pct": expected_downside_pct,
-                "horizon_days": 21,
-                "reasons": rec.get("reasons"),
-                "features": {
-                    "tech_score": rec.get("tech_score"),
-                    "fund_score": rec.get("fund_score"),
-                    "macro_score": rec.get("macro_score"),
-                    "sentiment": rec.get("sentiment"),
-                    "rsi": rec.get("rsi"),
-                    "stage": rec.get("stage"),
-                    "market_regime": rec.get("market_regime"),
-                    "signal_quality": rec.get("signal_quality"),
-                    "risk_reward": rec.get("risk_reward"),
-                    "win_prob": rec.get("win_prob"),
-                    "kelly_pct": rec.get("kelly_pct"),
-                    "days_to_earnings": rec.get("days_to_earnings"),
-                },
-            })
+            contract_recs.append(
+                {
+                    "symbol": rec.get("symbol"),
+                    "action": action,
+                    "conviction": (rec.get("confidence") or "MED").upper().replace("MEDIUM", "MED"),
+                    "current_price": entry,
+                    "thesis": " | ".join(rec.get("reasons") or [])[:500],
+                    "invalidation": f"stop {stop} ({rec.get('stop_type')})" if stop else None,
+                    "target_pct": target_pct,
+                    "stop_pct": stop_pct,
+                    "expected_upside_pct": expected_upside_pct,
+                    "expected_downside_pct": expected_downside_pct,
+                    "horizon_days": 21,
+                    "reasons": rec.get("reasons"),
+                    "features": {
+                        "tech_score": rec.get("tech_score"),
+                        "fund_score": rec.get("fund_score"),
+                        "macro_score": rec.get("macro_score"),
+                        "sentiment": rec.get("sentiment"),
+                        "rsi": rec.get("rsi"),
+                        "stage": rec.get("stage"),
+                        "market_regime": rec.get("market_regime"),
+                        "signal_quality": rec.get("signal_quality"),
+                        "risk_reward": rec.get("risk_reward"),
+                        "win_prob": rec.get("win_prob"),
+                        "kelly_pct": rec.get("kelly_pct"),
+                        "days_to_earnings": rec.get("days_to_earnings"),
+                    },
+                }
+            )
 
         paper_trade.batch_log_recommendations(
             skill="recommendations_engine",

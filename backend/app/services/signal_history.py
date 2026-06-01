@@ -266,9 +266,7 @@ def accuracy_report(
 
     key = f"h{horizon}"
     scored = [
-        r for r in rows
-        if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS
-        and key in (r.get("outcomes") or {})
+        r for r in rows if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS and key in (r.get("outcomes") or {})
     ]
     if not scored:
         return {
@@ -291,10 +289,7 @@ def accuracy_report(
     by_score: dict[str, dict] = {}
     buckets = [(0, 3.5), (3.5, 5.5), (5.5, 7.5), (7.5, 10.001)]
     for lo, hi in buckets:
-        subset = [
-            r for r in scored
-            if r.get("score") is not None and lo <= r.get("score") < hi
-        ]
+        subset = [r for r in scored if r.get("score") is not None and lo <= r.get("score") < hi]
         if not subset:
             continue
         label = f"{lo:.1f}-{hi:.1f}" if hi <= 10 else f"{lo:.1f}-10.0"
@@ -348,7 +343,8 @@ def calibrate_thresholds(
 
     key = f"h{horizon}"
     scored = [
-        r for r in rows
+        r
+        for r in rows
         if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS
         and key in (r.get("outcomes") or {})
         and r.get("score") is not None
@@ -373,10 +369,7 @@ def calibrate_thresholds(
             sell_thr = sell_thr_x10 / 10
             if sell_thr >= buy_thr:
                 continue
-            traded = [
-                r for r in scored
-                if r["score"] >= buy_thr or r["score"] < sell_thr
-            ]
+            traded = [r for r in scored if r["score"] >= buy_thr or r["score"] < sell_thr]
             if len(traded) < min_count:
                 continue
             metrics = _classify_subset(traded, horizon)
@@ -408,8 +401,7 @@ def _classify_subset(rows: list[dict], horizon: int) -> dict:
     rets = [
         r["outcomes"][key]["ret_pct"]
         for r in rows
-        if key in (r.get("outcomes") or {})
-        and r["outcomes"][key].get("ret_pct") is not None
+        if key in (r.get("outcomes") or {}) and r["outcomes"][key].get("ret_pct") is not None
     ]
     if not rets:
         return {"n": 0}
@@ -521,10 +513,7 @@ def signal_decay_curve(
         action_filter = action_filter.upper()
         rows = [r for r in rows if (r.get("action") or "").upper() == action_filter]
     else:
-        rows = [
-            r for r in rows
-            if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS
-        ]
+        rows = [r for r in rows if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS]
 
     curve: dict[str, dict] = {}
     for h in horizons:
@@ -532,8 +521,7 @@ def signal_decay_curve(
         rets = [
             r["outcomes"][key]["ret_pct"]
             for r in rows
-            if key in (r.get("outcomes") or {})
-            and r["outcomes"][key].get("ret_pct") is not None
+            if key in (r.get("outcomes") or {}) and r["outcomes"][key].get("ret_pct") is not None
         ]
         if len(rets) < min_count:
             curve[key] = {"n": len(rets), "insufficient_data": True}
@@ -557,7 +545,8 @@ def signal_decay_curve(
         "peak_avg_ret_pct": peak[1]["avg_ret_pct"] if peak else None,
         "interpretation": (
             f"Best holding period: {peak[0]} ({peak[1]['avg_ret_pct']:+.2f}% avg)"
-            if peak else "insufficient data for decay analysis"
+            if peak
+            else "insufficient data for decay analysis"
         ),
         "as_of": datetime.utcnow().isoformat(timespec="seconds") + "Z",
     }
@@ -583,7 +572,8 @@ def per_signal_source_attribution(
 
     key = f"h{horizon}"
     scored = [
-        r for r in rows
+        r
+        for r in rows
         if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS
         and key in (r.get("outcomes") or {})
         and r["outcomes"][key].get("ret_pct") is not None
@@ -601,10 +591,7 @@ def per_signal_source_attribution(
             dominant = feats.get(src)
             if dominant is None:
                 continue
-            others = [
-                abs(float(feats.get(s) or 0))
-                for s in sources if s != src
-            ]
+            others = [abs(float(feats.get(s) or 0)) for s in sources if s != src]
             max_other = max(others) if others else 0.0
             if abs(float(dominant)) >= max(2 * max_other, 0.5):
                 bucket.append(r)
@@ -669,7 +656,8 @@ def calibrate_confidence(
 
     key = f"h{horizon}"
     scored = [
-        r for r in rows
+        r
+        for r in rows
         if (r.get("action") or "").upper() in _DIRECTIONAL_ACTIONS
         and key in (r.get("outcomes") or {})
         and r["outcomes"][key].get("ret_pct") is not None
@@ -713,15 +701,10 @@ def calibrate_confidence(
             suggested = "confidence labels are meaningful — keep current thresholds"
         elif monotone:
             verdict = "weakly_calibrated"
-            suggested = (
-                "ordering correct but spread <10pp — tighten HIGH threshold"
-            )
+            suggested = "ordering correct but spread <10pp — tighten HIGH threshold"
         else:
             verdict = "uncalibrated"
-            suggested = (
-                "HIGH does not outperform MEDIUM/LOW — re-weight sub-scores "
-                "or retire the confidence label"
-            )
+            suggested = "HIGH does not outperform MEDIUM/LOW — re-weight sub-scores or retire the confidence label"
 
     return {
         "horizon": horizon,

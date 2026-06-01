@@ -62,12 +62,18 @@ async def lifespan(app: FastAPI):
     await init_pool()
     await init_redis()
     _PREWARM = [
-        "AAPL", "MSFT", "NVDA", "XEQT.TO", "VFV.TO",
-        "SPY", "QQQ", "AMZN", "GOOG", "AMD",
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "XEQT.TO",
+        "VFV.TO",
+        "SPY",
+        "QQQ",
+        "AMZN",
+        "GOOG",
+        "AMD",
     ]
-    asyncio.create_task(
-        asyncio.to_thread(data_router.get_quotes_batch, _PREWARM, 300)
-    )
+    asyncio.create_task(asyncio.to_thread(data_router.get_quotes_batch, _PREWARM, 300))
     # Re-seed the WS session from disk so the scheduler keeps the token warm
     # across restarts (its ticks refresh it) instead of idling until a manual
     # login. Failure is non-fatal — falls back to lazy login on first use.

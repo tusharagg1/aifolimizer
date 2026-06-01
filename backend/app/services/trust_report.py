@@ -45,19 +45,22 @@ def generate_report() -> dict:
     broad = skill_bt_svc.latest_results("broad")
     blocks: list[tuple[str, str, dict]] = []
     if holdings:
-        blocks.append((
-            "Headline — Your Holdings",
-            "Run on your live portfolio top holdings — decision-relevant, but a "
-            "small single-account universe.",
-            holdings,
-        ))
+        blocks.append(
+            (
+                "Headline — Your Holdings",
+                "Run on your live portfolio top holdings — decision-relevant, but a small single-account universe.",
+                holdings,
+            )
+        )
     if broad:
-        blocks.append((
-            "Mechanics — Unbiased Broad Basket",
-            "40+ symbols across 11 GICS sectors including laggards and drawdown "
-            "names — tests strategy mechanics, not single-name luck.",
-            broad,
-        ))
+        blocks.append(
+            (
+                "Mechanics — Unbiased Broad Basket",
+                "40+ symbols across 11 GICS sectors including laggards and drawdown "
+                "names — tests strategy mechanics, not single-name luck.",
+                broad,
+            )
+        )
     if not blocks:
         legacy = skill_bt_svc.latest_results()
         blocks.append(("Backtest Results", "", legacy or {}))
@@ -101,18 +104,21 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
     forward_n = max((w.get("count", 0) for w in live_windows.values()), default=0)
     if forward_n < 30:
         return (
-            "EXPERIMENTAL", forward_n,
+            "EXPERIMENTAL",
+            forward_n,
             f"Only {forward_n} closed forward signals (<30). Recommendations are "
             "unproven. Backtests below are in-sample proxies, NOT evidence of edge.",
         )
     if forward_n < 100:
         return (
-            "DEVELOPING", forward_n,
+            "DEVELOPING",
+            forward_n,
             f"{forward_n} closed forward signals (30–99). Trend forming but below "
             "the ~100-signal bar for trusting confidence labels.",
         )
     return (
-        "SEED-ESTABLISHED", forward_n,
+        "SEED-ESTABLISHED",
+        forward_n,
         f"{forward_n} closed forward signals (≥100). Minimum sample met — judge by "
         "calibration and net-of-cost expectancy, not raw win rate.",
     )
@@ -255,12 +261,7 @@ def _render_markdown(
     a("|---|---|---|---|")
     if reliability:
         for r in reliability:
-            a(
-                f"| {r['source']} "
-                f"| {r['calls']} "
-                f"| {r.get('success_rate_pct', '—')} "
-                f"| {r.get('avg_latency_ms', '—')} |"
-            )
+            a(f"| {r['source']} | {r['calls']} | {r.get('success_rate_pct', '—')} | {r.get('avg_latency_ms', '—')} |")
     else:
         a("| *No calls recorded yet* | — | — | — |")
     a("")
@@ -273,6 +274,7 @@ def _render_markdown(
     a("| Profile | 1Y % | 3Y % | 5Y % |")
     a("|---|---|---|---|")
     from app.services.alpha_attribution import _WS_MANAGED
+
     for profile, perf in _WS_MANAGED.items():
         a(f"| {profile} | {perf['1y']} | {perf['3y']} | {perf['5y']} |")
     a("")

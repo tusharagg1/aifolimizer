@@ -5,6 +5,7 @@ auth raise and the test skips that tool. CI runs it nonetheless to catch
 hardcoded PII (e.g. an email accidentally embedded in a fixture or default
 return value).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -21,9 +22,7 @@ except ImportError:
         _mcp = None  # type: ignore
 
 
-pytestmark = pytest.mark.skipif(
-    _mcp is None, reason="backend.mcp_server not importable in this environment"
-)
+pytestmark = pytest.mark.skipif(_mcp is None, reason="backend.mcp_server not importable in this environment")
 
 
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
@@ -99,9 +98,7 @@ def test_mcp_tool_does_not_leak_pii(tool_name: str) -> None:
     assert not emails, f"{tool_name} leaked email-like substrings: {emails[:3]}"
 
     long_digits = LONG_DIGIT_RE.findall(blob)
-    assert not long_digits, (
-        f"{tool_name} leaked 14+ digit sequences (possible account IDs): {long_digits[:3]}"
-    )
+    assert not long_digits, f"{tool_name} leaked 14+ digit sequences (possible account IDs): {long_digits[:3]}"
 
     for literal in FORBIDDEN_LITERALS:
         assert literal not in blob, f"{tool_name} leaked forbidden literal {literal!r}"

@@ -26,6 +26,7 @@ load_dotenv()
 if os.environ.get("SENTRY_DSN"):
     from app.core.config import settings as _settings
     from app.core.sentry import init_sentry as _init_sentry
+
     _init_sentry(_settings)
 
 
@@ -36,6 +37,7 @@ class _LazyModule:
     service modules (yfinance/ta/pandas) push startup past Claude Code's
     schema-fetch window, leaving aifolimizer tools absent from the session.
     """
+
     __slots__ = ("_target", "_mod")
 
     def __init__(self, target: str) -> None:
@@ -141,15 +143,11 @@ async def _ensure_session() -> str:
     email = os.getenv("WS_EMAIL", "")
     password = os.getenv("WS_PASSWORD", "")
     if not email or not password:
-        raise RuntimeError(
-            "No cached session found. Run: cd backend && .venv/Scripts/python mcp_login.py"
-        )
+        raise RuntimeError("No cached session found. Run: cd backend && .venv/Scripts/python mcp_login.py")
 
     result = await asyncio.to_thread(wealthsimple.login, email, password)
     if result.get("needs_otp"):
-        raise RuntimeError(
-            "MFA required. Run: cd backend && .venv/Scripts/python mcp_login.py"
-        )
+        raise RuntimeError("MFA required. Run: cd backend && .venv/Scripts/python mcp_login.py")
     _state["session_id"] = result["session_id"]
     return _state["session_id"]
 
@@ -177,14 +175,13 @@ async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
         raw_positions = await asyncio.to_thread(wealthsimple.get_positions, session_id, account_id)
     else:
         raw_positions = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
-    return market_data.enrich(
-        raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad
-    )
+    return market_data.enrich(raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Portfolio data tools
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_profile() -> dict:
@@ -219,6 +216,7 @@ async def get_portfolio(account_id: str = "") -> dict:
 # Analytics tools (use the reference repo's quant + analytics)
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def get_xray(account_id: str = "") -> dict:
     """
@@ -240,7 +238,9 @@ async def get_xray(account_id: str = "") -> dict:
 
 
 @mcp.tool()
-async def get_concentration_warnings(account_id: str = "", single_max_pct: float = 10.0, sector_max_pct: float = 35.0) -> list[dict]:
+async def get_concentration_warnings(
+    account_id: str = "", single_max_pct: float = 10.0, sector_max_pct: float = 35.0
+) -> list[dict]:
     """
     Flags positions and sectors over concentration thresholds.
     single_max_pct: any single ticker over this % of portfolio gets flagged
@@ -316,6 +316,7 @@ async def get_correlation_matrix(account_id: str = "", period: str = "1y", top_n
 # Macro
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def get_macro_snapshot() -> dict:
     """
@@ -361,14 +362,13 @@ async def get_geopolitical_signals(lookback_hours: int = 24) -> dict:
     lookback_hours: 6–168 (defaults 24h). Use 48-72h for broader signal.
     Cached 1h. Use alongside get_macro_snapshot in macro-impact skill.
     """
-    return await asyncio.to_thread(
-        geopolitical_svc.get_geopolitical_signals, lookback_hours
-    )
+    return await asyncio.to_thread(geopolitical_svc.get_geopolitical_signals, lookback_hours)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Fundamentals, technicals, news
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_fundamentals(account_id: str = "", symbols: list[str] = []) -> dict:
@@ -404,9 +404,7 @@ async def get_sec_financials(symbols: list[str]) -> dict:
     symbols = _validate_symbols([s.upper() for s in symbols])
     results = {}
     for sym in symbols:
-        results[sym] = await asyncio.to_thread(
-            fundamentals_svc.get_sec_financials, sym
-        )
+        results[sym] = await asyncio.to_thread(fundamentals_svc.get_sec_financials, sym)
     return results
 
 
@@ -501,7 +499,8 @@ async def get_technicals_intraday(account_id: str = "", symbols: list[str] = [])
 
 @mcp.tool()
 async def get_earnings_calendar(
-    account_id: str = "", symbols: list[str] = [],
+    account_id: str = "",
+    symbols: list[str] = [],
 ) -> list[dict]:
     """
     Next earnings dates for all portfolio holdings, sorted ascending.
@@ -513,15 +512,12 @@ async def get_earnings_calendar(
     portfolio = await _load_portfolio(account_id)
     held = [p.symbol for p in portfolio.positions]
     held_set = set(held)
-    extra = _validate_symbols(
-        [s.strip().upper() for s in symbols if s and s.strip()]
-    )
+    extra = _validate_symbols([s.strip().upper() for s in symbols if s and s.strip()])
     all_syms = list(dict.fromkeys(held + extra))  # dedupe, preserve order
-    fund_data = await asyncio.to_thread(
-        fundamentals_svc.get_fundamentals, all_syms
-    )
+    fund_data = await asyncio.to_thread(fundamentals_svc.get_fundamentals, all_syms)
 
     from datetime import date, timedelta
+
     today = date.today()
     cutoff = today + timedelta(days=14)
     results = []
@@ -532,13 +528,15 @@ async def get_earnings_calendar(
         try:
             ed_date = date.fromisoformat(ed[:10])
             days_until = (ed_date - today).days
-            results.append({
-                "symbol": sym,
-                "earnings_date": ed[:10],
-                "days_until": days_until,
-                "is_upcoming": today <= ed_date <= cutoff,
-                "held": sym in held_set,
-            })
+            results.append(
+                {
+                    "symbol": sym,
+                    "earnings_date": ed[:10],
+                    "days_until": days_until,
+                    "is_upcoming": today <= ed_date <= cutoff,
+                    "held": sym in held_set,
+                }
+            )
         except Exception:
             continue
     return sorted(results, key=lambda r: r["earnings_date"])
@@ -585,13 +583,17 @@ async def get_trade_ideas(
     held = {p.symbol for p in portfolio.positions if p.symbol}
     positions = [
         {
-            "symbol": p.symbol, "name": p.name, "weight": p.weight,
+            "symbol": p.symbol,
+            "name": p.name,
+            "weight": p.weight,
             "market_value_cad": p.market_value_cad,
             "total_return_pct": p.total_return_pct,
-            "currency": p.currency, "asset_class": p.asset_class,
+            "currency": p.currency,
+            "asset_class": p.asset_class,
             "sector": p.sector,
         }
-        for p in portfolio.positions if p.symbol
+        for p in portfolio.positions
+        if p.symbol
     ]
     if include_watchlist:
         wl = await asyncio.to_thread(watchlist_svc.load_watchlist)
@@ -599,15 +601,23 @@ async def get_trade_ideas(
             sym = i.get("symbol")
             if not sym or sym in held:
                 continue
-            positions.append({
-                "symbol": sym, "name": i.get("name") or sym, "weight": 0.0,
-                "market_value_cad": 0.0, "total_return_pct": 0.0,
-                "currency": "CAD" if sym.endswith((".TO", ".V")) else "USD",
-                "asset_class": i.get("asset_class") or "stock", "sector": "",
-            })
+            positions.append(
+                {
+                    "symbol": sym,
+                    "name": i.get("name") or sym,
+                    "weight": 0.0,
+                    "market_value_cad": 0.0,
+                    "total_return_pct": 0.0,
+                    "currency": "CAD" if sym.endswith((".TO", ".V")) else "USD",
+                    "asset_class": i.get("asset_class") or "stock",
+                    "sector": "",
+                }
+            )
 
     recs = await asyncio.to_thread(
-        recommendations_svc.get_recommendations, positions, None,
+        recommendations_svc.get_recommendations,
+        positions,
+        None,
     )
 
     _SKIP_ACTIONS = {"HOLD", "WATCH", "PASS", "NO_EDGE"}
@@ -622,24 +632,26 @@ async def get_trade_ideas(
         if rr is not None and rr < min_risk_reward:
             continue
         sym = r.get("symbol")
-        ideas.append({
-            "symbol": sym,
-            "name": r.get("name") or sym,
-            "action": action,
-            "held": sym in held,
-            "score": r.get("score"),
-            "conviction": r.get("confidence"),
-            "current_price": r.get("current_price"),
-            "entry_timing": r.get("entry_timing"),
-            "stop_loss": r.get("stop_loss"),
-            "take_profit": r.get("take_profit"),
-            "risk_reward": rr,
-            "kelly_pct": r.get("kelly_pct"),
-            "currency": r.get("currency"),
-            "reasons": (r.get("reasons") or [])[:3],
-        })
+        ideas.append(
+            {
+                "symbol": sym,
+                "name": r.get("name") or sym,
+                "action": action,
+                "held": sym in held,
+                "score": r.get("score"),
+                "conviction": r.get("confidence"),
+                "current_price": r.get("current_price"),
+                "entry_timing": r.get("entry_timing"),
+                "stop_loss": r.get("stop_loss"),
+                "take_profit": r.get("take_profit"),
+                "risk_reward": rr,
+                "kelly_pct": r.get("kelly_pct"),
+                "currency": r.get("currency"),
+                "reasons": (r.get("reasons") or [])[:3],
+            }
+        )
 
-    ideas.sort(key=lambda x: (x.get("score") or 0), reverse=True)
+    ideas.sort(key=lambda x: x.get("score") or 0, reverse=True)
     return {
         "ideas": ideas[: max(0, top_n)],
         "universe": "holdings+watchlist" if include_watchlist else "holdings",
@@ -650,9 +662,7 @@ async def get_trade_ideas(
 
 
 @mcp.tool()
-async def get_earnings_results(
-    account_id: str = "", symbols: list[str] = [], quarters: int = 4
-) -> dict:
+async def get_earnings_results(account_id: str = "", symbols: list[str] = [], quarters: int = 4) -> dict:
     """
     Historical EPS beat/miss results per ticker: last N quarters with
     actual vs estimate EPS, surprise %, and beat/meet/miss outcome.
@@ -674,9 +684,7 @@ async def get_earnings_results(
 
 
 @mcp.tool()
-async def get_positioning_signals(
-    account_id: str = "", symbols: list[str] = []
-) -> dict:
+async def get_positioning_signals(account_id: str = "", symbols: list[str] = []) -> dict:
     """
     Crowding / positioning signals per ticker. Use BEFORE recommending an add
     to a name — flags when a position is already consensus-crowded (negative
@@ -707,9 +715,7 @@ async def get_positioning_signals(
 
 
 @mcp.tool()
-async def snapshot_positioning_history(
-    account_id: str = "", symbols: list[str] = [], top_n: int = 15
-) -> dict:
+async def snapshot_positioning_history(account_id: str = "", symbols: list[str] = [], top_n: int = 15) -> dict:
     """
     Append today's crowding scores to .claude/context/crowding_history.jsonl.
     Idempotent — same symbol on same day is skipped. Used to detect regime
@@ -749,7 +755,9 @@ async def get_crowding_shifts(
         symbols = [p.symbol for p in top]
     shifts = await asyncio.to_thread(
         positioning_svc.detect_regime_shifts,
-        symbols, lookback_days, score_delta_threshold,
+        symbols,
+        lookback_days,
+        score_delta_threshold,
     )
     return {
         "lookback_days": lookback_days,
@@ -773,7 +781,7 @@ async def get_news_headlines(ticker: str = "", limit: int = 5) -> dict:
         top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:5]
         symbols = [p.symbol for p in top]
     raw = await asyncio.to_thread(news_svc.get_news, symbols)
-    return {sym: articles[:max(1, min(limit, 10))] for sym, articles in raw.items()}
+    return {sym: articles[: max(1, min(limit, 10))] for sym, articles in raw.items()}
 
 
 @mcp.tool()
@@ -810,10 +818,9 @@ async def get_stocktwits_sentiment(ticker: str) -> dict:
 # Meta
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
-async def get_crypto_data(
-    account_id: str = "", symbols: list[str] = []
-) -> dict:
+async def get_crypto_data(account_id: str = "", symbols: list[str] = []) -> dict:
     """
     CoinGecko data for crypto positions: price CAD, market cap, rank,
     24h/7d/30d change %, ATH drawdown %, circulating supply, volume.
@@ -843,9 +850,7 @@ async def get_triggered_alerts(since_hours: int = 24, limit: int = 50) -> dict:
     """
     since_hours = max(1, min(int(since_hours), 24 * 30))
     limit = max(1, min(int(limit), 500))
-    items = await asyncio.to_thread(
-        alerts_svc.read_recent_history, since_hours, limit
-    )
+    items = await asyncio.to_thread(alerts_svc.read_recent_history, since_hours, limit)
     return {"since_hours": since_hours, "count": len(items), "alerts": items}
 
 
@@ -863,15 +868,16 @@ async def run_alerts_now(
     Use sparingly — this fetches live WS + yfinance data.
     """
     portfolio = await _load_portfolio(account_id)
-    triggered = await asyncio.to_thread(
-        alerts_svc.evaluate, portfolio, price_drop_pct=price_drop_pct
-    )
+    triggered = await asyncio.to_thread(alerts_svc.evaluate, portfolio, price_drop_pct=price_drop_pct)
     from app.core.config import settings as _cfg
+
     tg_token = None if dry_run else _cfg.telegram_bot_token
     tg_chat = None if dry_run else _cfg.telegram_chat_id
     counts = await asyncio.to_thread(
-        alerts_svc.dispatch, triggered,
-        telegram_bot_token=tg_token, telegram_chat_id=tg_chat,
+        alerts_svc.dispatch,
+        triggered,
+        telegram_bot_token=tg_token,
+        telegram_chat_id=tg_chat,
     )
     return {"account": account_id or "all", "telegram": "off" if not tg_token else "on", **counts}
 
@@ -922,17 +928,22 @@ async def backtest_portfolio(
 
     portfolio = await _load_portfolio(account_id)
     if not symbols:
-        top = sorted(
-            portfolio.positions, key=lambda p: p.weight, reverse=True
-        )[:top_n]
+        top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n]
         symbols = [p.symbol for p in top]
     _validate_symbols(symbols)
 
     weights = {p.symbol: p.weight for p in portfolio.positions if p.symbol in symbols}
     return await asyncio.to_thread(
         backtest_svc.backtest_portfolio,
-        symbols, weights, lookback_days, strategies, tx_cost_bps,
-        walk_forward, train_frac, exclude_weekdays or None, max_hold_days,
+        symbols,
+        weights,
+        lookback_days,
+        strategies,
+        tx_cost_bps,
+        walk_forward,
+        train_frac,
+        exclude_weekdays or None,
+        max_hold_days,
     )
 
 
@@ -972,11 +983,13 @@ def _load_skill_index() -> list[dict]:
         # Trim multi-line descriptions to a one-line summary for the table.
         desc = (m.group(1).strip().splitlines()[0] if m else "").strip()[:200]
         tools = sorted(set(tool_re.findall(text)))
-        out.append({
-            "name": child.name.replace("-", "_"),
-            "style": desc,
-            "tools_used": tools,
-        })
+        out.append(
+            {
+                "name": child.name.replace("-", "_"),
+                "style": desc,
+                "tools_used": tools,
+            }
+        )
     _SKILL_INDEX_CACHE = out
     return out
 
@@ -1012,8 +1025,14 @@ async def log_recommendation(
     """
     return await asyncio.to_thread(
         paper_trade_svc.log_recommendation,
-        skill, ticker, action, conviction, rationale,
-        target_pct, stop_pct, account,
+        skill,
+        ticker,
+        action,
+        conviction,
+        rationale,
+        target_pct,
+        stop_pct,
+        account,
     )
 
 
@@ -1025,9 +1044,7 @@ async def score_recommendations(max_age_days: int = 90) -> dict:
     flags stops/targets hit. Writes scored_recommendations.jsonl.
     Returns win-rate, avg return, and per-conviction breakdown.
     """
-    return await asyncio.to_thread(
-        paper_trade_svc.score_recommendations, max_age_days
-    )
+    return await asyncio.to_thread(paper_trade_svc.score_recommendations, max_age_days)
 
 
 @mcp.tool()
@@ -1038,9 +1055,7 @@ async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
     Covers only live recommendations logged via log_recommendation —
     NOT the historical backtest (use get_skill_track_record for that).
     """
-    return await asyncio.to_thread(
-        paper_trade_svc.get_track_record, windows_days
-    )
+    return await asyncio.to_thread(paper_trade_svc.get_track_record, windows_days)
 
 
 @mcp.tool()
@@ -1062,9 +1077,9 @@ async def get_ticker_reflection(symbol: str, n: int = 3) -> dict:
         "symbol": symbol.upper(),
         "history": history,
         "summary": (
-            f"{len(history)} prior call(s): {wins}/{len(scored)} wins, "
-            f"avg return {avg_ret}% vs XEQT" if scored else
-            f"{len(history)} open call(s), no closed P&L yet"
+            f"{len(history)} prior call(s): {wins}/{len(scored)} wins, avg return {avg_ret}% vs XEQT"
+            if scored
+            else f"{len(history)} open call(s), no closed P&L yet"
         ),
     }
 
@@ -1095,24 +1110,18 @@ async def get_signal_accuracy(horizon: int = 21, min_count: int = 5) -> dict:
     action class (BUY/SELL/ADD/TRIM), score bucket, and confidence level.
     Run score_signal_horizons first to populate realized returns.
     """
-    return await asyncio.to_thread(
-        signal_history_svc.accuracy_report, horizon, min_count=min_count
-    )
+    return await asyncio.to_thread(signal_history_svc.accuracy_report, horizon, min_count=min_count)
 
 
 @mcp.tool()
-async def calibrate_signal_thresholds(
-    horizon: int = 21, min_count: int = 10
-) -> dict:
+async def calibrate_signal_thresholds(horizon: int = 21, min_count: int = 10) -> dict:
     """Grid-search BUY/SELL score thresholds that maximize expectancy on history.
 
     Returns current thresholds (buy=7.5, sell_below=3.5) and best-found
     thresholds with n_traded + expectancy. Apply manually after sanity check.
     Small-sample caveat: only trust once n_scored >= a few hundred.
     """
-    return await asyncio.to_thread(
-        signal_history_svc.calibrate_thresholds, horizon, min_count=min_count
-    )
+    return await asyncio.to_thread(signal_history_svc.calibrate_thresholds, horizon, min_count=min_count)
 
 
 @mcp.tool()
@@ -1135,9 +1144,7 @@ async def get_alpha_attribution(lookback_days: int = 365) -> dict:
 
     lookback_days: how many days of portfolio history to include (default 365).
     """
-    return await asyncio.to_thread(
-        alpha_svc.get_alpha_attribution, None, lookback_days
-    )
+    return await asyncio.to_thread(alpha_svc.get_alpha_attribution, None, lookback_days)
 
 
 @mcp.tool()
@@ -1150,9 +1157,7 @@ async def get_quote_with_source(symbol: str, max_age_s: int = 300) -> dict:
     as_of timestamp. Use to verify provenance or when freshness matters more
     than cache speed.
     """
-    return await asyncio.to_thread(
-        data_router.get_quote, symbol, float(max_age_s)
-    )
+    return await asyncio.to_thread(data_router.get_quote, symbol, float(max_age_s))
 
 
 @mcp.tool()
@@ -1183,12 +1188,8 @@ async def get_skill_track_record(
         if session_id:
             try:
                 ws = WSAPISession.from_token(session_id)
-                portfolio = await asyncio.to_thread(
-                    wealthsimple.get_portfolio_response, ws
-                )
-                top = sorted(
-                    portfolio.positions, key=lambda p: p.weight, reverse=True
-                )[:10]
+                portfolio = await asyncio.to_thread(wealthsimple.get_portfolio_response, ws)
+                top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:10]
                 universe = [p.symbol for p in top]
                 label = label or "holdings"
             except Exception:
@@ -1206,7 +1207,11 @@ async def get_skill_track_record(
 
     return await asyncio.to_thread(
         skill_bt_svc.backtest_all_skills,
-        universe, int(lookback_days), float(tx_cost_bps), True, label,
+        universe,
+        int(lookback_days),
+        float(tx_cost_bps),
+        True,
+        label,
     )
 
 
@@ -1217,9 +1222,7 @@ async def get_data_source_reliability(window_days: int = 7) -> dict:
     Used by the trust-signal report (TRACK_RECORD.md) so users can audit
     which providers actually served their data and how reliably.
     """
-    stats = await asyncio.to_thread(
-        data_router.get_source_reliability, float(window_days) * 86400
-    )
+    stats = await asyncio.to_thread(data_router.get_source_reliability, float(window_days) * 86400)
     return {
         "window_days": window_days,
         "configured": data_router.configured_sources(),
@@ -1228,18 +1231,14 @@ async def get_data_source_reliability(window_days: int = 7) -> dict:
 
 
 @mcp.tool()
-async def get_quotes_batch(
-    symbols: list[str], max_age_s: int = 300
-) -> dict:
+async def get_quotes_batch(symbols: list[str], max_age_s: int = 300) -> dict:
     """Fetch live quotes for multiple symbols in one batched HTTP call.
 
     ~13x faster than calling get_quote per symbol. Uses yfinance.download
     batching. Returns {symbol: {price, prev_close, day_change_pct, source}}.
     Missing symbols silently absent (fetch failed all sources).
     """
-    return await asyncio.to_thread(
-        data_router.get_quotes_batch, symbols, float(max_age_s)
-    )
+    return await asyncio.to_thread(data_router.get_quotes_batch, symbols, float(max_age_s))
 
 
 @mcp.tool()
@@ -1257,6 +1256,7 @@ async def generate_trust_report() -> dict:
 # ────────────────────────────────────────────────────────────────────────────────
 # Options analytics
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_options_chain(
@@ -1340,6 +1340,7 @@ async def get_protective_put_screen(
 # Trade ticket
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def get_trade_ticket(
     ticker: str,
@@ -1394,6 +1395,7 @@ async def get_trade_ticket(
 # Insider activity
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def get_insider_activity(ticker: str) -> dict:
     """
@@ -1421,6 +1423,7 @@ async def get_insider_activity(ticker: str) -> dict:
 # Persistent investor memory
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def remember_preference(
     memory_type: str,
@@ -1436,9 +1439,7 @@ async def remember_preference(
     Stored in ~/.aifolimizer/memory/ — survives session restarts.
     Recalled automatically via recall_preferences when relevant.
     """
-    return await asyncio.to_thread(
-        memory_svc.remember, memory_type, content, tags
-    )
+    return await asyncio.to_thread(memory_svc.remember, memory_type, content, tags)
 
 
 @mcp.tool()
@@ -1459,9 +1460,7 @@ async def list_memories(memory_type: str = "") -> list[dict]:
     memory_type: "" (all) | preference | insight | rule | note | observation
     Returns newest-first sorted list.
     """
-    return await asyncio.to_thread(
-        memory_svc.list_memories, memory_type or None
-    )
+    return await asyncio.to_thread(memory_svc.list_memories, memory_type or None)
 
 
 @mcp.tool()
@@ -1477,6 +1476,7 @@ async def forget_memory(query: str) -> dict:
 # ────────────────────────────────────────────────────────────────────────────────
 # Trade decision memory — per-ticker log with outcome tracking (TradingAgents pattern)
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def log_trade_decision(
@@ -1502,8 +1502,14 @@ async def log_trade_decision(
     """
     return await asyncio.to_thread(
         decision_mem_svc.log_decision,
-        ticker, action, conviction, entry_price, target_price, stop_price,
-        thesis_summary, skill_used,
+        ticker,
+        action,
+        conviction,
+        entry_price,
+        target_price,
+        stop_price,
+        thesis_summary,
+        skill_used,
     )
 
 
@@ -1524,6 +1530,7 @@ async def resolve_trade_outcomes(days_expiry: int = 90) -> dict:
         return {"resolved": {}, "total_open_remaining": 0, "note": "no open decisions"}
 
     from app.services import data_router
+
     price_map: dict[str, float] = {}
     for ticker in open_tickers:
         try:
@@ -1533,9 +1540,7 @@ async def resolve_trade_outcomes(days_expiry: int = 90) -> dict:
         except Exception:
             continue
 
-    return await asyncio.to_thread(
-        decision_mem_svc.resolve_outcomes, price_map, days_expiry
-    )
+    return await asyncio.to_thread(decision_mem_svc.resolve_outcomes, price_map, days_expiry)
 
 
 @mcp.tool()
@@ -1549,9 +1554,7 @@ async def get_ticker_decision_history(ticker: str, max_decisions: int = 5) -> li
     Returns up to max_decisions records with: date, action, conviction,
     entry/target/stop prices, outcome, outcome_price, and reflection note.
     """
-    return await asyncio.to_thread(
-        decision_mem_svc.get_ticker_history, ticker, max_decisions
-    )
+    return await asyncio.to_thread(decision_mem_svc.get_ticker_history, ticker, max_decisions)
 
 
 @mcp.tool()
@@ -1563,14 +1566,13 @@ async def get_cross_ticker_lessons(max_lessons: int = 3) -> list[dict]:
     a generated reflection. Inject into skill prompts to surface portfolio-level
     patterns (e.g. 'last 3 TSX banks stopped out at SMA50 — avoid that entry').
     """
-    return await asyncio.to_thread(
-        decision_mem_svc.get_cross_ticker_lessons, max_lessons
-    )
+    return await asyncio.to_thread(decision_mem_svc.get_cross_ticker_lessons, max_lessons)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Shadow account — behavioral rule extraction
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def analyze_shadow_account(transactions: list[dict]) -> dict:
@@ -1599,6 +1601,7 @@ async def analyze_shadow_account(transactions: list[dict]) -> dict:
 # Run card provenance
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def list_run_cards(limit: int = 20) -> list[dict]:
     """List recent backtest run cards with SHA256 provenance.
@@ -1617,6 +1620,7 @@ async def list_run_cards(limit: int = 20) -> list[dict]:
 # ────────────────────────────────────────────────────────────────────────────────
 # Accuracy layer — walk-forward, signal decay, attribution, calibration
 # ────────────────────────────────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def walk_forward_backtest_skill(
@@ -1698,7 +1702,8 @@ async def get_signal_source_attribution(
     """
     return await asyncio.to_thread(
         signal_history_svc.per_signal_source_attribution,
-        horizon, min_count=min_count,
+        horizon,
+        min_count=min_count,
     )
 
 
@@ -1719,6 +1724,7 @@ async def calibrate_confidence_labels(horizon: int = 21) -> dict:
 # Codified skill snapshots — read pre-computed background runner output
 # ────────────────────────────────────────────────────────────────────────────────
 
+
 @mcp.tool()
 async def get_skill_snapshot(skill: str) -> dict:
     """Read the latest cached snapshot for a codified skill.
@@ -1732,8 +1738,7 @@ async def get_skill_snapshot(skill: str) -> dict:
     """
     snap = await asyncio.to_thread(skill_runner_svc.read_snapshot, skill)
     if snap is None:
-        return {"error": f"no snapshot for skill={skill}",
-                "available": skill_runner_svc.codified_skills()}
+        return {"error": f"no snapshot for skill={skill}", "available": skill_runner_svc.codified_skills()}
     return snap
 
 
@@ -1750,11 +1755,13 @@ async def list_skill_snapshots() -> dict:
 
 # ── Phase 3: integrated signal MCP tools ────────────────────────────────────
 
+
 def _active_tenant_hash() -> str | None:
     sid = _state.get("session_id")
     if not sid:
         return None
     import hashlib
+
     return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
 
 
@@ -1772,6 +1779,7 @@ async def get_integrated_signals() -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.db.repositories import signals_repo
+
         await init_pool()
         rows = await signals_repo.latest_for_tenant(thash)
         return {
@@ -1781,19 +1789,13 @@ async def get_integrated_signals() -> dict:
                     "symbol": r["symbol"],
                     "action": r["action"],
                     "conviction": r.get("conviction"),
-                    "score": float(r["score"])
-                        if r.get("score") is not None else None,
-                    "tech": float(r["tech_score"])
-                        if r.get("tech_score") is not None else None,
-                    "fund": float(r["fund_score"])
-                        if r.get("fund_score") is not None else None,
-                    "macro": float(r["macro_score"])
-                        if r.get("macro_score") is not None else None,
-                    "sentiment": float(r["sentiment_score"])
-                        if r.get("sentiment_score") is not None else None,
+                    "score": float(r["score"]) if r.get("score") is not None else None,
+                    "tech": float(r["tech_score"]) if r.get("tech_score") is not None else None,
+                    "fund": float(r["fund_score"]) if r.get("fund_score") is not None else None,
+                    "macro": float(r["macro_score"]) if r.get("macro_score") is not None else None,
+                    "sentiment": float(r["sentiment_score"]) if r.get("sentiment_score") is not None else None,
                     "skill_consensus": r.get("skill_consensus"),
-                    "skill_confidence": float(r["skill_confidence"])
-                        if r.get("skill_confidence") is not None else None,
+                    "skill_confidence": float(r["skill_confidence"]) if r.get("skill_confidence") is not None else None,
                     "skill_evidence": r.get("skill_evidence"),
                 }
                 for r in rows
@@ -1815,9 +1817,12 @@ async def get_signal_history(symbol: str, days: int = 30) -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.db.repositories import signals_repo
+
         await init_pool()
         rows = await signals_repo.history_for_symbol(
-            thash, symbol.upper(), days=days,
+            thash,
+            symbol.upper(),
+            days=days,
         )
         return {
             "symbol": symbol.upper(),
@@ -1825,17 +1830,12 @@ async def get_signal_history(symbol: str, days: int = 30) -> dict:
             "points": [
                 {
                     "ts": r["ts"].isoformat() if r.get("ts") else None,
-                    "score": float(r["score"])
-                        if r.get("score") is not None else None,
+                    "score": float(r["score"]) if r.get("score") is not None else None,
                     "action": r.get("action"),
-                    "tech": float(r["tech_score"])
-                        if r.get("tech_score") is not None else None,
-                    "fund": float(r["fund_score"])
-                        if r.get("fund_score") is not None else None,
-                    "macro": float(r["macro_score"])
-                        if r.get("macro_score") is not None else None,
-                    "sentiment": float(r["sentiment_score"])
-                        if r.get("sentiment_score") is not None else None,
+                    "tech": float(r["tech_score"]) if r.get("tech_score") is not None else None,
+                    "fund": float(r["fund_score"]) if r.get("fund_score") is not None else None,
+                    "macro": float(r["macro_score"]) if r.get("macro_score") is not None else None,
+                    "sentiment": float(r["sentiment_score"]) if r.get("sentiment_score") is not None else None,
                     "skill": r.get("skill_consensus"),
                 }
                 for r in rows
@@ -1860,6 +1860,7 @@ async def get_discovery_picks(n: int = 5) -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.services import discovery
+
         await init_pool()
         picks = await discovery.get_cached_top(thash)
         return {"picks": picks[:n], "n": min(n, len(picks))}
@@ -1883,6 +1884,7 @@ async def get_risk_gate_state() -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.services import risk_gate
+
         await init_pool()
         state = await risk_gate.get_current(thash)
         return state.to_dict() if state else {"gate": None}
@@ -1905,6 +1907,7 @@ async def get_live_kpis(window_days: int = 30) -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.services import live_metrics
+
         await init_pool()
         latest = await live_metrics.latest(thash, window_days=window_days)
         if latest is None:
@@ -1927,10 +1930,10 @@ async def get_calibration_report(horizon_days: int = 21) -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.services.calibration import latest_report
+
         await init_pool()
         r = await latest_report(horizon_days=horizon_days)
-        return {"report": r} if r else {"report": None,
-                                         "reason": "no report yet"}
+        return {"report": r} if r else {"report": None, "reason": "no report yet"}
     finally:
         try:
             await close_pool()
@@ -1947,6 +1950,7 @@ async def get_current_regime() -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.services import market_regime
+
         await init_pool()
         cur = await market_regime.get_current()
         if cur is None:
@@ -1973,6 +1977,7 @@ async def get_weights_history(limit: int = 30) -> dict:
     try:
         from app.db import init_pool, close_pool
         from app.db.repositories import weights_repo
+
         await init_pool()
         current = await weights_repo.current()
         history = await weights_repo.history(limit=limit)
@@ -2017,6 +2022,7 @@ async def get_sentry_issues(limit: int = 10) -> dict:
     (file/function/line/context) so Claude can propose fixes.
     """
     from app.services import sentry_monitor
+
     try:
         return sentry_monitor.build_digest(limit=limit)
     except RuntimeError as e:
@@ -2026,6 +2032,7 @@ async def get_sentry_issues(limit: int = 10) -> dict:
 # ── Meta-tools: batch related calls into one tool invocation ──────────────
 # Additive — individual tools remain. Use meta-tools when you need a full
 # picture; use individual tools for surgical single-signal queries.
+
 
 @mcp.tool()
 async def get_market_data(symbol: str) -> dict:
@@ -2111,6 +2118,7 @@ async def get_alert_suite(account_id: str = "", since_hours: int = 24) -> dict:
     )
 
     from datetime import date as _date, timedelta
+
     today = _date.today()
     cutoff = today + timedelta(days=14)
     earnings = []
@@ -2120,11 +2128,15 @@ async def get_alert_suite(account_id: str = "", since_hours: int = 24) -> dict:
         if ed:
             try:
                 from datetime import date as _date2
+
                 d = _date2.fromisoformat(str(ed)[:10])
-                earnings.append({
-                    "symbol": sym, "earnings_date": str(d),
-                    "is_upcoming": today <= d <= cutoff,
-                })
+                earnings.append(
+                    {
+                        "symbol": sym,
+                        "earnings_date": str(d),
+                        "is_upcoming": today <= d <= cutoff,
+                    }
+                )
             except (ValueError, TypeError):
                 pass
     earnings.sort(key=lambda x: x["earnings_date"])

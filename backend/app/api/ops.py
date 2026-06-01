@@ -3,6 +3,7 @@
 Read-only / safe-retry only. No destructive operations from the UI.
 Mount under /ops in main.py.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,19 +47,19 @@ async def failed_jobs(limit: int = 20) -> list[dict[str, Any]]:
         ids = reg.get_job_ids(0, max(1, limit) - 1)
         for jid in ids:
             from rq.job import Job
+
             try:
                 job = Job.fetch(jid, connection=get_redis_sync())
-                out.append({
-                    "id": job.id,
-                    "queue": q.name,
-                    "func_name": job.func_name,
-                    "enqueued_at": job.enqueued_at.isoformat()
-                        if job.enqueued_at else None,
-                    "failed_at": job.ended_at.isoformat()
-                        if job.ended_at else None,
-                    "exc_short": (job.exc_info or "").splitlines()[-1]
-                        if job.exc_info else None,
-                })
+                out.append(
+                    {
+                        "id": job.id,
+                        "queue": q.name,
+                        "func_name": job.func_name,
+                        "enqueued_at": job.enqueued_at.isoformat() if job.enqueued_at else None,
+                        "failed_at": job.ended_at.isoformat() if job.ended_at else None,
+                        "exc_short": (job.exc_info or "").splitlines()[-1] if job.exc_info else None,
+                    }
+                )
             except Exception as e:
                 log.warning("failed to fetch job %s: %s", jid, e)
     return out[:limit]
@@ -70,11 +71,13 @@ async def sentry_digest(limit: int = 10, force: bool = False) -> dict[str, Any]:
     instead of returning the cached scheduler value."""
     if force:
         from app.services import sentry_monitor
+
         try:
             return sentry_monitor.build_digest(limit=limit)
         except RuntimeError as e:
             raise HTTPException(503, str(e))
     from app.jobs.scheduler import get_last_sentry_digest
+
     cached = get_last_sentry_digest()
     if cached is None:
         return {"count": 0, "issues": [], "cached": True, "note": "no digest yet"}
@@ -84,6 +87,7 @@ async def sentry_digest(limit: int = 10, force: bool = False) -> dict[str, Any]:
 @router.post("/jobs/{job_id}/retry")
 async def retry_job(job_id: str) -> dict[str, Any]:
     from rq.job import Job
+
     r = get_redis_sync()
     if r is None:
         raise HTTPException(503, "Redis not available")

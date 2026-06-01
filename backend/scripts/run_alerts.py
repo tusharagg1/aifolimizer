@@ -37,11 +37,10 @@ from app.services import positioning as positioning_svc  # noqa: E402
 def _load_session() -> str:
     session_file = _BACKEND / ".ws_session.json"
     if not session_file.exists():
-        raise RuntimeError(
-            "No cached WS session. Run mcp_login.py first."
-        )
+        raise RuntimeError("No cached WS session. Run mcp_login.py first.")
     payload = json.loads(session_file.read_text(encoding="utf-8"))
     from ws_api import WSAPISession
+
     ws_session = WSAPISession.from_json(payload["session_json"])
     result = wealthsimple._finalize_session(ws_session, payload["email"])
     return result["session_id"]
@@ -60,40 +59,39 @@ async def _load_portfolio(account_id: str = ""):
         cash = float(acc.get("cash_balance") or 0.0)
         nlv = float(acc.get("invested_value") or 0.0)
         upnl = float(acc.get("unrealized_pnl_cad") or 0.0)
-        raw = await asyncio.to_thread(
-            wealthsimple.get_positions, session_id, account_id
-        )
+        raw = await asyncio.to_thread(wealthsimple.get_positions, session_id, account_id)
     else:
         cash = sum(a.cash_balance for a in profile.accounts)
         nlv = sum(a.invested_value for a in profile.accounts)
         upnl = float(session.get("unrealized_pnl_cad") or 0.0)
-        raw = await asyncio.to_thread(
-            wealthsimple.get_all_positions, session_id
-        )
+        raw = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
     return market_data.enrich(raw, cash, nlv, upnl)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
-        "--account", default="",
+        "--account",
+        default="",
         help="Account type filter (TFSA, RRSP, Non-Reg, Crypto). Empty = all.",
     )
     ap.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Evaluate + log to history but skip Telegram push.",
     )
     ap.add_argument(
-        "--price-drop-pct", type=float, default=5.0,
+        "--price-drop-pct",
+        type=float,
+        default=5.0,
         help="Intraday drop threshold (positive number, default 5.0).",
     )
     args = ap.parse_args()
 
     portfolio = asyncio.run(_load_portfolio(args.account))
-    triggered = alerts_svc.evaluate(
-        portfolio, price_drop_pct=args.price_drop_pct
-    )
+    triggered = alerts_svc.evaluate(portfolio, price_drop_pct=args.price_drop_pct)
     from app.core.config import settings as _cfg
+
     tg_token = None if args.dry_run else _cfg.telegram_bot_token
     tg_chat = None if args.dry_run else _cfg.telegram_chat_id
     counts = alerts_svc.dispatch(triggered, telegram_bot_token=tg_token, telegram_chat_id=tg_chat)
@@ -101,16 +99,19 @@ def main() -> int:
     # Piggyback: snapshot crowding scores for top 15 holdings (idempotent per day)
     top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:15]
     top_symbols = [p.symbol for p in top]
-    crowding_counts = (
-        positioning_svc.snapshot_to_history(top_symbols) if top_symbols else {}
-    )
+    crowding_counts = positioning_svc.snapshot_to_history(top_symbols) if top_symbols else {}
 
-    print(json.dumps({
-        "account": args.account or "all",
-        "telegram": "off" if not tg_token else "on",
-        **counts,
-        "crowding_snapshot": crowding_counts,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "account": args.account or "all",
+                "telegram": "off" if not tg_token else "on",
+                **counts,
+                "crowding_snapshot": crowding_counts,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

@@ -27,13 +27,24 @@ from app.services.data_sources.base import (
 _BASE = "https://api.binance.com/api/v3"
 
 _INTERVAL_MAP = {
-    "1d": "1d", "1h": "1h", "30m": "30m", "15m": "15m", "5m": "5m", "1m": "1m",
+    "1d": "1d",
+    "1h": "1h",
+    "30m": "30m",
+    "15m": "15m",
+    "5m": "5m",
+    "1m": "1m",
 }
 
 _PERIOD_LIMIT = {
-    "1mo": 31, "3mo": 93, "6mo": 186, "1y": 365,
-    "2y": 730, "3y": 1095, "5y": 1825,
-    "ytd": 365, "max": 1000,  # binance hard cap 1000 klines per call
+    "1mo": 31,
+    "3mo": 93,
+    "6mo": 186,
+    "1y": 365,
+    "2y": 730,
+    "3y": 1095,
+    "5y": 1825,
+    "ytd": 365,
+    "max": 1000,  # binance hard cap 1000 klines per call
 }
 
 
@@ -86,9 +97,7 @@ class BinanceSource(DataSource):
             as_of=time.time(),
         )
 
-    def get_history(
-        self, symbol: str, period: str = "1y", interval: str = "1d"
-    ) -> list[PriceBar]:
+    def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         bn_interval = _INTERVAL_MAP.get(interval)
         if bn_interval is None:
             raise SourceUnavailable(f"binance: unsupported interval {interval}")
@@ -116,18 +125,20 @@ class BinanceSource(DataSource):
             try:
                 ts_ms = int(k[0])
                 d = datetime.utcfromtimestamp(ts_ms / 1000).strftime("%Y-%m-%d")
-                bars.append(PriceBar(
-                    symbol=symbol,
-                    date=d,
-                    open=float(k[1]),
-                    high=float(k[2]),
-                    low=float(k[3]),
-                    close=float(k[4]),
-                    volume=float(k[5]),
-                    adj_close=float(k[4]),
-                    source=self.name,
-                    as_of=time.time(),
-                ))
+                bars.append(
+                    PriceBar(
+                        symbol=symbol,
+                        date=d,
+                        open=float(k[1]),
+                        high=float(k[2]),
+                        low=float(k[3]),
+                        close=float(k[4]),
+                        volume=float(k[5]),
+                        adj_close=float(k[4]),
+                        source=self.name,
+                        as_of=time.time(),
+                    )
+                )
             except (TypeError, ValueError, IndexError):
                 continue
         if not bars:

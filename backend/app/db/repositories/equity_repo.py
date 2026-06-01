@@ -1,4 +1,5 @@
 """portfolio_equity repository."""
+
 from __future__ import annotations
 
 from datetime import date as date_t
@@ -8,7 +9,9 @@ from app.db.pool import get_pool
 
 
 async def upsert_day(
-    tenant_hash: str, dt: date_t, total_value_cad: float,
+    tenant_hash: str,
+    dt: date_t,
+    total_value_cad: float,
     cash_cad: Optional[float] = None,
 ) -> None:
     pool = get_pool()
@@ -23,7 +26,9 @@ async def upsert_day(
               SET total_value_cad = EXCLUDED.total_value_cad,
                   cash_cad = EXCLUDED.cash_cad
             """,
-            tenant_hash, dt, float(total_value_cad),
+            tenant_hash,
+            dt,
+            float(total_value_cad),
             float(cash_cad) if cash_cad is not None else None,
         )
 
@@ -41,6 +46,7 @@ async def series(tenant_hash: str, days: int = 90) -> list[dict[str, Any]]:
               AND date > current_date - ($2::TEXT || ' days')::INTERVAL
             ORDER BY date ASC
             """,
-            tenant_hash, str(days),
+            tenant_hash,
+            str(days),
         )
     return [dict(r) for r in rows]

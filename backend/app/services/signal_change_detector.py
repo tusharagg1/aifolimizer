@@ -12,6 +12,7 @@ Material change rules:
 
 Dedup: per (symbol, new_action, today) — one push per direction per day.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,11 +25,13 @@ log = logging.getLogger(__name__)
 
 
 # Action pairs we ignore as noise — keep alerts clean.
-_NOISE_PAIRS: frozenset[frozenset[str]] = frozenset({
-    frozenset({"HOLD", "WATCH"}),
-    frozenset({"NO_EDGE", "HOLD"}),
-    frozenset({"NO_EDGE", "WATCH"}),
-})
+_NOISE_PAIRS: frozenset[frozenset[str]] = frozenset(
+    {
+        frozenset({"HOLD", "WATCH"}),
+        frozenset({"NO_EDGE", "HOLD"}),
+        frozenset({"NO_EDGE", "WATCH"}),
+    }
+)
 
 # Conviction ordering for "stepped up" detection.
 _CONVICTION_ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -57,10 +60,7 @@ class SignalChange:
 
     def alert_title(self) -> str:
         prev = self.prev_action or "?"
-        conv = (
-            f" ({self.new_conviction.upper()})"
-            if self.new_conviction else ""
-        )
+        conv = f" ({self.new_conviction.upper()})" if self.new_conviction else ""
         return f"{self.symbol}: {prev} → {self.new_action}{conv}"
 
     def alert_body(self) -> str:
@@ -99,7 +99,9 @@ def _is_noise(prev_action: str | None, new_action: str) -> bool:
 
 
 def _detect_one(
-    prev: dict | None, new: dict, ts: datetime,
+    prev: dict | None,
+    new: dict,
+    ts: datetime,
 ) -> SignalChange | None:
     """Compare one symbol's prev vs new signal. Return Change or None."""
     new_action = (new.get("action") or "HOLD").upper()
@@ -122,7 +124,9 @@ def _detect_one(
                 prev_score=None,
                 new_score=new_score,
                 reasons=["first observation"],
-                kelly_pct=kelly, win_prob=win_prob, risk_reward=rr,
+                kelly_pct=kelly,
+                win_prob=win_prob,
+                risk_reward=rr,
             )
         return None
 
@@ -140,8 +144,7 @@ def _detect_one(
     if (
         new_action in _STRONG_ACTIONS
         and prev_conviction != new_conviction
-        and _CONVICTION_ORDER.get(new_conviction or "", -1)
-            > _CONVICTION_ORDER.get(prev_conviction or "", -1)
+        and _CONVICTION_ORDER.get(new_conviction or "", -1) > _CONVICTION_ORDER.get(prev_conviction or "", -1)
     ):
         is_change = True
         reasons.append(f"conviction {prev_conviction}→{new_conviction}")
@@ -149,9 +152,7 @@ def _detect_one(
     if abs(new_score - prev_score) >= 2.0:
         is_change = True
         direction = "+" if new_score > prev_score else "-"
-        reasons.append(
-            f"score {direction}{abs(new_score - prev_score):.1f}pt"
-        )
+        reasons.append(f"score {direction}{abs(new_score - prev_score):.1f}pt")
 
     if not is_change:
         return None
@@ -166,7 +167,9 @@ def _detect_one(
         prev_score=prev_score,
         new_score=new_score,
         reasons=reasons,
-        kelly_pct=kelly, win_prob=win_prob, risk_reward=rr,
+        kelly_pct=kelly,
+        win_prob=win_prob,
+        risk_reward=rr,
     )
 
 
@@ -228,6 +231,7 @@ async def detect_and_dispatch(
 
     if changes and telegram_bot_token and telegram_chat_id:
         from app.services.alerts import _push_telegram
+
         for ch in changes:
             dedup_key = ch.dedup_key()
             try:
@@ -259,7 +263,8 @@ async def detect_and_dispatch(
             except Exception as e:
                 log.exception(
                     "change_detector: dispatch failed for %s: %s",
-                    ch.symbol, e,
+                    ch.symbol,
+                    e,
                 )
 
     # Update last_signals snapshot for next tick.
@@ -271,7 +276,8 @@ async def detect_and_dispatch(
                     "conviction": s.get("conviction"),
                     "score": s.get("score"),
                 }
-                for s in new_signals if s.get("symbol")
+                for s in new_signals
+                if s.get("symbol")
             }
             await r.set(
                 f"last_signals:{tenant_hash}",

@@ -103,21 +103,17 @@ def put_quote(symbol: str, source: str, payload: dict) -> None:
     with _LOCK:
         c = _conn_get()
         c.execute(
-            "INSERT OR REPLACE INTO quotes(symbol, source, payload_json, as_of) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO quotes(symbol, source, payload_json, as_of) VALUES (?, ?, ?, ?)",
             (symbol, source, json.dumps(payload), time.time()),
         )
         c.commit()
 
 
-def get_history(
-    symbol: str, source: str, period: str, interval: str, max_age_s: float
-) -> list[dict] | None:
+def get_history(symbol: str, source: str, period: str, interval: str, max_age_s: float) -> list[dict] | None:
     with _LOCK:
         c = _conn_get()
         row = c.execute(
-            "SELECT payload_json, as_of FROM history "
-            "WHERE symbol=? AND source=? AND period=? AND interval=?",
+            "SELECT payload_json, as_of FROM history WHERE symbol=? AND source=? AND period=? AND interval=?",
             (symbol, source, period, interval),
         ).fetchone()
     if not row:
@@ -127,9 +123,7 @@ def get_history(
     return json.loads(row[0])
 
 
-def put_history(
-    symbol: str, source: str, period: str, interval: str, bars: list[dict]
-) -> None:
+def put_history(symbol: str, source: str, period: str, interval: str, bars: list[dict]) -> None:
     with _LOCK:
         c = _conn_get()
         c.execute(
@@ -159,22 +153,18 @@ def put_fundamentals(symbol: str, source: str, payload: dict) -> None:
     with _LOCK:
         c = _conn_get()
         c.execute(
-            "INSERT OR REPLACE INTO fundamentals(symbol, source, payload_json, as_of) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO fundamentals(symbol, source, payload_json, as_of) VALUES (?, ?, ?, ?)",
             (symbol, source, json.dumps(payload), time.time()),
         )
         c.commit()
 
 
-def log_source_call(
-    source: str, ok: bool, latency_ms: float | None, error: str | None = None
-) -> None:
+def log_source_call(source: str, ok: bool, latency_ms: float | None, error: str | None = None) -> None:
     """Append a call outcome row — used by the public track-record report."""
     with _LOCK:
         c = _conn_get()
         c.execute(
-            "INSERT INTO source_stats(source, ts, ok, latency_ms, error) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO source_stats(source, ts, ok, latency_ms, error) VALUES (?, ?, ?, ?, ?)",
             (source, time.time(), 1 if ok else 0, latency_ms, error),
         )
         c.commit()
@@ -196,14 +186,16 @@ def source_stats_summary(since_s: float = 86400 * 7) -> list[dict]:
     out: list[dict] = []
     for source, ok_count, fail_count, avg_latency in rows:
         total = (ok_count or 0) + (fail_count or 0)
-        out.append({
-            "source": source,
-            "calls": total,
-            "ok": int(ok_count or 0),
-            "fail": int(fail_count or 0),
-            "success_rate_pct": round(100 * (ok_count or 0) / total, 2) if total else None,
-            "avg_latency_ms": round(float(avg_latency), 1) if avg_latency is not None else None,
-        })
+        out.append(
+            {
+                "source": source,
+                "calls": total,
+                "ok": int(ok_count or 0),
+                "fail": int(fail_count or 0),
+                "success_rate_pct": round(100 * (ok_count or 0) / total, 2) if total else None,
+                "avg_latency_ms": round(float(avg_latency), 1) if avg_latency is not None else None,
+            }
+        )
     return out
 
 
@@ -211,10 +203,7 @@ def clear_all() -> None:
     """Test helper — wipe cache. Production calls should never use this."""
     with _LOCK:
         c = _conn_get()
-        c.executescript(
-            "DELETE FROM quotes; DELETE FROM history; "
-            "DELETE FROM fundamentals; DELETE FROM source_stats;"
-        )
+        c.executescript("DELETE FROM quotes; DELETE FROM history; DELETE FROM fundamentals; DELETE FROM source_stats;")
         c.commit()
 
 
@@ -222,6 +211,7 @@ def clear_all() -> None:
 # Use these when broker/source disagreement, manual refresh, or a known bad
 # cache entry needs eviction without nuking the whole DB. Returns rowcount
 # so callers can log how many entries actually went.
+
 
 def delete_quote(symbol: str, source: str | None = None) -> int:
     with _LOCK:
@@ -266,9 +256,7 @@ def delete_fundamentals(symbol: str, source: str | None = None) -> int:
     with _LOCK:
         c = _conn_get()
         if source is None:
-            cur = c.execute(
-                "DELETE FROM fundamentals WHERE symbol=?", (symbol,)
-            )
+            cur = c.execute("DELETE FROM fundamentals WHERE symbol=?", (symbol,))
         else:
             cur = c.execute(
                 "DELETE FROM fundamentals WHERE symbol=? AND source=?",

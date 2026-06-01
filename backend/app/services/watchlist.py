@@ -4,6 +4,7 @@ Watchlist items are analyzed using the same multi-signal engine as portfolio
 positions but with no held size (weight=0, cost=N/A).
 Actions remapped: SELL→PASS, HOLD→WATCH (can't exit an unowned position).
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -76,7 +77,8 @@ def load_watchlist() -> list[dict]:
 def _save(items: list[dict]) -> None:
     _WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     _WATCHLIST_PATH.write_text(
-        json.dumps(items, indent=2), encoding="utf-8",
+        json.dumps(items, indent=2),
+        encoding="utf-8",
     )
 
 
@@ -93,12 +95,15 @@ def add_symbol(symbol: str, notes: str = "") -> list[dict]:
     items = load_watchlist()
     if any(i["symbol"] == sym for i in items):
         return items
-    items.append({
-        "symbol": sym, "notes": notes,
-        "added_at": time.strftime("%Y-%m-%d"),
-        "name": ident.get("name") or sym,
-        "asset_class": ident.get("asset_class") or "stock",
-    })
+    items.append(
+        {
+            "symbol": sym,
+            "notes": notes,
+            "added_at": time.strftime("%Y-%m-%d"),
+            "name": ident.get("name") or sym,
+            "asset_class": ident.get("asset_class") or "stock",
+        }
+    )
     _save(items)
     return items
 
@@ -148,9 +153,7 @@ def _score_one_symbol(sym: str, notes: str, macro_data: dict) -> dict:
         em_data = {}
 
     fd = fund_data.get(sym) or {}
-    currency = fd.get("currency") or (
-        "CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD"
-    )
+    currency = fd.get("currency") or ("CAD" if (sym.endswith(".TO") or sym.endswith(".V")) else "USD")
     position = {
         "symbol": sym,
         "name": fd.get("name") or sym,
@@ -162,8 +165,13 @@ def _score_one_symbol(sym: str, notes: str, macro_data: dict) -> dict:
         "quantity": 0.0,
     }
     rec = _score_position(
-        sym, position, tech_data.get(sym) or {}, fd, macro_data,
-        sent_score, em_data.get(sym) or {},
+        sym,
+        position,
+        tech_data.get(sym) or {},
+        fd,
+        macro_data,
+        sent_score,
+        em_data.get(sym) or {},
     )
     if rec["action"] == "SELL":
         rec["action"] = "PASS"
@@ -197,12 +205,13 @@ def get_watchlist_recommendations() -> list[dict]:
             stale_syms.append(sym)
 
     if stale_syms:
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(8, len(stale_syms))
-        ) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(stale_syms))) as pool:
             futures = {
                 pool.submit(
-                    _score_one_symbol, sym, notes_map.get(sym, ""), macro_data,
+                    _score_one_symbol,
+                    sym,
+                    notes_map.get(sym, ""),
+                    macro_data,
                 ): sym
                 for sym in stale_syms
             }
@@ -216,18 +225,28 @@ def get_watchlist_recommendations() -> list[dict]:
                     results.append(rec)
                 except Exception as e:
                     _LOG.warning(
-                        "watchlist: scoring %s failed: %s", sym, e,
+                        "watchlist: scoring %s failed: %s",
+                        sym,
+                        e,
                     )
                     # Placeholder so frontend still sees the symbol.
-                    results.append({
-                        "symbol": sym, "action": "WATCH", "score": 0,
-                        "confidence": "low", "current_price": None,
-                        "take_profit": None, "stop_loss": None,
-                        "risk_reward": None,
-                        "reasons": [f"data fetch failed: {e}"],
-                        "flags": ["data_unavailable"], "currency": "USD",
-                        "source": "watchlist", "notes": notes_map.get(sym, ""),
-                    })
+                    results.append(
+                        {
+                            "symbol": sym,
+                            "action": "WATCH",
+                            "score": 0,
+                            "confidence": "low",
+                            "current_price": None,
+                            "take_profit": None,
+                            "stop_loss": None,
+                            "risk_reward": None,
+                            "reasons": [f"data fetch failed: {e}"],
+                            "flags": ["data_unavailable"],
+                            "currency": "USD",
+                            "source": "watchlist",
+                            "notes": notes_map.get(sym, ""),
+                        }
+                    )
 
     results.sort(key=lambda r: (_ACTION_ORDER.get(r["action"], 9), -r["score"]))
     return results

@@ -71,14 +71,16 @@ def list_run_cards(limit: int = 20) -> list[dict]:
     for p in paths[:limit]:
         try:
             card = json.loads(p.read_text())
-            result.append({
-                "run_id": card.get("run_id"),
-                "timestamp_utc": card.get("timestamp_utc"),
-                "strategy": card.get("strategy"),
-                "symbols": card.get("symbols", []),
-                "config_hash": card.get("config_hash"),
-                "metrics": card.get("metrics", {}),
-            })
+            result.append(
+                {
+                    "run_id": card.get("run_id"),
+                    "timestamp_utc": card.get("timestamp_utc"),
+                    "strategy": card.get("strategy"),
+                    "symbols": card.get("symbols", []),
+                    "config_hash": card.get("config_hash"),
+                    "metrics": card.get("metrics", {}),
+                }
+            )
         except Exception:
             continue
     return result

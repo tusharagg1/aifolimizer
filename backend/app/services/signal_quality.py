@@ -5,6 +5,7 @@ reasons, news summary, thesis) to get a 0-5 score on five dimensions plus a
 weighted overall. Weights from AI-Trader heuristic-v1:
   verifiability 30%, evidence 25%, specificity 20%, novelty 15%, completeness 10%
 """
+
 from __future__ import annotations
 
 import re
@@ -13,10 +14,22 @@ from typing import Any
 _DIRECTION_UP = frozenset({"buy", "long", "bull", "upside", "breakout", "accumulate"})
 _DIRECTION_DOWN = frozenset({"sell", "short", "bear", "downside", "breakdown", "reduce"})
 _DIRECTION_FLAT = frozenset({"hold", "neutral", "range", "sideways", "watch"})
-_EVIDENCE_WORDS = frozenset({
-    "because", "risk", "evidence", "data", "chart", "catalyst",
-    "earnings", "revenue", "margin", "volume", "guidance", "macro",
-})
+_EVIDENCE_WORDS = frozenset(
+    {
+        "because",
+        "risk",
+        "evidence",
+        "data",
+        "chart",
+        "catalyst",
+        "earnings",
+        "revenue",
+        "margin",
+        "volume",
+        "guidance",
+        "macro",
+    }
+)
 
 
 def _clamp(v: float, lo: float = 0.0, hi: float = 5.0) -> float:
@@ -38,11 +51,14 @@ def extract_prediction(text: str, symbol: str | None = None) -> dict[str, Any]:
 
     price_match = re.search(
         r"(?:target|tp|price|upside)\D{0,12}\$?([0-9]+(?:\.[0-9]+)?)",
-        text, flags=re.IGNORECASE,
+        text,
+        flags=re.IGNORECASE,
     )
     prob_match = re.search(r"([0-9]{1,3})\s?%", text)
     conf_match = re.search(
-        r"(?:confidence|conf)\D{0,12}([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE,
+        r"(?:confidence|conf)\D{0,12}([0-9]+(?:\.[0-9]+)?)",
+        text,
+        re.IGNORECASE,
     )
 
     target_price = float(price_match.group(1)) if price_match else None
@@ -89,15 +105,8 @@ def score_quality(
 
     evidence = min(5.0, len(text) / 160.0 + len(prediction["evidence_keywords"]) * 0.7)
 
-    has_price_level = bool(
-        re.search(r"\$[0-9]+", text) or re.search(r"[0-9]+\.[0-9]{2}", text)
-    )
-    specificity = (
-        1.0
-        + (1.0 if symbol else 0.0)
-        + (1.0 if has_price_level else 0.0)
-        + min(len(text) / 320.0, 2.0)
-    )
+    has_price_level = bool(re.search(r"\$[0-9]+", text) or re.search(r"[0-9]+\.[0-9]{2}", text))
+    specificity = 1.0 + (1.0 if symbol else 0.0) + (1.0 if has_price_level else 0.0) + min(len(text) / 320.0, 2.0)
 
     duplicate_count = 0
     if existing_texts:
@@ -115,13 +124,7 @@ def score_quality(
     if any(w in lower for w in ("risk/reward", "r/r", "risk reward")):
         completeness += 1.0
 
-    overall = (
-        verifiability * 0.30
-        + evidence * 0.25
-        + specificity * 0.20
-        + novelty * 0.15
-        + completeness * 0.10
-    )
+    overall = verifiability * 0.30 + evidence * 0.25 + specificity * 0.20 + novelty * 0.15 + completeness * 0.10
 
     return {
         "symbol": symbol,

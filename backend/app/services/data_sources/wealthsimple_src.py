@@ -88,6 +88,7 @@ class WealthsimpleSource(DataSource):
     def is_configured(self) -> bool:
         try:
             from app.services import wealthsimple as ws_mod
+
             sessions = getattr(ws_mod, "_sessions", {}) or {}
             return any(s.get("state") == "authed" for s in sessions.values())
         except Exception:

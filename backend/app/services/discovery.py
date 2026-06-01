@@ -13,6 +13,7 @@ Implementation notes:
   - Wash-sale guard: symbols recently sold at a loss (last 30d) get
     suppressed from discovery (Canadian superficial-loss rule).
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,9 +30,11 @@ _SECTOR_SAT_PCT = 40.0
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+
 async def _watchlist_for(tenant_hash: str) -> list[str]:
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return []
@@ -50,6 +53,7 @@ async def _washsale_blocked(tenant_hash: str) -> set[str]:
     """Symbols sold at a loss in the last 30 days (superficial-loss rule)."""
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return set()
@@ -78,10 +82,14 @@ def _build_candidate_positions(
     scoring engine evaluates it as a fresh entry."""
     return [
         {
-            "symbol": s, "name": s, "weight": 0.0,
-            "market_value_cad": 0.0, "total_return_pct": 0.0,
+            "symbol": s,
+            "name": s,
+            "weight": 0.0,
+            "market_value_cad": 0.0,
+            "total_return_pct": 0.0,
             "currency": "CAD" if s.endswith(".TO") else "USD",
-            "asset_class": "stock", "sector": None,
+            "asset_class": "stock",
+            "sector": None,
         }
         for s in symbols
     ]
@@ -98,6 +106,7 @@ def _sector_weights(positions) -> dict[str, float]:
 
 
 # ── core scan ──────────────────────────────────────────────────────────────
+
 
 async def scan_universe(
     tenant_hash: str,
@@ -173,9 +182,7 @@ async def scan_universe(
         if sec and sec in sec_weights:
             current_pct = sec_weights[sec]
             if current_pct >= _SECTOR_SAT_PCT:
-                pick["warning"] = (
-                    f"sector heavy: {sec} already {current_pct:.0f}%"
-                )
+                pick["warning"] = f"sector heavy: {sec} already {current_pct:.0f}%"
         picks.append(pick)
 
     picks.sort(key=lambda p: -p["score"])
@@ -194,6 +201,7 @@ async def top_n_picks(
 
 # ── persistence + cache + push ─────────────────────────────────────────────
 
+
 async def _persist_scan(
     tenant_hash: str,
     universe_size: int,
@@ -201,8 +209,10 @@ async def _persist_scan(
     pushed: int,
 ) -> None:
     import json
+
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return
@@ -214,8 +224,11 @@ async def _persist_scan(
                   pushed_count, top_picks
                 ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
                 """,
-                tenant_hash, datetime.now(tz=timezone.utc),
-                universe_size, len(picks), pushed,
+                tenant_hash,
+                datetime.now(tz=timezone.utc),
+                universe_size,
+                len(picks),
+                pushed,
                 json.dumps(picks[:_TOP_N]),
             )
     except Exception as e:
@@ -223,11 +236,14 @@ async def _persist_scan(
 
 
 async def _cache_top(
-    tenant_hash: str, picks: list[dict[str, Any]],
+    tenant_hash: str,
+    picks: list[dict[str, Any]],
 ) -> None:
     import json
+
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             await r.set(
@@ -242,39 +258,39 @@ async def _cache_top(
 def _push_strong_picks(picks: list[dict[str, Any]]) -> int:
     """Telegram push for each pick with score >= 8.0. Returns # pushed."""
     from app.core.config import settings
+
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         return 0
     from app.services.alerts import _push_telegram
+
     pushed = 0
     for p in picks:
         if p["score"] < _PUSH_SCORE:
             continue
-        warning = (
-            f" ({p['warning']})" if p.get("warning") else ""
-        )
+        warning = f" ({p['warning']})" if p.get("warning") else ""
         try:
             _push_telegram(
                 settings.telegram_bot_token,
                 settings.telegram_chat_id,
                 title=(
-                    f"Discovery: {p['symbol']} score {p['score']:.1f} "
-                    f"[{p['action']} {p.get('conviction', '').upper()}]"
+                    f"Discovery: {p['symbol']} score {p['score']:.1f} [{p['action']} {p.get('conviction', '').upper()}]"
                 ),
-                body=(
-                    f"{' · '.join(p['reasons'][:2])}{warning}"
-                ),
+                body=(f"{' · '.join(p['reasons'][:2])}{warning}"),
                 severity="high",
             )
             pushed += 1
         except Exception as e:
             log.warning(
-                "discovery telegram push failed for %s: %s", p["symbol"], e,
+                "discovery telegram push failed for %s: %s",
+                p["symbol"],
+                e,
             )
     return pushed
 
 
 async def run_nightly_scan(
-    tenant_hash: str, portfolio=None,
+    tenant_hash: str,
+    portfolio=None,
 ) -> dict[str, Any]:
     """Full pipeline: scan → persist → cache → push."""
     from app.services import discovery_universe as du
@@ -297,8 +313,10 @@ async def get_cached_top(
     tenant_hash: str,
 ) -> list[dict[str, Any]]:
     import json
+
     try:
         from app.cache import get_redis
+
         r = get_redis()
         if r is not None:
             blob = await r.get(f"discovery:top5:{tenant_hash}")
@@ -309,6 +327,7 @@ async def get_cached_top(
     # PG fallback
     try:
         from app.db.pool import get_pool
+
         pool = get_pool()
         if pool is None:
             return []
