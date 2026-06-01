@@ -34,7 +34,11 @@ log = logging.getLogger("migrate")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CTX = REPO_ROOT / ".claude" / "context"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# JSONLs are written by services to backend/.claude/context/ (paper_trade.py uses parents[2]=backend).
+# Fall back to repo-root/.claude/context/ for older deployments where files lived there.
+_CANDIDATES = [BACKEND_ROOT / ".claude" / "context", REPO_ROOT / ".claude" / "context"]
+CTX = next((p for p in _CANDIDATES if p.exists()), _CANDIDATES[0])
 
 
 def _parse_ts(val: Any) -> datetime:

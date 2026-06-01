@@ -16,13 +16,19 @@ Output paths (gitignored):
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
+import threading
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from app.services import data_router
+
+_log = logging.getLogger(__name__)
+_LEGACY_TENANT_HASH = hashlib.sha1(b"legacy").hexdigest()[:16]
 
 _CTX = Path(__file__).resolve().parents[2] / ".claude" / "context"
 _REC_FILE = _CTX / "recommendations.jsonl"
@@ -177,7 +183,80 @@ def log_recommendation(
     with _REC_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
     _mark_logged(rec_id)
+    _mirror_to_postgres(rec)
     return rec
+
+
+async def _async_mirror_insert(dsn: str, rec: dict) -> None:
+    import asyncpg
+
+    conn = await asyncpg.connect(dsn, command_timeout=2, timeout=2)
+    try:
+        await conn.execute(
+            """
+            INSERT INTO recommendations (
+              tenant_hash, date, ts, skill, model_version, ticker, action, conviction,
+              horizon_days, thesis, invalidation, entry_price, target_pct, stop_pct,
+              expected_upside_pct, expected_downside_pct, account, sector_etf,
+              benchmark_symbol, benchmarks_entry, features, rationale_hash, status
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8,
+              $9, $10, $11, $12, $13, $14,
+              $15, $16, $17, $18,
+              $19, $20, $21, $22, $23
+            )
+            ON CONFLICT (tenant_hash, date, skill, ticker, action) DO NOTHING
+            """,
+            _LEGACY_TENANT_HASH,
+            datetime.fromisoformat(rec["date"]).date(),
+            datetime.fromtimestamp(float(rec["ts"]), tz=timezone.utc),
+            rec.get("skill", ""),
+            rec.get("model_version", MODEL_VERSION),
+            rec.get("ticker", ""),
+            rec.get("action", ""),
+            rec.get("conviction", ""),
+            rec.get("horizon_days"),
+            rec.get("thesis"),
+            rec.get("invalidation"),
+            rec.get("entry_price"),
+            rec.get("target_pct"),
+            rec.get("stop_pct"),
+            rec.get("expected_upside_pct"),
+            rec.get("expected_downside_pct"),
+            rec.get("account"),
+            rec.get("sector_etf"),
+            rec.get("benchmark_symbol"),
+            json.dumps(rec.get("benchmarks_entry")) if rec.get("benchmarks_entry") is not None else None,
+            json.dumps(rec.get("features")) if rec.get("features") is not None else None,
+            rec.get("rationale_hash"),
+            rec.get("status", "open"),
+        )
+    finally:
+        await conn.close()
+
+
+def _mirror_to_postgres(rec: dict) -> None:
+    """Best-effort async mirror to Postgres.
+
+    Fires daemon thread so the JSONL caller never blocks on DB. Failures are
+    swallowed (JSONL stays source of truth). Disabled when POSTGRES_DSN unset
+    or the import fails.
+    """
+    try:
+        from app.core.config import settings
+        dsn = settings.postgres_dsn
+    except Exception:
+        return
+    if not dsn:
+        return
+
+    def _runner() -> None:
+        try:
+            asyncio.run(_async_mirror_insert(dsn, rec))
+        except Exception as exc:
+            _log.debug("postgres mirror skipped (%s): %s", rec.get("ticker"), exc)
+
+    threading.Thread(target=_runner, daemon=True, name="pg-mirror").start()
 
 
 def _benchmark_returns(rec: dict, quote_map: dict[str, float] | None = None) -> dict[str, float]:
