@@ -896,7 +896,11 @@ def get_recommendations(
         return entry[0]
 
     symbols = [p["symbol"] for p in portfolio_positions]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    # 4 workers serialized 23 HTTP-bound tasks (3 aggregate + N sentiment).
+    # Sentiment is the long pole — bump the pool so each per-symbol HTTP can
+    # overlap. Cap at 16 to avoid hammering the upstream sentiment provider.
+    pool_size = min(16, 3 + len(symbols)) or 4
+    with concurrent.futures.ThreadPoolExecutor(max_workers=pool_size) as pool:
         tech_future = pool.submit(tech_svc.get_technicals, symbols)
         fund_future = pool.submit(fund_svc.get_fundamentals, symbols)
         macro_future = pool.submit(market_breadth)

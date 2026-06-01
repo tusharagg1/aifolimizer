@@ -19,6 +19,7 @@ import json
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
@@ -343,16 +344,23 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
         raise ValueError(f"Could not fetch Wealthsimple accounts: {e}")
 
     # Enrich accounts with cash + unrealized P&L from per-account API calls.
-    # get_accounts() doesn't expose cash directly; get_account_balances returns
-    # {"sec-c-cad": <amount>, ...} where "sec-c-cad" is the CAD cash balance.
-    total_unrealized_pnl_cad = 0.0
-    per_account: dict[str, dict] = {}  # keyed by account type label e.g. "TFSA"
-    for acc in accounts_raw:
-        if not isinstance(acc, dict) or not _is_investment_account(acc):
-            continue
+    # Each account needs `get_account_balances` + `get_account_unrealized_pnl`
+    # — independent HTTPs, ~200ms each. Run them in a small pool so total
+    # cost is roughly one account's latency rather than N sequential calls.
+    investment_accounts = [
+        acc for acc in accounts_raw
+        if isinstance(acc, dict)
+        and _is_investment_account(acc)
+        and acc.get("id")
+    ]
+
+    # Hoist FX out of the per-account loop — FX cache is process-wide; calling
+    # it once here avoids repeating the lookup if multiple accounts hold USD.
+    cad_per_usd: float | None = None
+
+    def _enrich_account(acc: dict) -> tuple[str, dict, float]:
+        nonlocal cad_per_usd
         acc_id = str(acc.get("id") or "")
-        if not acc_id:
-            continue
         acc_type = _detect_account_type(acc)
         acc_pnl = 0.0
         usd_cash_balance = 0.0
@@ -364,9 +372,13 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                     cad_cash = float(balances.get("sec-c-cad") or 0)
                     usd_cash_balance = float(balances.get("sec-c-usd") or 0)
                     if usd_cash_balance > 0:
-                        from app.services.market_data import _get_cad_per_usd
+                        if cad_per_usd is None:
+                            from app.services.market_data import (
+                                _get_cad_per_usd,
+                            )
+                            cad_per_usd = _get_cad_per_usd()
                         total_cash_cad = round(
-                            cad_cash + usd_cash_balance * _get_cad_per_usd(), 2
+                            cad_cash + usd_cash_balance * cad_per_usd, 2
                         )
                     else:
                         total_cash_cad = cad_cash
@@ -376,13 +388,14 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
                         f" (cad+usd_converted={total_cash_cad})"
                     )
             except Exception as e:
-                _LOG.warning(f"[WS] balances failed {acc_type}: {type(e).__name__}")
+                _LOG.warning(
+                    f"[WS] balances failed {acc_type}: {type(e).__name__}"
+                )
         try:
             pnl = ws.get_account_unrealized_pnl(acc_id, "CAD")
             _debug(f"[WS] pnl({acc_type}): {pnl}")
             if isinstance(pnl, dict):
                 acc_pnl = _money(pnl.get("amount") or 0)
-                total_unrealized_pnl_cad += acc_pnl
                 _debug(f"[WS] pnl_amt for {acc_type}: {acc_pnl}")
         except Exception as e:
             _LOG.warning(f"[WS] pnl failed {acc_type}: {type(e).__name__}")
@@ -391,12 +404,24 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
             _nested(acc, "financials", "currentCombined", "netLiquidationValue")
             or 0
         )
-        per_account[acc_type] = {
+        entry = {
             "cash_balance": float(acc.get("cash") or 0),
             "usd_cash_balance": usd_cash_balance,
             "invested_value": nlv,
             "unrealized_pnl_cad": acc_pnl,
         }
+        return acc_type, entry, acc_pnl
+
+    total_unrealized_pnl_cad = 0.0
+    per_account: dict[str, dict] = {}
+    if investment_accounts:
+        max_workers = min(8, len(investment_accounts))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for acc_type, entry, acc_pnl in pool.map(
+                _enrich_account, investment_accounts
+            ):
+                per_account[acc_type] = entry
+                total_unrealized_pnl_cad += acc_pnl
 
     _debug(f"[WS] total_unrealized_pnl_cad={total_unrealized_pnl_cad}")
 

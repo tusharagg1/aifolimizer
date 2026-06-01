@@ -24,7 +24,7 @@ from collections import deque
 class CircuitBreaker:
     def __init__(
         self,
-        failure_threshold: int = 4,
+        failure_threshold: int = 6,
         window_s: float = 60.0,
         cooldown_s: float = 300.0,
     ):

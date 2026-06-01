@@ -629,31 +629,73 @@ def get_technicals_mtf(
     now = time.time()
     spy_close = _fetch_spy_close()
     out: dict[str, dict] = {}
+
+    # Build cache hits + miss list first so the batched yf.download below
+    # only fetches symbols that actually need a refresh.
+    miss: list[str] = []
     for sym in symbols:
         cache_key = (sym.upper(), tuple(sorted(tfs)))
         entry = _MTF_CACHE.get(cache_key)
         if entry and (now - entry[1]) < _MTF_CACHE_TTL:
             out[sym] = entry[0]
-            continue
+        else:
+            miss.append(sym)
+
+    if not miss:
+        return out
+
+    # One batched yf.download per timeframe instead of N×len(tfs) per-symbol
+    # downloads. group_by='ticker' returns a MultiIndex keyed by symbol so we
+    # can slice each ticker's frame from the same response.
+    per_tf_frames: dict[str, "pd.DataFrame | None"] = {}
+    for tf in tfs:
+        period = _MTF_PERIOD_MAP[tf]
+        try:
+            df = yf.download(
+                miss,
+                period=period,
+                interval=tf,
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+                threads=True,
+            )
+        except Exception as e:
+            _LOG.warning(f"[technicals_mtf] batch {tf}: {e}")
+            df = None
+        per_tf_frames[tf] = df
+
+    for sym in miss:
         tf_results: dict[str, dict] = {}
         for tf in tfs:
-            period = _MTF_PERIOD_MAP[tf]
+            df = per_tf_frames.get(tf)
             try:
-                df = yf.download(
-                    sym, period=period, interval=tf,
-                    progress=False, auto_adjust=True,
-                )
                 if df is None or df.empty:
                     tf_results[tf] = {}
                     continue
-                if isinstance(df.columns, pd.MultiIndex):
-                    df.columns = df.columns.get_level_values(0)
-                full = _compute_from_df(df, spy_close=spy_close)
-                tf_results[tf] = {k: full[k] for k in _MTF_KEY_FIELDS if k in full}
+                if isinstance(df.columns, pd.MultiIndex) and len(miss) > 1:
+                    if sym not in df.columns.get_level_values(0):
+                        tf_results[tf] = {}
+                        continue
+                    sub = df[sym].copy()
+                else:
+                    sub = df.copy()
+                    if isinstance(sub.columns, pd.MultiIndex):
+                        sub.columns = sub.columns.get_level_values(0)
+                if sub is None or sub.empty:
+                    tf_results[tf] = {}
+                    continue
+                full = _compute_from_df(sub, spy_close=spy_close)
+                tf_results[tf] = {
+                    k: full[k] for k in _MTF_KEY_FIELDS if k in full
+                }
             except Exception as e:
                 _LOG.warning(f"[technicals_mtf] {sym} {tf}: {e}")
                 tf_results[tf] = {}
-        result = {"timeframes": tf_results, "mtf_confluence": _mtf_confluence(tf_results, tfs)}
-        _MTF_CACHE[cache_key] = (result, now)
+        result = {
+            "timeframes": tf_results,
+            "mtf_confluence": _mtf_confluence(tf_results, tfs),
+        }
+        _MTF_CACHE[(sym.upper(), tuple(sorted(tfs)))] = (result, now)
         out[sym] = result
     return out
