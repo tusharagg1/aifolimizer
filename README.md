@@ -1,98 +1,120 @@
 # aifolimizer
 
-> AI-powered investment advisor for Canadian Wealthsimple users.
-> Live portfolio analysis through Claude Code or Claude Desktop using your Pro subscription. **No Anthropic API key required.**
+> Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 80 analysis tools, and ships 21 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Reference brokerage today is Wealthsimple; the market-data layer (yfinance, FRED, CoinGecko, plus 10 more adapters) sits behind a shared interface so paid feeds drop in one file at a time.
+>
+> Runs locally, uses an existing Claude Pro subscription, **no Anthropic API key required**.
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-native-purple.svg)](https://modelcontextprotocol.io)
+![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
+
+> **Disclaimer.** Educational and research tool. Output comes from an LLM and may be wrong. Verify independently before acting on any signal. Use at your own risk.
 
 ---
 
+## Who it's for
+
+- **Self-directed investors** who want institutional-grade analysis they can own, audit, and extend on a self-hosted stack.
+- **Quant researchers and developers** who want a working reference for backtest rigor (deflated Sharpe, walk-forward, signal decay) and live track-record forward-testing.
+- **Educators** teaching portfolio theory, factor investing, or LLM tooling — every skill is a documented playbook styled after a public investing tradition.
+
 ## What it does
 
-- Connects to Wealthsimple (MFA-aware, GraphQL via `ws-api`) — reads live holdings across TFSA / RRSP / FHSA / Non-Reg / Crypto
-- Enriches with live prices, fundamentals, technicals, macro data, crowding signals
-- Exposes everything as **80 MCP tools** so Claude Code / Claude Desktop can analyze natively
-- Ships **21 institutional analysis skills** that auto-trigger on intent
-- Logs every recommendation, marks to market, builds a live track record
-- Postgres (TimescaleDB) + Redis on Docker for persistent history and caching
+- **Live brokerage portfolio.** Reference Wealthsimple integration ships in-box (MFA-aware, GraphQL via `ws-api`, TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side. Plaid / Schwab / IBKR are on the roadmap behind a `Brokerage` interface.
+- **13 market-data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, plus a Wealthsimple cross-check) share a clean abstract base at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
+- **80 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Any MCP client — Claude Desktop, Claude Code, Cursor — picks them up the moment the server is registered.
+- **21 analysis skills** styled after public investing traditions: Graham / Buffett / Lynch fundamental lenses, Dalio All-Weather risk concepts, allocation health, sector rotation, endowment-style income, pre-earnings, technical analysis, top-down macro, plus quant anomaly skills (PEAD, momentum). Auto-trigger on natural-language intent. (Firm names indicate stylistic inspiration drawn from public writing.)
+- **Forward-tested where it matters.** Trade-oriented skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution` once the daily NAV pipeline (`snapshot_portfolio_equity`) has ~30 days of history. Other skills are read-only analysis surfaces — they inform decisions without carrying forward-tracked predictions.
+- **Quant rigor**, not vibes — walk-forward OOS validation ([`skill_backtest.py:585-740`](backend/app/services/skill_backtest.py)), deflated Sharpe with Bailey-López de Prado 2014 ([`skill_backtest.py:68-128`](backend/app/services/skill_backtest.py)), Brier + ECE reliability bins ([`calibration.py:72-148`](backend/app/services/calibration.py)), signal-decay curves ([`signal_history.py:506-569`](backend/app/services/signal_history.py)), regime-conditional gating + nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
+- **Runs locally.** Most state lives in JSONL files under `~/.aifolimizer/` and `backend/.claude/context/`. Postgres (TimescaleDB) and Redis are available via `docker compose up -d` for richer history and cross-process caching.
 
-Primary inference runs inside your Claude Pro subscription — no API key, nothing leaves your machine. Optional free-tier LLM fallbacks are off unless you add a provider key (see [Privacy](#privacy)).
+Primary inference runs inside an existing Claude Pro session — no separate API key, no third-party LLM beyond Claude. Optional free-tier LLM fallbacks (GitHub Models, Gemini, OpenRouter, Qwen) are off unless a provider key is set; the same redaction rules apply (see [Privacy](#privacy)).
+
+## Status & Roadmap
+
+aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and route handlers are exercised manually. Coming: a `Brokerage` interface for Plaid / Schwab / IBKR, multi-user identity with OAuth/SSO, append-only audit logging, KMS-backed token storage, and integration tests on the auth and MCP-route surface.
 
 ## Architecture
 
 ```
-Claude Code / Claude Desktop   (your Pro subscription)
+Claude Code / Claude Desktop   (Pro subscription)
          ↓ invokes
-   .claude/skills/*            (21 institutional analysis skills)
+   .claude/skills/*            (21 analysis skills)
          ↓ calls MCP tools
    backend/mcp_server.py       (FastMCP — 80 tools)
          ↓ uses
    app/services/*              (50+ service modules)
          ↓
-   Wealthsimple GraphQL  |  yfinance  |  FRED  |  CoinGecko
+   Wealthsimple GraphQL  |  yfinance  |  FRED  |  CoinGecko  |  …
          ↓
-   Postgres (TimescaleDB)  +  Redis   (Docker — local)
+   Postgres (TimescaleDB)  +  Redis      (optional, via Docker)
+   JSONL state files                     (always — ~/.aifolimizer/, backend/.claude/context/)
 ```
 
 ## Quick start
 
-### 1. Start infrastructure
+> Commands below use bash (works on macOS/Linux/WSL/Git-Bash). For native Windows PowerShell equivalents, see [scripts/AUTOMATION.md](scripts/AUTOMATION.md). Replace `<REPO>` with the absolute repo path.
 
-```powershell
-# Requires Docker Desktop running
+**Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), a Wealthsimple account.
+
+```bash
+# 1. Postgres password file (required before docker compose up)
+mkdir -p .secrets && openssl rand -hex 24 > .secrets/pg_password.txt && chmod 600 .secrets/pg_password.txt
+
+# 2. Start infrastructure (optional — Postgres + Redis)
 docker compose up -d
-```
 
-### 2. Backend
-
-```powershell
+# 3. Backend install
 cd backend
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-copy ..\.env.example .env
-# Edit .env — fill WS_EMAIL, WS_PASSWORD
-.venv\Scripts\python.exe run.py
+python -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip && pip install -r requirements.txt
+cp ../.env.example .env && $EDITOR .env    # fill WS_EMAIL, WS_PASSWORD
+
+# 4. First-time Wealthsimple login (MFA — re-run only when WS forces re-auth)
+python mcp_login.py
+
+# 5. Run the backend (http://127.0.0.1:8000)
+python run.py
 ```
 
-Backend at http://127.0.0.1:8000.
+Tokens persist to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; NTFS-protected on Windows) so backend restarts resume without re-entering OTP. For an always-on service with scheduled-skill execution, see [scripts/AUTOMATION.md](scripts/AUTOMATION.md) (Windows/Task Scheduler today; `launchd` / `systemd` / `cron` snippets in the POSIX appendix).
 
-### 3. Register MCP server with Claude Code
+**Register the MCP server with Claude:**
 
-```powershell
-claude mcp add aifolimizer "C:\path\to\aifolimizer\backend\.venv\Scripts\python.exe" "C:\path\to\aifolimizer\backend\mcp_server.py"
+```bash
+claude mcp add aifolimizer "<REPO>/backend/.venv/bin/python" "<REPO>/backend/mcp_server.py"
 ```
 
-Or Claude Desktop — add to `%APPDATA%\Claude\claude_desktop_config.json`:
+Or copy `.mcp.example.json` → `.mcp.json` and replace `<REPO_ROOT>`. For Claude Desktop, edit `claude_desktop_config.json` (see [docs/FAQ.md](docs/FAQ.md) for OS-specific paths).
 
-```json
-{
-  "mcpServers": {
-    "aifolimizer": {
-      "command": "C:\\path\\to\\aifolimizer\\backend\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\path\\to\\aifolimizer\\backend\\mcp_server.py"]
-    }
-  }
-}
+Restart Claude, then ask "get my profile" or run `/daily-briefing` to verify live data is flowing.
+
+**Optional:** Telegram alerts (set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `.env`) and scheduled skills — full runbook in [scripts/AUTOMATION.md](scripts/AUTOMATION.md).
+
+## Tests
+
+```bash
+cd backend && PYTHONPATH=. python -m pytest tests/ -q
 ```
 
 ## Usage
 
-Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
+Skills auto-trigger on intent in Claude. Or invoke directly:
 
 ```
 /daily-briefing           → Morning digest: portfolio, macro, alerts, earnings
-/portfolio-health         → BlackRock-style health report + rebalance plan
-/risk-assessment          → Bridgewater stress test + hedges
-/stock-analysis NVDA      → Goldman + Citadel fundamental + technical deep dive
+/portfolio-health         → Health report + rebalance plan
+/risk-assessment          → Stress test + hedge candidates
+/stock-analysis NVDA      → Fundamental + technical deep dive
 /stock-compare NVDA AAPL  → Head-to-head matchup
 /adversarial-research VFV → Bull / bear / consensus pipeline
-/macro-impact             → McKinsey macro briefing (live FRED data)
-/dividend-strategy        → Harvard Endowment income blueprint
-/earnings-analyzer AAPL   → JPMorgan pre-earnings brief
+/macro-impact             → Macro briefing on live FRED data
+/dividend-strategy        → Income blueprint
+/earnings-analyzer AAPL   → Pre-earnings brief
 /earnings-postmortem AAPL → EPS beat/miss breakdown post-report
-/sector-rotation          → Renaissance rotation signals
+/sector-rotation          → Rotation signals
 /tax-loss-review          → Canadian tax-loss harvesting (TFSA/RRSP-aware)
 /cash-deployment          → Add-to-winners with concentration + crowding guard
 /pre-trade-check TSLA     → Risk gate before entering a position
@@ -100,7 +122,9 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 /weekly-mirror            → Weekly portfolio review against goals
 ```
 
-## MCP tools (80 total — table below highlights core 32; see `backend/mcp_server.py` for full list)
+Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
+
+## MCP tools (80 total — table below highlights core 32; see `backend/mcp_server.py` for the full list)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -134,7 +158,7 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 | `snapshot_positioning_history` | Append crowding scores to JSONL (daily) | live |
 | `get_crowding_shifts` | Detect symbols with crowding score shifts | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + full JSONL | live |
-| `get_positioning_signals` | Goldman/BlackRock consensus-crowding flags | 6h |
+| `get_options_chain` | Options chain with Black-Scholes Greeks | 15m |
 | `list_analysis_modes` | Filesystem-driven list of all 21 skills + their MCP tools | static |
 
 ## Project layout
@@ -142,63 +166,87 @@ Type naturally in Claude — skills auto-trigger on intent. Or invoke directly:
 ```
 aifolimizer/
 ├── backend/
-│   ├── main.py                      # FastAPI app
-│   ├── mcp_server.py                # 80 MCP tools (FastMCP)
-│   ├── run.py                       # uvicorn entry point
-│   ├── requirements.txt
+│   ├── main.py, mcp_server.py, run.py, requirements.txt
 │   └── app/
-│       ├── api/                     # REST endpoints (ws.py, agents.py, ops.py)
-│       ├── db/                      # Postgres pool + 8 repositories
-│       ├── cache/                   # Redis client
-│       ├── jobs/                    # Scheduler + task queue (RQ)
-│       ├── models/                  # Pydantic models
-│       └── services/                # 50+ service modules
+│       ├── api/         # REST endpoints (ws.py, agents.py, ops.py)
+│       ├── db/          # Postgres pool + 8 repositories
+│       ├── cache/       # Redis client
+│       ├── jobs/        # Scheduler + task queue (RQ)
+│       ├── models/      # Pydantic models
+│       └── services/    # 50+ service modules
 ├── .claude/
-│   ├── skills/                      # 21 institutional analysis skills
-│   ├── context/                     # architecture.md, changes.md, lessons.md
-│   └── agents/                      # Agent definitions
-├── docker-compose.yml               # Postgres (TimescaleDB) + Redis
-├── .github/                         # CI, issue/PR templates, dependabot
-├── CLAUDE.md                        # Project rules for AI agents
-├── AGENTS.md                        # Agent-optimized project context
-├── TRACK_RECORD.md                  # Live recommendation track record
+│   ├── skills/          # 21 analysis skills
+│   ├── context/         # architecture.md, changes.md, lessons.md, STATE.md
+│   └── agents/
+├── docs/                # FAQ + sample skill outputs
+├── scripts/             # AUTOMATION runbook + PowerShell launchers
+├── docker-compose.yml   # Postgres (TimescaleDB) + Redis
+├── .github/             # CI, issue/PR templates, dependabot
+├── CLAUDE.md, AGENTS.md # Project rules / agent context
+├── TRACK_RECORD.md      # Live recommendation track record
 └── LICENSE
 ```
 
 ## Privacy
 
-- WS credentials in local `backend/.env` only — gitignored, never deployed. **Password is never written to disk.**
-- WS access + refresh token live in server RAM and are also persisted to `~/.aifolimizer/ws_session.json` (mode 0600, owner-only, **outside the repo**) so a backend restart resumes without re-entering OTP. 8-hour TTL; the file is auto-cleared when stale or rejected. Delete it to force a fresh login.
-- `pii_filter.py` strips account IDs / numbers / names / emails before any data reaches Claude. Only ticker symbols, quantities, market values, weights, and sectors are sent through MCP.
-- **Inference:** primary analysis runs inside your Claude Code / Claude Desktop Pro session (no API key, nothing leaves the machine). Optional free-tier LLM fallbacks (GitHub Models, Gemini, OpenRouter, Qwen) are used **only if you set the matching API key** in `backend/.env`. When enabled, their prompts carry symbols, **relative weights (% of NLV)**, returns %, and scores — **never absolute dollar balances, account IDs, email, name, or your WS token.** Leave the keys unset to keep all inference on-machine.
+`pii_filter.py` strips account IDs, account numbers, internal Wealthsimple IDs, user IDs, email, and full name from the three portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`). Dollar amounts (book cost, market value, cash balance) stay on the machine within the local Claude Pro session. Most other MCP tools (technicals, fundamentals, macro, news, crypto) carry no PII and bypass the filter.
+
+**What leaves the machine:** prompts to Anthropic via the local Claude Pro session — symbols, weights (% of NLV), returns %, scores, and public market data. Optional free-LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) follow the same %-of-NAV redaction rules and only fire if their key is set in `.env`. Outbound market-data fetches (yfinance / FRED / CoinGecko) see the ticker list, nothing else.
+
+**What never leaves:** Wealthsimple email, password, OTP, access/refresh tokens, account IDs, account numbers, full name. Credentials live in local `backend/.env` (gitignored, never persisted to disk past process memory). Tokens persist to `~/.aifolimizer/ws_session.json` outside the repo.
+
+`get_trade_ticket` is a notable exception — it returns raw `dollar_amount_cad` and `max_loss_cad` for the local Claude consumer, so its output stays inside the local session.
+
+Wealthsimple access uses a community-maintained reverse-engineered API (`ws-api`). Wealthsimple does not officially support automated access; use is at your own risk and may violate Wealthsimple ToS.
+
+Full threat model and hardening checklist: [SECURITY.md](SECURITY.md). Credential FAQs: [docs/FAQ.md](docs/FAQ.md).
 
 ## Infrastructure
 
-```powershell
-# Start Postgres + Redis
-docker compose up -d
-
-# Stop
-docker compose down
-
-# View logs
-docker compose logs -f
+```bash
+docker compose up -d        # Postgres + Redis
+docker compose down         # stop
+docker compose logs -f      # tail
 ```
 
 Data persisted in `.data/` (gitignored). Secrets in `.secrets/pg_password.txt`.
 
 ## Documentation
 
-- [CLAUDE.md](CLAUDE.md) — project rules for AI agents
-- [AGENTS.md](AGENTS.md) — agent-optimized condensed project context
-- [.claude/context/architecture.md](.claude/context/architecture.md) — data flow + service contracts
-- [.claude/context/changes.md](.claude/context/changes.md) — change log
+- [scripts/AUTOMATION.md](scripts/AUTOMATION.md) — scheduled-skill runbook, MFA re-auth, NSSM service, Telegram, troubleshooting (Windows + POSIX appendix)
+- [docs/FAQ.md](docs/FAQ.md) — common setup, privacy, and usage questions
+- [docs/examples/](docs/examples/) — synthetic skill outputs + redacted prompt sample
+- [SECURITY.md](SECURITY.md) — threat model, disclosure policy, hardening checklist
+- [LIMITATIONS.md](LIMITATIONS.md) — what this can't do
+- [.env.example](.env.example) — every supported env var, with comments
+- [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) — project rules / agent context
 - [TRACK_RECORD.md](TRACK_RECORD.md) — live recommendation performance
 
 ## Contributing
 
-- Counts of MCP tools and skills cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` — runs in CI after lint, fails the build if a doc claim drifts from the real `@mcp.tool()` decorator count or `.claude/skills/` folder count. Run it locally before editing those numbers.
-- TRACK_RECORD.md is auto-generated by the `generate_trust_report` MCP tool — do not hand-edit; refresh by calling the tool.
+Counts of MCP tools (80) and skills (21) cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` — runs in CI after lint, fails the build if a doc claim drifts. Run locally before editing those numbers. `TRACK_RECORD.md` is auto-generated by the `generate_trust_report` MCP tool — refresh by calling the tool rather than editing by hand.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+## Troubleshooting
+
+- **Port conflicts (5432, 6379, 8000).** Remap in `docker-compose.yml` (e.g. `"5433:5432"`) or change the backend port via `uvicorn main:app --port 8001`.
+- **First `/daily-briefing` is slow (~30s).** Cold cache — fundamentals, technicals, and macro all fetch from upstream on the first call. Subsequent calls hit L1 + diskcache and return in <2s.
+- **Wealthsimple MFA timeout.** Refresh token expired or WS forced re-auth. Re-run `python mcp_login.py` from `backend/`.
+- **Telegram `getUpdates` returns empty.** Telegram exposes `chat.id` only after the bot has received at least one message. Open the bot, send any text, then re-fetch.
+- **`claude mcp list` is slow (~5s).** Eager imports in `mcp_server.py` (yfinance, pandas, ta). Harmless — only paid on first invocation per session.
+
+More in [docs/FAQ.md](docs/FAQ.md).
+
+## Uninstall
+
+```bash
+claude mcp remove aifolimizer                # 1. unregister MCP
+docker compose down -v                       # 2. tear down Docker (-v drops volumes)
+rm -rf ~/.aifolimizer                        # 3. remove session tokens (Windows: Remove-Item -Recurse -Force ~\.aifolimizer)
+schtasks /delete /tn "aifolimizer-*" /f      # 4. Windows scheduled tasks (skip on POSIX)
+nssm remove aifolimizer-backend confirm      # 5. NSSM service (only if installed)
+```
 
 ## License
 
