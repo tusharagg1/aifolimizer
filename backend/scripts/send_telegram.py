@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import httpx
 
 from app.core.config import settings
+from app.services.http_helpers import request_with_retry_after
 
 _API = "https://api.telegram.org"
 _MAX = 4096
@@ -64,7 +65,8 @@ def send(text: str, title: str | None = None) -> int:
         return 3
     try:
         for chunk in _chunks(body):
-            r = httpx.post(
+            r = request_with_retry_after(
+                "POST",
                 f"{_API}/bot{token}/sendMessage",
                 json={
                     "chat_id": chat,

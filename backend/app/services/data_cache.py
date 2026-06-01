@@ -216,3 +216,76 @@ def clear_all() -> None:
             "DELETE FROM fundamentals; DELETE FROM source_stats;"
         )
         c.commit()
+
+
+# ── Targeted invalidation ───────────────────────────────────────────────────
+# Use these when broker/source disagreement, manual refresh, or a known bad
+# cache entry needs eviction without nuking the whole DB. Returns rowcount
+# so callers can log how many entries actually went.
+
+def delete_quote(symbol: str, source: str | None = None) -> int:
+    with _LOCK:
+        c = _conn_get()
+        if source is None:
+            cur = c.execute("DELETE FROM quotes WHERE symbol=?", (symbol,))
+        else:
+            cur = c.execute(
+                "DELETE FROM quotes WHERE symbol=? AND source=?",
+                (symbol, source),
+            )
+        c.commit()
+        return cur.rowcount or 0
+
+
+def delete_history(
+    symbol: str,
+    source: str | None = None,
+    period: str | None = None,
+    interval: str | None = None,
+) -> int:
+    clauses = ["symbol=?"]
+    params: list = [symbol]
+    if source is not None:
+        clauses.append("source=?")
+        params.append(source)
+    if period is not None:
+        clauses.append("period=?")
+        params.append(period)
+    if interval is not None:
+        clauses.append("interval=?")
+        params.append(interval)
+    sql = "DELETE FROM history WHERE " + " AND ".join(clauses)
+    with _LOCK:
+        c = _conn_get()
+        cur = c.execute(sql, tuple(params))
+        c.commit()
+        return cur.rowcount or 0
+
+
+def delete_fundamentals(symbol: str, source: str | None = None) -> int:
+    with _LOCK:
+        c = _conn_get()
+        if source is None:
+            cur = c.execute(
+                "DELETE FROM fundamentals WHERE symbol=?", (symbol,)
+            )
+        else:
+            cur = c.execute(
+                "DELETE FROM fundamentals WHERE symbol=? AND source=?",
+                (symbol, source),
+            )
+        c.commit()
+        return cur.rowcount or 0
+
+
+def invalidate_symbol(symbol: str) -> dict[str, int]:
+    """Drop every cached row for a symbol (quote + history + fundamentals).
+
+    Use on broker/source disagreement, post-corporate-action, or when a user
+    explicitly requests a refresh.
+    """
+    return {
+        "quotes": delete_quote(symbol),
+        "history": delete_history(symbol),
+        "fundamentals": delete_fundamentals(symbol),
+    }

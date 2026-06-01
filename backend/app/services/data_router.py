@@ -456,10 +456,23 @@ def get_quotes_batch(
         except Exception as e:
             latency = (time.perf_counter() - start) * 1000
             cache.log_source_call("yfinance_batch", False, latency, str(e))
-            # fall through to per-symbol routing for whatever's missing
-            for sym in to_fetch:
-                if sym not in out:
-                    per_symbol.append(sym)
+            # Cap per-symbol fall-through. Without a cap a 200-symbol
+            # batch failure cascades into 200 sequential per-symbol
+            # downloads (each running its own fallback chain across 4
+            # providers = 800 HTTPs). Limit to 16 freshest names; the
+            # rest stay missing this tick and refresh next call.
+            _MAX_FALLBACK_SYMBOLS = 16
+            spillover = [s for s in to_fetch if s not in out]
+            for sym in spillover[:_MAX_FALLBACK_SYMBOLS]:
+                per_symbol.append(sym)
+            if len(spillover) > _MAX_FALLBACK_SYMBOLS:
+                cache.log_source_call(
+                    "yfinance_batch", False, 0,
+                    (
+                        f"fallback capped at {_MAX_FALLBACK_SYMBOLS} "
+                        f"of {len(spillover)}"
+                    ),
+                )
 
     # Per-symbol path for crypto/fx/index/anything that missed the batch
     for sym in per_symbol:

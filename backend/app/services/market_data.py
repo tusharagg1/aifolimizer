@@ -2,7 +2,10 @@ import csv
 import io
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
+
 import yfinance as yf
+
 from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
 from app.security import get_logger
 
@@ -87,6 +90,7 @@ def _get_cad_per_usd() -> float:
 
     return _FX_CACHE[1] if _FX_CACHE else 1.38  # use last known rate before pure fallback
 
+
 _ASSET_CLASS_MAP = {
     "ETF": "etf",
     "EXCHANGE_TRADED_FUND": "etf",
@@ -136,6 +140,20 @@ def enrich(
     cad_per_usd = _get_cad_per_usd()
     positions = []
     total_market_value_cad = cash_balance  # WS cash is always CAD
+
+    # Pre-fetch ticker meta in parallel. _ticker_meta does up to two HTTPs
+    # per symbol (fast_info + .info for sector); serial calls dominated
+    # enrich() latency on cold cache. The function is itself memoized, so
+    # warm cache loads still short-circuit instantly.
+    unique_symbols = list({
+        (raw.get("security", {}) or {}).get("symbol")
+        for raw in raw_positions
+        if (raw.get("security", {}) or {}).get("symbol")
+    })
+    if unique_symbols:
+        max_workers = min(8, len(unique_symbols))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            list(pool.map(_ticker_meta, unique_symbols))
 
     for raw in raw_positions:
         security = raw.get("security", {})

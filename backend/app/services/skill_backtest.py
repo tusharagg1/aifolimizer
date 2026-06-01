@@ -191,7 +191,60 @@ class SkillBacktest:
         return d
 
 
+# Per-(symbol, lookback) cache populated by `_prefetch_universe`. When set,
+# `_bars_to_close` reads from here instead of issuing a per-symbol HTTP call.
+# Walk-forward over 40+ symbols was previously ~520 sequential round-trips.
+_BATCH_BARS_CACHE: dict[tuple[str, int], pd.Series] = {}
+
+
+def _prefetch_universe(symbols: list[str], lookback_days: int) -> None:
+    """One batched `yf.download` for the whole universe. Failures fall through
+    silently — `_bars_to_close` will retry per-symbol via data_router for any
+    missing symbol so behaviour is unchanged on partial failure.
+    """
+    try:
+        import yfinance as yf
+    except Exception:
+        return
+    period = _period_for_days(lookback_days)
+    try:
+        df = yf.download(
+            symbols,
+            period=period,
+            interval="1d",
+            progress=False,
+            auto_adjust=False,
+            group_by="ticker",
+            threads=True,
+        )
+    except Exception:
+        return
+    if df is None or df.empty:
+        return
+    for sym in symbols:
+        try:
+            if isinstance(df.columns, pd.MultiIndex):
+                if sym in df.columns.get_level_values(0):
+                    sub = df[sym]
+                    s = sub["Close"].dropna().astype(float)
+                else:
+                    continue
+            else:
+                if "Close" not in df.columns:
+                    continue
+                s = df["Close"].dropna().astype(float)
+            if s.empty:
+                continue
+            s.name = sym
+            _BATCH_BARS_CACHE[(sym, lookback_days)] = s.tail(lookback_days)
+        except Exception:
+            continue
+
+
 def _bars_to_close(symbol: str, lookback_days: int) -> pd.Series:
+    cached = _BATCH_BARS_CACHE.get((symbol, lookback_days))
+    if cached is not None and not cached.empty:
+        return cached
     period = _period_for_days(lookback_days)
     try:
         bars = data_router.get_history(symbol, period=period, interval="1d")
@@ -618,6 +671,11 @@ def walk_forward_backtest(
         raise ValueError(f"unknown skill: {skill}")
     spec, rule = SKILL_RULES[skill]
     universe = universe or DEFAULT_UNIVERSE
+
+    # One batched yf.download for the whole universe (incl. benchmarks)
+    # instead of N sequential per-symbol HTTPs through data_router.
+    prefetch_syms = list(dict.fromkeys(list(universe) + [_BENCH_SPY, _BENCH_XEQT]))
+    _prefetch_universe(prefetch_syms, lookback_days)
 
     spy_close = _bars_to_close(_BENCH_SPY, lookback_days)
     regimes = _regime_label(spy_close) if not spy_close.empty else pd.Series(dtype=object)
