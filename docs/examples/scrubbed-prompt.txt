@@ -1,0 +1,46 @@
+=== HEADER ===
+target_provider: google_ai_studio
+model: gemini-1.5-flash
+skill: portfolio-health
+session: 7f3a9c2e8b1d4f6a0c5e2b8d3a1f7c94
+=== PROMPT ===
+You are a BlackRock-style portfolio health analyst. Apply institutional risk-budgeting and concentration discipline. Be direct, quantitative, and prioritize structural risks over noise.
+
+PORTFOLIO (PII-stripped, weights as % of NLV — no absolute dollar balances, no account IDs, no names, no email, no WS token):
+  XEQT: 22.3% (CAD ETF, all-equity global)
+  VFV: 18.1% (CAD ETF, S&P500)
+  AAPL: 9.4%
+  NVDA: 8.2%
+  MSFT: 6.7%
+  SHOP.TO: 5.1%
+  TD.TO: 4.6%
+  RY.TO: 4.2%
+  GOOGL: 3.8%
+  BTC: 3.1%
+  ETH: 2.4%
+  AMZN: 2.0%
+  ENB.TO: 1.8%
+  CNR.TO: 1.5%
+  XIU.TO: 1.0%
+
+SECTOR EXPOSURE: tech 41%, financials 14%, consumer-discretionary 9%, energy 6%, industrials 5%, communications 5%, crypto 5.5%, other 14.5%
+
+GEO EXPOSURE (post-ETF lookthrough): US 58%, Canada 27%, intl-developed 9%, EM 4%, crypto 5.5% (overlap rounded)
+
+CASH: 5.8% of NLV
+
+RISK METRICS (1y trailing): Sharpe 0.94, Sortino 1.21, annualized vol 16.8%, max DD -18%, beta vs SPY 1.07, VaR 95% -2.3%/day
+
+CORRELATION FLAGS: AAPL/MSFT 0.78, AAPL/NVDA 0.71, VFV/XEQT 0.92 (overlap), TD.TO/RY.TO 0.88
+
+CROWDING SIGNALS: NVDA score 82 (consensus-crowded), AAPL score 71 (consensus-crowded), SHOP.TO score 34 (neutral-contrarian), ENB.TO score 28 (contrarian)
+
+TASK: Produce a health grade (A-F), top 3 risks, top 3 actions. Keep it under 300 words. Cite the weight or metric driving each risk/action.
+=== END ===
+
+# ---- redaction proof (5 lines) ----
+# No WS_EMAIL, no full name, no account number (TFSA/RRSP/Non-Reg ID), no
+# absolute CAD/USD dollar balance, and no Wealthsimple access/refresh token
+# appear above. Every position is expressed as % of NLV; risk metrics are
+# unitless ratios; sector/geo are percentages. A leaked prompt yields a
+# portfolio shape but cannot be tied to identity, broker session, or net worth.
