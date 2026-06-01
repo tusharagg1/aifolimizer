@@ -32,7 +32,7 @@ Missing `.secrets/pg_password.txt`. Compose mounts it as a Docker secret for Pos
 
 On POSIX (Mac/Linux): mode `0600`, owner-only. On Windows: NTFS ACL restricts to the local user account; the chmod call from Python is a no-op, so use NTFS permissions or BitLocker for stronger protection.
 
-The file holds access + refresh tokens with an 8-hour TTL. It auto-clears when stale or rejected. It lives outside the repo and never gets committed. Delete the file to force a fresh OTP login.
+The file holds access + refresh tokens with a 14-day default TTL (override via `WS_TOKEN_TTL_HOURS` env var, range 1-720h). It auto-clears when stale or rejected. It lives outside the repo and never gets committed. Delete the file to force a fresh OTP login.
 
 ## What data leaves my machine when I use an LLM?
 

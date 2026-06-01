@@ -122,7 +122,7 @@ Supports Python 3.12+; pinned <3.14 due to pandas-ta lineage.
 
 <important if="touching backend/, .env, mcp_server.py, pii_filter.py, or any MCP tool response">
 - WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI. Password NEVER persisted to disk.
-- WS access + refresh token: server RAM + persisted to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; on Windows the file lives in the user profile and relies on NTFS ACL - set BitLocker / strict ACL if hardening). 8h TTL; auto-cleared when stale/rejected. Delete to force re-auth. Lives outside repo - never committed.
+- WS access + refresh token: server RAM + persisted to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; on Windows the file lives in the user profile and relies on NTFS ACL - set BitLocker / strict ACL if hardening). 14-day default TTL (override via `WS_TOKEN_TTL_HOURS`, range 1-720h); auto-cleared when stale/rejected. Delete to force re-auth. Lives outside repo - never committed.
 - `pii_filter.py` is applied to portfolio/profile/x-ray responses (the tools that surface account-bearing payloads from `wealthsimple.py`). Other tools (technicals, fundamentals, macro, news, etc.) operate on public market data + symbol lists and do not handle PII. When adding a new MCP tool that touches WS account data, route the response through `pii_filter` before returning.
 - Account IDs, account numbers, email, full name: NEVER leave the local machine.
 - External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts carry symbols, weights (% of NLV), returns %, and scores - NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all fallback inference on-machine.

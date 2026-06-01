@@ -62,15 +62,17 @@ These three files update as the project runs:
 
 ## Status & Roadmap
 
-aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and MCP route handlers are exercised manually. Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identity, KMS-backed token storage, and append-only audit logging are all out of scope for the single-user posture today - open as issues / PRs if any of these matter for your use case.
+aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and MCP route handlers are exercised manually.
+
+Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identity, KMS-backed token storage, and append-only audit logging are out of scope for the single-user posture today. Open an issue or PR if any of these matter for your use case.
 
 ## Limitations
 
-- yfinance throttles intermittently on TSX symbols (~2x a week); the adapter chain falls back but logs noise.
+- yfinance throttles intermittently on TSX symbols (~2x a week); the adapter chain falls back but emits noisy log output.
 - Wealthsimple tokens default to 14-day TTL (override via `WS_TOKEN_TTL_HOURS`, range 1-720h). MFA re-auth is `python mcp_login.py`.
 - The Wealthsimple API is reverse-engineered. Wealthsimple does not officially support automated access; the integration may break on any release and may violate their ToS.
 - Macro skill cites FRED data that's 1-3 days stale.
-- No auto-trading. Output is suggestions; trades are placed manually.
+- No auto-trading. Output is advisory; place trades manually.
 - Don't expose this server to anything outside localhost until route-handler tests land.
 
 ## Quick start

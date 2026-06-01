@@ -59,7 +59,7 @@ Postgres (TimescaleDB)  +  Redis  (docker-compose.yml - local Docker)
 
 | Source | Auth | Cache TTL | Used by |
 |--------|------|-----------|---------|
-| Wealthsimple | email/password + MFA → token in RAM | 8h session | wealthsimple.py |
+| Wealthsimple | email/password + MFA → token in RAM | 14d default (env override 1-720h) | wealthsimple.py |
 | yfinance (Yahoo Finance) | None | varies | market_data.py, fundamentals.py, technicals.py, news.py |
 | FRED (Federal Reserve) | None | 12h | macro.py |
 | `ta>=0.11.0` | N/A (local) | 1h | technicals.py |
@@ -79,7 +79,7 @@ Token lifecycle:
   - Stored in Python dict (server RAM) AND persisted to ~/.aifolimizer/ws_session.json
     (mode 0600, outside repo) so a backend restart resumes without re-OTP. Password
     never persisted - only access+refresh token + email + timestamp.
-  - TTL: 8 hours from login; persisted file auto-cleared when stale or rejected by WS
+  - TTL: 14-day default from login (override via `WS_TOKEN_TTL_HOURS`, range 1-720h); persisted file auto-cleared when stale or rejected by WS
   - Evicted on 401 from WS or manual logout
   - MCP server shares same session store as FastAPI
 ```

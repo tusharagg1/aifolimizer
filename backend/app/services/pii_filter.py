@@ -1,3 +1,5 @@
+import re
+
 _ACCOUNT_TYPE_LABELS = {
     "TFSA": "Tax-Free Savings Account",
     "RRSP": "Registered Retirement Account",
@@ -69,8 +71,6 @@ def _filter_summary(summary: dict) -> dict:
         "cash_available": summary.get("cash_available", 0),
     }
 
-
-import re
 
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 
