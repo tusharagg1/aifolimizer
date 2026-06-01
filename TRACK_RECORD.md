@@ -5,6 +5,10 @@
 
 ---
 
+> **Methodology disclosure.** Backtest results below are walk-forward out-of-sample where labelled (column / footer indicates IS vs OOS). 7d / 30d / 90d windows are FORWARD-test cohorts marked-to-market daily; identical numbers across windows are expected when no signal in the cohort has aged past the smaller window — they are not duplicate runs. Wealthsimple Managed comparison numbers (if present) are sourced from <CITE_URL_HERE> retrieved <DATE>; replace before publishing. Transaction costs deducted at 5 bps/leg unless noted. Survivorship: backtests use current index membership; delisted names are not back-filled.
+
+---
+
 ## Disclaimer
 
 > This is a personal DIY investment tool, not financial advice. Past results are
