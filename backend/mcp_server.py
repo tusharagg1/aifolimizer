@@ -20,6 +20,14 @@ from mcp.server.fastmcp import FastMCP
 
 load_dotenv()
 
+# Sentry init — opt-in via SENTRY_DSN. Gated by env-var presence to avoid
+# importing app.core.config (and its dependency chain) when sentry is off,
+# preserving the fast MCP cold-start budget.
+if os.environ.get("SENTRY_DSN"):
+    from app.core.config import settings as _settings
+    from app.core.sentry import init_sentry as _init_sentry
+    _init_sentry(_settings)
+
 
 class _LazyModule:
     """Defer import until first attribute access.
