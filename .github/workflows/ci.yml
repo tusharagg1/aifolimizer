@@ -36,10 +36,33 @@ jobs:
       - name: Doc count drift guard
         run: python scripts/check_doc_counts.py
 
-      - name: Type check (pyright)
+      - name: Pyright (advisory)
         run: pyright --pythonversion 3.12
         continue-on-error: true
 
       - name: Tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --cov=app --cov-report=term
         if: hashFiles('backend/tests/**/*.py') != ''
+
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: pip-audit (backend/requirements.txt)
+        run: pip-audit -r backend/requirements.txt --strict
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
