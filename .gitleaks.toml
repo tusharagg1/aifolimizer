@@ -35,3 +35,16 @@ tags = ["pii", "owner"]
     '''^\.gitleaks\.toml$''',
     '''^\.githooks/pre-commit$''',
   ]
+
+[[rules]]
+id = "sentry-auth-token"
+description = "Sentry user/project/secret API token"
+regex = '''sntry[ups]_[a-f0-9]{60,80}'''
+tags = ["secret", "sentry"]
+
+  [rules.allowlist]
+  description = "Rule definitions"
+  paths = [
+    '''^\.gitleaks\.toml$''',
+    '''^\.githooks/pre-commit$''',
+  ]
