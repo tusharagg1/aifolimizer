@@ -28,7 +28,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt ruff pyright
+        run: pip install -r requirements.txt ruff pyright pytest pytest-cov
 
       - name: Lint (ruff)
         run: ruff check . --output-format=github
