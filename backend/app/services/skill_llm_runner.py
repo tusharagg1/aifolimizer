@@ -344,8 +344,38 @@ async def run_adversarial_research(
             "adversarial-research",
             status="error", error="no_llm_provider",
         )
+    enriched = dict(context or {})
+    # Inject prior decisions on this ticker + portfolio-wide lessons so the
+    # LLM doesn't repeat thesis patterns that already failed. Reflection
+    # text is built once and cached on the context dict so callers passing
+    # a pre-built reflection win that path.
+    if not enriched.get("reflection"):
+        try:
+            from app.services import decision_memory
+            history = decision_memory.get_ticker_history(ticker, 5)
+            cross = decision_memory.get_cross_ticker_lessons(3)
+            chunks: list[str] = []
+            for h in history:
+                outcome = h.get("outcome", "open")
+                ref = h.get("reflection") or ""
+                date = (h.get("created_utc") or "")[:10]
+                action = h.get("action", "")
+                chunks.append(
+                    f"- {date} {action} → {outcome}: {ref}".strip()
+                )
+            for c in cross:
+                outcome = c.get("outcome", "?")
+                ticker_c = c.get("ticker", "?")
+                ref = c.get("reflection") or ""
+                chunks.append(
+                    f"- portfolio-lesson {ticker_c} → {outcome}: {ref}"
+                )
+            if chunks:
+                enriched["reflection"] = "\n".join(chunks)
+        except Exception as e:
+            log.debug("decision_memory injection skipped: %s", e)
     data = await _call_llm_json(
-        _adv_prompt(ticker, context or {}), _ADV_SYSTEM,
+        _adv_prompt(ticker, enriched), _ADV_SYSTEM,
         task="adversarial",
     )
     if data is None:
