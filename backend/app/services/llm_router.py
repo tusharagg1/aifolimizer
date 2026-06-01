@@ -28,6 +28,46 @@ from app.security import get_logger
 _LOG = get_logger("aifolimizer.services.llm_router")
 
 
+# ── Outbound LLM audit log ─────────────────────────────────────────────────────
+# One JSONL line per outbound call. Hash-only — no full prompts persisted.
+
+import json as _json
+import os as _os
+from pathlib import Path as _Path
+from datetime import datetime as _dt, timezone as _tz
+
+_AUDIT_PATH = _Path.home() / ".aifolimizer" / "llm_audit.jsonl"
+
+
+def _audit_outbound(
+    provider: str,
+    model: str,
+    prompt: str,
+    task: str | None = None,
+) -> None:
+    """Append one JSONL row recording an outbound LLM call. Never raises."""
+    try:
+        _AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        prompt_str = prompt or ""
+        row = {
+            "ts": _dt.now(_tz.utc).isoformat(),
+            "provider": provider,
+            "model": model,
+            "skill": task,
+            "prompt_sha256": hashlib.sha256(prompt_str.encode("utf-8")).hexdigest(),
+            "prompt_len_chars": len(prompt_str),
+            "prompt_first_120_chars": prompt_str[:120],
+        }
+        with _AUDIT_PATH.open("a", encoding="utf-8") as f:
+            f.write(_json.dumps(row, ensure_ascii=False) + "\n")
+        try:
+            _os.chmod(_AUDIT_PATH, 0o600)
+        except OSError:
+            pass
+    except Exception:
+        pass
+
+
 # ── Per-task model routing ─────────────────────────────────────────────────────
 # GitHub Models exposes many model IDs free w/ Pro subscription. Map tasks to
 # the model best suited (cheap for batch narratives, gpt-4o for synthesis).
@@ -158,11 +198,17 @@ def active_provider_names() -> list[str]:
 
 # ── HTTP calls ─────────────────────────────────────────────────────────────────
 
+_FOOTER = (
+    "_Educational analysis only. Not investment advice. "
+    "Verify independently before acting._"
+)
+
 _SYSTEM_PROMPT = (
     "You are a concise portfolio analyst. "
     "Reply in exactly 1-2 sentences. "
     "Be specific — cite numbers from the signals. "
-    "No disclaimers, no markdown, no preamble."
+    "ALWAYS append this footer on its own final line, exactly: "
+    f"{_FOOTER}"
 )
 
 _SELL_VERIFY_SYSTEM = (
@@ -302,6 +348,7 @@ async def _call_provider(
 ) -> str:
     api_key = provider["key_getter"]()
     model = _model_for(provider, task)
+    _audit_outbound(provider["name"], model, prompt, task)
     if provider["type"] == "gemini":
         return await _call_gemini(api_key, model, prompt, system, max_tokens, temperature)
     return await _call_openai_compat(
@@ -354,7 +401,9 @@ _PORTFOLIO_COMMENTARY_SYSTEM = (
     "   accounts often have positive Account Return + negative Equity Return.\n"
     "5. Reference figures from the data given — do not invent. Use weights and "
     "   percentages only; never fabricate dollar amounts.\n"
-    "6. No disclaimers, no markdown outside JSON. Each action under 15 words."
+    "6. No markdown outside JSON. Each action under 15 words.\n"
+    "7. ALWAYS include a \"footer\" string field in the JSON object set EXACTLY to: "
+    f"{_FOOTER}"
 )
 
 
@@ -563,6 +612,7 @@ async def verify_sell_signal(rec: dict) -> bool:
     for provider in providers:
         try:
             sv_model = _model_for(provider, "sell_verify")
+            _audit_outbound(provider["name"], sv_model, prompt, "sell_verify")
             if provider["type"] == "gemini":
                 text = await _call_gemini(
                     provider["key_getter"](),
