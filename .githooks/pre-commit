@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# PII guard. Blocks commits that introduce owner-identifying strings into
+# tracked files. Allowlist: LICENSE / README.md / pyproject.toml (intentional
+# MIT copyright attribution).
+#
+# Activate once per clone:
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+PATTERNS='tusharagg1@gmail\.com|Tushar Agg(arwal)?|tushar-prod|tushar\.aggarwal'
+ALLOW='^(LICENSE|README\.md|pyproject\.toml|\.githooks/pre-commit|\.gitleaks\.toml)$'
+
+added_files=$(git diff --cached --name-only --diff-filter=AM)
+[ -z "$added_files" ] && exit 0
+
+hits=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [[ "$f" =~ $ALLOW ]]; then
+    continue
+  fi
+  added_lines=$(git diff --cached -U0 -- "$f" | grep -E '^\+' | grep -vE '^\+\+\+' || true)
+  matches=$(printf '%s\n' "$added_lines" | grep -nE "$PATTERNS" || true)
+  if [ -n "$matches" ]; then
+    hits+="${f}:"$'\n'"${matches}"$'\n'
+  fi
+done <<< "$added_files"
+
+if [ -n "$hits" ]; then
+  echo "ERROR: pre-commit blocked - owner PII tokens in staged changes:"
+  echo
+  echo "$hits"
+  echo "Allowlisted (intentional attribution): LICENSE, README.md, pyproject.toml"
+  echo "If legitimate elsewhere, add path to ALLOW regex in .githooks/pre-commit"
+  echo "and to .gitleaks.toml allowlist."
+  exit 1
+fi
+
+exit 0

@@ -142,6 +142,7 @@ WS_PASSWORD=...
 
 - No hardcoded capital amounts or account types - always read from `get_profile`
 - No PII in logs, DB, or MCP output
+- **Activate PII pre-commit hook once per clone:** `git config core.hooksPath .githooks`. Hook blocks owner-identifying strings (gmail, full-name, legacy IDs); allowlist for LICENSE/README/pyproject.toml. CI runs `gitleaks` with same rules from `.gitleaks.toml`.
 - Functions short, single-purpose
 - No comments explaining WHAT - only WHY when non-obvious
 - Append to `.claude/context/changes.md` after significant changes

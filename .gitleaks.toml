@@ -1,0 +1,37 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "owner-pii-email"
+description = "Owner personal email address"
+regex = '''tusharagg1@gmail\.com'''
+tags = ["pii", "owner"]
+
+[[rules]]
+id = "owner-pii-name"
+description = "Owner full name in code or fixtures"
+regex = '''Tushar Agg(?:arwal)?'''
+tags = ["pii", "owner"]
+
+  [rules.allowlist]
+  description = "Author attribution + rule definitions"
+  paths = [
+    '''^LICENSE$''',
+    '''^README\.md$''',
+    '''^pyproject\.toml$''',
+    '''^\.gitleaks\.toml$''',
+    '''^\.githooks/pre-commit$''',
+  ]
+
+[[rules]]
+id = "owner-pii-legacy-id"
+description = "Legacy owner-prefixed user identifiers"
+regex = '''(?:tushar-prod|tushar\.aggarwal)'''
+tags = ["pii", "owner"]
+
+  [rules.allowlist]
+  description = "Rule definitions"
+  paths = [
+    '''^\.gitleaks\.toml$''',
+    '''^\.githooks/pre-commit$''',
+  ]
