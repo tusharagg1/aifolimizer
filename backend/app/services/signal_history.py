@@ -420,14 +420,11 @@ def _classify_subset(rows: list[dict], horizon: int) -> dict:
     avg_loss = mean(losses) if losses else 0.0  # negative or zero
     avg_ret = mean(rets)
     expectancy = win_rate * avg_win + (1 - win_rate) * avg_loss
-    # F1 treating "win" as positive class; precision = win_rate since every
-    # signal in the subset is a "predicted positive" by construction
-    precision = win_rate
-    recall = win_rate  # subset has no false-negatives (all are predictions)
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if (precision + recall) > 0 else 0.0
-    )
+    # NOTE: precision/recall/F1 were dropped — by construction of this subset
+    # (every row is a "predicted positive") they all collapsed to win_rate
+    # and reported a meaningless `f1 == win_rate`. Use win_rate + expectancy
+    # for accuracy framing; reach for binary-contrast metrics only when the
+    # caller can actually score `BUY > buy_thr` vs `< sell_thr`.
     return {
         "n": len(rets),
         "win_rate_pct": round(win_rate * 100, 1),
@@ -435,9 +432,6 @@ def _classify_subset(rows: list[dict], horizon: int) -> dict:
         "avg_win_pct": round(avg_win, 2),
         "avg_loss_pct": round(avg_loss, 2),
         "expectancy_pct": round(expectancy, 3),
-        "precision": round(precision, 3),
-        "recall": round(recall, 3),
-        "f1": round(f1, 3),
     }
 
 

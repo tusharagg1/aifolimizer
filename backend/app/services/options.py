@@ -64,12 +64,14 @@ def black_scholes_greeks(
 
     gamma = pdf_d1 / (S * sigma * math.sqrt(T))
     vega = S * pdf_d1 * math.sqrt(T) / 100   # per 1% change in IV
-    theta = (
-        -(S * pdf_d1 * sigma) / (2 * math.sqrt(T))
-        - r * K * disc * (
-            _ncdf(d2) if option_type == "call" else _ncdf(-d2)
-        )
-    ) / 365
+    # Standard BS theta:
+    #   call: -(S φ σ)/(2√T) - r K e^(-rT) N(d2)
+    #   put:  -(S φ σ)/(2√T) + r K e^(-rT) N(-d2)
+    common = -(S * pdf_d1 * sigma) / (2 * math.sqrt(T))
+    if option_type == "call":
+        theta = (common - r * K * disc * _ncdf(d2)) / 365
+    else:
+        theta = (common + r * K * disc * _ncdf(-d2)) / 365
 
     return {
         "bs_price": round(price, 4),

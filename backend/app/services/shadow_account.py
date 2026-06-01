@@ -35,7 +35,18 @@ def _parse_date(d: str | datetime) -> datetime:
 
 
 def _fifo_pair(transactions: list[dict]) -> list[dict]:
-    """Pair buys→sells per symbol using FIFO. Returns completed roundtrips."""
+    """Pair buys→sells per symbol using FIFO with quantity tracking.
+
+    Earlier impl popped the entire buy lot on the first matching sell, ignoring
+    quantity. Scale-in (multiple buys then a single sell) and scale-out (one
+    buy then multiple partial sells) both got mispaired — partial sells
+    consumed whole prior buys and starved later sells of inventory.
+
+    Now each buy lot keeps a `remaining_qty`; each sell consumes
+    `min(buy_remaining, sell_remaining)` and emits a roundtrip per consumed
+    slice. Lots fully drained leave the queue; partial buys stay in front
+    until depleted.
+    """
     by_symbol: dict[str, list[dict]] = {}
     for t in transactions:
         sym = str(t.get("symbol", "")).upper()
@@ -45,18 +56,30 @@ def _fifo_pair(transactions: list[dict]) -> list[dict]:
     roundtrips = []
     for sym, trades in by_symbol.items():
         trades_sorted = sorted(trades, key=lambda x: _parse_date(x["date"]))
-        buy_queue: list[dict] = []
+        # buy_queue carries (buy_dict, remaining_qty) — not the raw row,
+        # because we mutate the qty as sells consume the lot.
+        buy_queue: list[tuple[dict, float]] = []
         for t in trades_sorted:
             side = str(t.get("side", "")).lower()
             if side in ("buy", "b", "purchase"):
-                buy_queue.append(t)
-            elif side in ("sell", "s", "sale") and buy_queue:
-                buy = buy_queue.pop(0)
+                qty = float(t.get("quantity", 1) or 0)
+                if qty <= 0:
+                    qty = 1.0
+                buy_queue.append((t, qty))
+                continue
+            if side not in ("sell", "s", "sale"):
+                continue
+            sell_remaining = float(t.get("quantity", 1) or 0)
+            if sell_remaining <= 0:
+                sell_remaining = 1.0
+            xp = float(t.get("price", 0))
+            exit_dt = _parse_date(t["date"])
+            while sell_remaining > 1e-9 and buy_queue:
+                buy, buy_remaining = buy_queue[0]
+                consumed = min(buy_remaining, sell_remaining)
                 entry_dt = _parse_date(buy["date"])
-                exit_dt = _parse_date(t["date"])
                 holding = max(0, (exit_dt - entry_dt).days)
                 ep = float(buy.get("price", 0))
-                xp = float(t.get("price", 0))
                 ret_pct = (xp - ep) / ep * 100 if ep > 0 else 0.0
                 roundtrips.append({
                     "symbol": sym,
@@ -64,13 +87,19 @@ def _fifo_pair(transactions: list[dict]) -> list[dict]:
                     "exit_date": exit_dt.strftime("%Y-%m-%d"),
                     "entry_price": round(ep, 4),
                     "exit_price": round(xp, 4),
-                    "quantity": float(buy.get("quantity", 1)),
+                    "quantity": round(consumed, 6),
                     "holding_days": holding,
                     "entry_hour": entry_dt.hour,
                     "entry_dow": entry_dt.weekday(),
                     "return_pct": round(ret_pct, 2),
                     "profitable": ret_pct > 0,
                 })
+                buy_remaining -= consumed
+                sell_remaining -= consumed
+                if buy_remaining <= 1e-9:
+                    buy_queue.pop(0)
+                else:
+                    buy_queue[0] = (buy, buy_remaining)
     return roundtrips
 
 
