@@ -15,7 +15,7 @@ description: Run a Harvard Endowment dividend income analysis. Use when the user
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Dividend investing is one pillar (not whole portfolio)
 - Account types and capital: always read from `get_profile` - never hardcode
 - TFSA: dividends tax-free (Canadian stocks ideal here)

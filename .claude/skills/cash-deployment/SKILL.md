@@ -23,7 +23,7 @@ description: Plan how to deploy uninvested cash across existing portfolio holdin
 
 ## Investor profile
 
-- Age: 32, Canadian investor
+- Canadian retail investor
 - Time horizons: short-term + long-term (10yr+)
 - Account types and capital: always read from `get_profile` - never hardcode
 - Strategy lens: confirm with user (defensive top-up / aggressive growth / dividend reinvest); default "aggressive growth" if unstated

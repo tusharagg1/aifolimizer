@@ -17,7 +17,7 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Account types and capital: always read from `get_profile` - never hardcode
 - Holds equities, ETFs, crypto across registered + non-registered accounts
 - Long-term wealth building with some short-term trading

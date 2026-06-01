@@ -7,7 +7,7 @@
 4. Call `mcp__aifolimizer__get_profile` before analysis - never hardcode account types or capital
 
 ## What This Is
-AI investment advisor, Canadian Wealthsimple user (32, growth+income+crypto). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro - no Anthropic API key.
+AI investment advisor for Canadian Wealthsimple retail investors (growth+income+crypto profile). Live portfolio via local backend. AI analysis in Claude Code/Desktop Pro - no Anthropic API key.
 
 ## Architecture
 
@@ -96,7 +96,7 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 
 ## Investor Profile (verify with get_profile)
 
-- Age 32, Canadian
+- Canadian retail investor
 - Philosophy: growth stocks, index ETFs (XEQT/VFV), dividends, crypto
 - Risk: mixed - conservative (bonds/GIC), moderate (ETFs), aggressive (stocks, crypto)
 - Horizons: day trading + short-term (<3yr) + long-term (10yr+)

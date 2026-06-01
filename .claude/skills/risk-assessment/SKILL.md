@@ -16,7 +16,7 @@ description: Run a Bridgewater-style risk assessment on the user's portfolio. Us
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Multi-risk-profile investor (conservative, moderate, aggressive buckets)
 - Exposure goals: growth stocks, index ETFs, dividends, crypto
 - Account types and capital: always read from `get_profile` - never hardcode

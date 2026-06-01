@@ -371,7 +371,7 @@ async def generate_narrative(rec: dict) -> str | None:
 
 
 _PORTFOLIO_COMMENTARY_SYSTEM = (
-    "You are a concise portfolio advisor for a 32-year-old Canadian growth "
+    "You are a concise portfolio advisor for a Canadian retail growth "
     "investor using Wealthsimple. Reply with a JSON object: "
     '"commentary" (2-3 sentences) and "actions" (2-4 actionable bullets).\n'
     "STRICT RULES — violating any is a hallucination:\n"

@@ -59,9 +59,9 @@ def test_filter_portfolio_strips_pii_keys():
                 "account_id": "ws-internal-xyz-9999",
                 "account_number": "1234567890",
                 "ws_internal_id": "secret",
-                "user_id": "tushar-prod",
+                "user_id": "test-user-prod",
                 "email": "test@example.invalid",
-                "full_name": "Tushar Agg",
+                "full_name": "Test User",
             }
         ],
         "summary": {
@@ -126,7 +126,7 @@ def test_filter_user_context_pseudonymizes_account_types():
                 # PII that must vanish
                 "account_id": "tfsa-xyz",
                 "account_number": "999",
-                "full_name": "Tushar Agg",
+                "full_name": "Test User",
             },
             {
                 "type": "Non-Reg",

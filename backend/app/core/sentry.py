@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Substrings that should never appear in events sent to Sentry.
-# Case-insensitive match drops the entire event.
-_PII_TOKENS = (
+# Built-in substrings that should never appear in events sent to Sentry.
+# Case-insensitive match drops the entire event. Operators add deployment-
+# specific tokens (e.g. their own email prefix) via the comma-separated
+# SENTRY_PII_TOKENS env var rather than hardcoding here.
+_BUILTIN_PII_TOKENS: tuple[str, ...] = (
     "password",
     "ws_token",
     "ws_session",
@@ -26,8 +29,16 @@ _PII_TOKENS = (
     "account_id",
     "account_number",
     "wealthsimple.com",
-    "tusharagg1@",
 )
+
+
+def _load_pii_tokens() -> tuple[str, ...]:
+    extra = os.getenv("SENTRY_PII_TOKENS", "")
+    user_tokens = tuple(t.strip().lower() for t in extra.split(",") if t.strip())
+    return _BUILTIN_PII_TOKENS + user_tokens
+
+
+_PII_TOKENS = _load_pii_tokens()
 
 
 def _strip_pii(event: dict[str, Any], hint: dict[str, Any] | None = None):

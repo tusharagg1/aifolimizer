@@ -50,7 +50,7 @@ If catalyst flagged, prefix section 1 headline with `⚠️ CATALYST: <event> @ 
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Philosophy: growth stocks, index ETFs, dividends, crypto
 - Always pull capital + accounts from `get_profile` - never hardcode
 

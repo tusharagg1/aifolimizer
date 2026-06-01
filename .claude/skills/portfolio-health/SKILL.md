@@ -15,7 +15,7 @@ description: Run a BlackRock-style portfolio health analysis. Use when the user 
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Philosophy: growth stocks, index ETFs, dividends, crypto exposure
 - Risk profiles: conservative, moderate, aggressive (across different accounts)
 - Time horizons: day trading, short-term <3yr, long-term 10yr+

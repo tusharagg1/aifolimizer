@@ -17,7 +17,7 @@ description: Run a head-to-head comparison between two tickers (A vs B) for a gr
 
 ## Investor profile
 
-- Age: 32, Canadian investor
+- Canadian retail investor
 - Time horizons: short-term trading + long-term (10yr+) holding
 - Strategy lens: confirm with user (growth / income / value); default to growth if unstated
 - Account types and capital: always read from `get_profile` - never hardcode

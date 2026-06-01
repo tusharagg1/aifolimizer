@@ -34,7 +34,7 @@ description: |
 
 ## Investor profile
 
-- Age: 32, Canadian resident
+- Canadian retail investor
 - Account types and capital: always read from `get_profile` — never hardcode
 
 ## Output structure

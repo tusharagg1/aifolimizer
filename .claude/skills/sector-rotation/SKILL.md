@@ -16,7 +16,7 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 
 ## Investor profile
 
-- Age: 32, Canadian investor
+- Canadian retail investor
 - Account types and capital: always read from `get_profile` - never hardcode
 - Equities, ETFs, crypto exposure
 - Wants to spot institutional moves before they're obvious

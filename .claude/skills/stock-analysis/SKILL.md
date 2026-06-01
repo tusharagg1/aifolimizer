@@ -18,7 +18,7 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 
 ## Investor profile
 
-- Age: 32, Canadian investor
+- Canadian retail investor
 - Time horizons: short-term trading + long-term (10yr+) holding
 - Account types and capital: always read from `get_profile` - never hardcode
 
