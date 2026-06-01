@@ -4,54 +4,80 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-05-29 — Event-driven MFA: heads-up + local popup, no polling
+
+### Why
+8h WS TTL force re-auth, defeat Claude-primary preference for skill automation. User want (a) one Telegram heads-up moment session dies, (b) one-click launcher open local popup for code entry, (c) no polling watchdog burn resources or duplicate notifications.
+
+### Built
+- `backend/scripts/mfa_notify.py` — Telegram heads-up only (no reply loop). 6h cooldown prevent repeat-spam while user away.
+- `backend/scripts/mfa_popup.py` — Tk simpledialog OTP entry + WS login + session persist. Clears notify cooldown on success so next real expiry triggers fresh heads-up. Exit codes: 0 ok, 1 config/login error, 2 cancelled, 3 rejected, 4 creds missing.
+- `scripts/aifolimizer-launch.ps1` — user-facing launcher. Probes backend + session; spawns popup if expired; reports ready. Pin desktop shortcut.
+- `backend/main.py` lifespan: when `restore_session()` returns None (file missing / stale / WS rejected), spawns `mfa_notify.py` in background via `subprocess.Popen`. Single trigger per backend startup. No polling Scheduled Task — purely event-driven.
+
+### Flow
+1. Backend starts → restore fails → fires `mfa_notify.py` once → Telegram heads-up arrives.
+2. User runs `aifolimizer-launch.ps1` → probes session → spawns Tk popup → user types 6-digit code → WS login → session persisted → confirmation popup → launcher exits 0.
+3. Skills run Claude-primary next 8h. Free-LLM fallback only on Claude CLI failure, never on session expiry.
+
+### Verified
+ruff clean; backend restarted; `~/.aifolimizer/.mfa-notify.last` stamp written → Telegram dispatched on restart.
+
+### Resource / privacy
+No standing process. mfa_notify spawn one-shot (~200ms python + single Telegram POST). No PII in message — just "session expired". Reads same `.env` secrets rest of backend already needs.
+
+### Install
+```
+# nothing to register — backend lifespan IS the trigger
+```
+Pin desktop shortcut to `scripts/aifolimizer-launch.ps1`.
+
+### Prereqs
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `WS_EMAIL`, `WS_PASSWORD` in `backend/.env`.
+
+---
+
+## 2026-05-29 — MCP cold-start fix + project .mcp.json
+
+### Why
+Skills failed run via Claude Code: aifolimizer MCP tools absent from session schema despite `claude mcp list` showing ✓ Connected. Root cause: top-level eager import of 30+ service modules in `mcp_server.py` (~5s cold start) blew past Claude Code MCP handshake window. Skills fell back to manual REST, which also failed because WS session expired.
+
+### Fix
+- **Lazy service imports** (`backend/mcp_server.py`): replaced eager `from app.services import (...)` block with `_LazyModule` proxy class. Module-level service refs (`market_data`, `fundamentals_svc`, etc.) defer `importlib.import_module` until first attribute access. Tool bodies unchanged — still call `market_data.foo()` etc.
+- **Cold-start: 5.0s → 1.1s** (verified: `time python -c 'import mcp_server'`). MCP handshake now reliably registers all 80 tools in Claude Code session.
+- **Project `.mcp.json`**: declares `aifolimizer` server explicitly at repo root so any Claude Code session in this dir auto-registers without depending on user-scope global config.
+
+### NOT changed
+- `_TOKEN_TTL_HOURS = 8` in wealthsimple.py kept. Documented future option (let WS reject naturally) added to `restore_session` docstring. Trade-off: hourly security cycle vs. unattended-run convenience.
+
+### Verified
+Lazy import smoke test passes. `mcp list` still shows ✓ Connected.
+
+### Next session
+User must MFA-login once (`python backend/mcp_login.py`) to populate `~/.aifolimizer/ws_session.json`, then restart Claude Code to pick up `.mcp.json` and re-handshake MCP with fast cold-start.
+
+---
+
 ## 2026-05-29 — Claude-run skill automation (headless + fault-tolerant)
 
 ### Why
-Reasoning skills only ran when interactively in Claude Code. Goal: run them
-automatically *by Claude*, push to Telegram, survive reboots; free-LLM agent
-route kept as the fallback if Claude Pro is lost.
+Reasoning skills only ran when interactively in Claude Code. Goal: run them automatically *by Claude*, push to Telegram, survive reboots; free-LLM agent route kept as fallback if Claude Pro lost.
 
 ### Built / changed
-- **Unified WS session file** (fault-tolerance must-fix): `mcp_server._SESSION_FILE`
-  and `mcp_login.py` now both use `~/.aifolimizer/ws_session.json` — the same file
-  `wealthsimple._persist_session` rewrites on token refresh. Prevents a rotated
-  refresh token from orphaning the file the MCP server reads (headless runs now
-  survive for the full refresh-token lifetime; MFA only on first login / forced
-  re-auth). `mcp_login.py` writes the canonical `{email, session_json, saved_utc}`
-  schema + chmod 0600.
-- **main.py lifespan**: calls `wealthsimple.restore_session()` at startup so the
-  scheduler re-seeds the session after a restart and keeps the token warm.
-- **MCP tools**: `get_earnings_calendar(account_id, symbols=[])` now unions
-  watchlist/extra symbols + adds `held` flag (Option A). New `get_watchlist`.
-  New `get_trade_ideas(top_n, include_watchlist, min_risk_reward)` — reuses
-  `recommendations.get_recommendations` (no duplicated scoring), filters to
-  actionable + R:R floor, returns entry/stop/target/RR/conviction.
-- **New skills**: `top-trades-today` (composer: get_trade_ideas + crowding +
-  catalyst guards), `position-review` (router -> earnings-analyzer /
-  earnings-postmortem / adversarial-research / stock-analysis -> HOLD/TRIM/SELL,
-  logs decisions; respects subagent-nesting limit in sweeps).
-- **Automation scripts**: `backend/scripts/send_telegram.py` (plain-text,
-  4096-char chunked; verified real send), `backend/scripts/run_skill_fallback.py`
-  (free-LLM tier via agent_registry runner), `scripts/run-claude-skill.ps1`
-  (Claude primary -> free-LLM fallback -> Telegram, WS-session preflight, run log),
-  `scripts/register-skill-task.ps1`, `scripts/install-backend-service.ps1` (NSSM),
-  `scripts/AUTOMATION.md` runbook.
+- **Unified WS session file** (fault-tolerance must-fix): `mcp_server._SESSION_FILE` and `mcp_login.py` now both use `~/.aifolimizer/ws_session.json` — same file `wealthsimple._persist_session` rewrites on token refresh. Prevents rotated refresh token from orphaning file MCP server reads (headless runs now survive full refresh-token lifetime; MFA only on first login / forced re-auth). `mcp_login.py` writes canonical `{email, session_json, saved_utc}` schema + chmod 0600.
+- **main.py lifespan**: calls `wealthsimple.restore_session()` at startup so scheduler re-seeds session after restart and keeps token warm.
+- **MCP tools**: `get_earnings_calendar(account_id, symbols=[])` now unions watchlist/extra symbols + adds `held` flag (Option A). New `get_watchlist`. New `get_trade_ideas(top_n, include_watchlist, min_risk_reward)` — reuses `recommendations.get_recommendations` (no duplicated scoring), filters to actionable + R:R floor, returns entry/stop/target/RR/conviction.
+- **New skills**: `top-trades-today` (composer: get_trade_ideas + crowding + catalyst guards), `position-review` (router -> earnings-analyzer / earnings-postmortem / adversarial-research / stock-analysis -> HOLD/TRIM/SELL, logs decisions; respects subagent-nesting limit in sweeps).
+- **Automation scripts**: `backend/scripts/send_telegram.py` (plain-text, 4096-char chunked; verified real send), `backend/scripts/run_skill_fallback.py` (free-LLM tier via agent_registry runner), `scripts/run-claude-skill.ps1` (Claude primary -> free-LLM fallback -> Telegram, WS-session preflight, run log), `scripts/register-skill-task.ps1`, `scripts/install-backend-service.ps1` (NSSM), `scripts/AUTOMATION.md` runbook.
 
 ### Resilience model
-Two-tier: **Claude** (`claude -p`, Pro) primary; **free LLMs** (existing backend
-agent route) fallback when Pro/auth unavailable. New composer skills have no
-free-LLM runner (Claude-only). Keep agent_registry + skill_llm_runner.
+Two-tier: **Claude** (`claude -p`, Pro) primary; **free LLMs** (existing backend agent route) fallback when Pro/auth unavailable. New composer skills have no free-LLM runner (Claude-only). Keep agent_registry + skill_llm_runner.
 
 ### Verified
-Import/compile-clean (mcp_server, main, mcp_login, both py scripts); PS scripts
-parse; send_telegram real send EXIT=0; fallback exits 4 cleanly with no session.
-Live `get_trade_ideas` / full `claude -p` run pending user MFA login (Phase 0).
+Import/compile-clean (mcp_server, main, mcp_login, both py scripts); PS scripts parse; send_telegram real send EXIT=0; fallback exits 4 cleanly with no session. Live `get_trade_ideas` / full `claude -p` run pending user MFA login (Phase 0).
 
 ### Known follow-ups
-MCP cold import ~5s (eager service imports) -> `mcp list` health-check can time
-out; harmless for `claude -p`. Lazy-import pass = perf-optimizer task. Optional
-phases not built: MFA-relay over Telegram, watchlist earnings in daily-briefing,
-event-driven Claude skills, hosted backend.
+MCP cold import ~5s (eager service imports) -> `mcp list` health-check can time out; harmless for `claude -p`. Lazy-import pass = perf-optimizer task. Optional phases not built: MFA-relay over Telegram, watchlist earnings in daily-briefing, event-driven Claude skills, hosted backend.
 
 ---
 

@@ -181,7 +181,7 @@ aifolimizer/
 ├── docs/                # FAQ + sample skill outputs
 ├── scripts/             # AUTOMATION runbook + PowerShell launchers
 ├── docker-compose.yml   # Postgres (TimescaleDB) + Redis
-├── .github/             # CI, issue/PR templates, dependabot
+├── .github/             # CI workflows + dependabot
 ├── CLAUDE.md, AGENTS.md # Project rules / agent context
 ├── TRACK_RECORD.md      # Live recommendation track record
 └── LICENSE

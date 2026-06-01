@@ -365,5 +365,9 @@
       "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\skills",
       "\\tmp"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "code-review-graph",
+    "aifolimizer"
+  ]
 }
