@@ -80,7 +80,8 @@
       "WebFetch(domain:www.theglobeandmail.com)",
       "Bash(powershell -Command \"Get-Item ~/.aifolimizer/ws_session.json | Select-Object Name, LastWriteTime, Length\")",
       "Bash(rm -f CONTRIBUTING.md CHANGELOG.md FAQ.md KNOWN_ISSUES.md .pre-commit-config.yaml .python-version .github/CODEOWNERS .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml)",
-      "Bash(rmdir .github/ISSUE_TEMPLATE)"
+      "Bash(rmdir .github/ISSUE_TEMPLATE)",
+      "Bash(python -c \"import json,sys; r=json.load\\(sys.stdin\\)[0]; print\\(f\\\\\"{r['headSha'][:7]} {r['status']} {r.get\\('conclusion'\\)}\\\\\"\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
