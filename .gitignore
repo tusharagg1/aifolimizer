@@ -18,6 +18,9 @@ frontend_run.log
 .env
 backend/.env
 
+# Per-machine MCP registration (contains absolute paths) — use .mcp.example.json
+.mcp.json
+
 # OS
 .DS_Store
 Thumbs.db
@@ -35,9 +38,11 @@ Thumbs.db
 .claude/context/scored_recommendations.jsonl
 .claude/context/portfolio_history.jsonl
 .claude/context/track_record_full.jsonl
+.claude/context/STATE.md
 backend/.pytest_cache/
 backend/.cache/
 backend/.claude/
+backend/data/run_cards/
 
 # Backup files created by skill scaffolding / plugin tools
 *.original.md
