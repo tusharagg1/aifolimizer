@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 from datetime import date
 
@@ -234,8 +235,16 @@ async def debug_pnl(
     session_id: str = Query(...),
     account_id: str = Query("", description="Empty = aggregate"),
 ):
-    """TEMPORARY diagnostic — dumps raw WS inputs and derived totals so we can
-    pinpoint why total_return_pct is off. Remove once root cause confirmed."""
+    """Diagnostic — dumps raw WS inputs and derived totals.
+
+    Gated behind WS_DEBUG=1 so production deployments don't expose internal
+    pnl breakdowns + per-account NLV by default. Set the env var only when
+    actively investigating a return-calc discrepancy.
+    """
+    if os.getenv("WS_DEBUG", "").strip() not in ("1", "true", "True"):
+        raise HTTPException(
+            status_code=404, detail="debug endpoint disabled"
+        )
     session = wealthsimple.get_session(session_id)
     if not session:
         raise HTTPException(status_code=401, detail="Session expired")
