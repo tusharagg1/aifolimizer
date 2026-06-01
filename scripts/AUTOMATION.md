@@ -27,13 +27,15 @@ re-auth.
 
 ## Phase 0 — one-time setup (do this first)
 
+> Replace `<REPO>` below with your absolute repo path (e.g. `C:\src\aifolimizer`). Set `$env:AIFOLIMIZER_ROOT = '<REPO>'` once and subsequent scripts auto-detect.
+
 1. **Register the MCP server** (already done if `claude mcp get aifolimizer` shows Connected):
    ```powershell
-   claude mcp add aifolimizer "C:\Users\Tusha\Documents\projects\aifolimizer\backend\.venv\Scripts\python.exe" "C:\Users\Tusha\Documents\projects\aifolimizer\backend\mcp_server.py"
+   claude mcp add aifolimizer "<REPO>\backend\.venv\Scripts\python.exe" "<REPO>\backend\mcp_server.py"
    ```
 2. **Log in to Wealthsimple** (creds come from `backend\.env`; you only type the MFA code):
    ```powershell
-   cd C:\Users\Tusha\Documents\projects\aifolimizer\backend
+   cd <REPO>\backend
    .venv\Scripts\python mcp_login.py      # enter the MFA code when prompted
    ```
 3. **Smoke test** the skill path — restart Claude Code, then in chat: `get my profile`
@@ -43,14 +45,14 @@ re-auth.
 
 Elevated PowerShell (NSSM required — `choco install nssm`):
 ```powershell
-C:\Users\Tusha\Documents\projects\aifolimizer\scripts\install-backend-service.ps1
+<REPO>\scripts\install-backend-service.ps1
 curl http://127.0.0.1:8000/health      # -> {"status":"ok"}
 ```
 
 ## Schedule skills
 
 ```powershell
-cd C:\Users\Tusha\Documents\projects\aifolimizer
+cd <REPO>
 scripts\register-skill-task.ps1 -Skill daily-briefing   -Time 07:00 -Days MON,TUE,WED,THU,FRI
 scripts\register-skill-task.ps1 -Skill top-trades-today -Time 08:00 -Days MON,TUE,WED,THU,FRI
 scripts\register-skill-task.ps1 -Skill position-review  -Time 18:30 -Days DAILY
@@ -102,3 +104,120 @@ type the MFA code. Optional future upgrade: reply to Telegram with the code
 
 - Skill runs: `~\.aifolimizer\skill-runs.log`
 - Backend service: `~\.aifolimizer\logs\backend.{out,err}.log`
+
+## POSIX equivalents (macOS / Linux)
+
+WS session file path is identical: `~/.aifolimizer/ws_session.json` (mode 0600).
+The PowerShell wrapper `run-claude-skill.ps1` has no POSIX twin yet — minimal
+bash equivalent below.
+
+### macOS — launchd
+
+`~/Library/LaunchAgents/com.aifolimizer.daily-briefing.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.aifolimizer.daily-briefing</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/you/aifolimizer/scripts/run-claude-skill.sh</string>
+    <string>daily-briefing</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/you/.aifolimizer/skill-runs.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/.aifolimizer/skill-runs.log</string>
+</dict>
+</plist>
+```
+
+Load:
+```bash
+launchctl load ~/Library/LaunchAgents/com.aifolimizer.daily-briefing.plist
+launchctl start com.aifolimizer.daily-briefing   # test now
+```
+
+### Linux — systemd --user
+
+`~/.config/systemd/user/aifolimizer-daily-briefing.service`:
+
+```ini
+[Unit]
+Description=aifolimizer daily-briefing skill
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/aifolimizer/scripts/run-claude-skill.sh daily-briefing
+StandardOutput=append:%h/.aifolimizer/skill-runs.log
+StandardError=append:%h/.aifolimizer/skill-runs.log
+```
+
+`~/.config/systemd/user/aifolimizer-daily-briefing.timer`:
+
+```ini
+[Unit]
+Description=Run aifolimizer daily-briefing weekdays at 07:00
+
+[Timer]
+OnCalendar=Mon..Fri 07:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable:
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now aifolimizer-daily-briefing.timer
+systemctl --user start aifolimizer-daily-briefing.service   # test now
+```
+
+### Cron one-liner (either OS)
+
+```cron
+0 7 * * 1-5 /path/to/aifolimizer/scripts/run-claude-skill.sh daily-briefing
+```
+
+### Minimal bash wrapper (`run-claude-skill.sh`)
+
+Mirrors the PS1: try `claude -p` first, fall back to the free-LLM runner, push
+to Telegram. Make executable: `chmod +x scripts/run-claude-skill.sh`.
+
+```bash
+#!/usr/bin/env bash
+set -uo pipefail
+SKILL="${1:?usage: run-claude-skill.sh <skill>}"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+LOG="$HOME/.aifolimizer/skill-runs.log"
+mkdir -p "$(dirname "$LOG")"
+SESSION="$HOME/.aifolimizer/ws_session.json"
+
+[[ -r "$SESSION" ]] || { echo "[$(date -Is)] $SKILL re-auth needed" >>"$LOG"; \
+  echo "re-auth needed" | "$REPO/backend/.venv/bin/python" "$REPO/backend/scripts/send_telegram.py"; exit 2; }
+
+OUT="$(claude -p "/$SKILL" 2>&1)"; RC=$?
+if [[ $RC -ne 0 || -z "$OUT" ]]; then
+  OUT="$("$REPO/backend/.venv/bin/python" "$REPO/backend/scripts/run_skill_fallback.py" "$SKILL" 2>&1)"; RC=$?
+  [[ $RC -eq 0 ]] && OUT="[fallback: free-LLM]"$'\n'"$OUT"
+fi
+
+if [[ $RC -eq 0 ]]; then
+  printf '%s' "$OUT" | "$REPO/backend/.venv/bin/python" "$REPO/backend/scripts/send_telegram.py"
+  echo "[$(date -Is)] $SKILL OK" >>"$LOG"
+else
+  echo "$SKILL FAILED" | "$REPO/backend/.venv/bin/python" "$REPO/backend/scripts/send_telegram.py"
+  echo "[$(date -Is)] $SKILL FAILED rc=$RC" >>"$LOG"; exit $RC
+fi
+```

@@ -18,7 +18,7 @@ param(
     [int]$Port = 8000
 )
 
-$Repo    = 'C:\Users\Tusha\Documents\projects\aifolimizer'
+$Repo = if ($env:AIFOLIMIZER_ROOT) { $env:AIFOLIMIZER_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $Backend = Join-Path $Repo 'backend'
 $Py      = Join-Path $Backend '.venv\Scripts\python.exe'
 $LogDir  = Join-Path $HOME '.aifolimizer\logs'
