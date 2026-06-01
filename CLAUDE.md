@@ -21,21 +21,15 @@ Claude Code / Claude Desktop  (Pro subscription — no API key)
    app/services/{wealthsimple, market_data, fundamentals, technicals, news, macro, quant, portfolio_analytics, health_score, crypto_data}
         ↓ HTTP
    Wealthsimple + yfinance + FRED + CoinGecko (all free, no keys required)
-
-Next.js Dashboard (separate, optional — port 3000)
-        ↓ REST calls
-   backend/app/api/ws.py  (FastAPI, port 8000)
-        └─ same services as MCP
 ```
+
+No frontend — analysis runs in Claude Code / Claude Desktop. FastAPI is exposed for ad-hoc REST testing only.
 
 ## How to Start
 
 ```bash
-# Terminal 1 — backend (FastAPI + shared session store)
+# Backend (FastAPI + shared session store)
 cd backend && .venv/Scripts/activate && uvicorn main:app --reload --port 8000
-
-# Terminal 2 — frontend
-cd frontend && npm run dev
 ```
 MCP server (`mcp_server.py`) runs as separate process managed by Claude Code — register once with:
 ```
@@ -114,7 +108,6 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 
 | Layer | Tech |
 |---|---|
-| Frontend | Next.js 16 (App Router) + Tailwind 4 + Recharts 3 |
 | Backend API | FastAPI + uvicorn (Python 3.12) |
 | MCP server | FastMCP (shares services with FastAPI) |
 | Technical indicators | `ta>=0.11.0` (NOT pandas-ta — incompatible w/ Python 3.14) |
@@ -122,16 +115,18 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 | Macro data | FRED public CSV API (free, no key) |
 | Crypto data | CoinGecko v3 free API (no key, 30 req/min) |
 | AI inference | Claude Code / Claude Desktop Pro (no Anthropic API key) |
-| Optional DB | Supabase (snapshot history only) |
+
+Supports Python 3.12+; pinned <3.14 due to pandas-ta lineage.
 
 ## Privacy Rules (NON-NEGOTIABLE)
 
 <important if="touching backend/, .env, mcp_server.py, pii_filter.py, or any MCP tool response">
-- WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI. Password is NEVER persisted to disk.
-- WS access + refresh token: server RAM (Python dict) + persisted to `~/.aifolimizer/ws_session.json` (mode 0600, owner-only) so a backend restart resumes without re-OTP. 8h TTL; file auto-cleared when stale/rejected. Delete the file to force re-auth. Lives outside the repo — never committed.
-- `pii_filter.py` MUST run before every MCP tool response
-- Account IDs, numbers, email, full name: NEVER leave server
-- External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts sent to them carry symbols, weights (% of NLV), returns %, and scores — NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all inference on-machine.
+- WS_EMAIL/WS_PASSWORD: local `.env` only, never committed, logged, or sent to AI. Password NEVER persisted to disk.
+- WS access + refresh token: server RAM + persisted to `~/.aifolimizer/ws_session.json` (mode 0600 on POSIX; on Windows the file lives in the user profile and relies on NTFS ACL — set BitLocker / strict ACL if hardening). 8h TTL; auto-cleared when stale/rejected. Delete to force re-auth. Lives outside repo — never committed.
+- `pii_filter.py` is applied to portfolio/profile/x-ray responses (the tools that surface account-bearing payloads from `wealthsimple.py`). Other tools (technicals, fundamentals, macro, news, etc.) operate on public market data + symbol lists and do not handle PII. When adding a new MCP tool that touches WS account data, route the response through `pii_filter` before returning.
+- Account IDs, account numbers, email, full name: NEVER leave the local machine.
+- External LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) fire ONLY if their API key env var is set. Prompts carry symbols, weights (% of NLV), returns %, and scores — NEVER absolute dollar balances, account IDs, email, name, or WS token. Leave keys unset to keep all fallback inference on-machine.
+- Primary inference path is your Claude Code / Claude Desktop Pro session, which sends prompts (symbols, weights, scores, public market data) to Anthropic per their normal ToS. No separate API key, no third-party LLM, no creds, no PII.
 </important>
 
 ## Environment Variables
@@ -140,11 +135,7 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 # backend/.env (local only — never commit)
 WS_EMAIL=...
 WS_PASSWORD=...
-SUPABASE_URL=...        # optional
-SUPABASE_SERVICE_KEY=...  # optional
-
-# frontend/.env.local (local only)
-NEXT_PUBLIC_API_URL=http://localhost:8000
+# Optional: Telegram alerts, free-LLM fallback keys, Sentry — see .env.example
 ```
 
 ## Code Rules
@@ -159,7 +150,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## Workflow Rules
 
-- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) or `tsc --noEmit` + lint (frontend) AND exercise w/ real input.
+- **Verify before "done."** Compile-clean ≠ working. Run import-check (backend) AND exercise w/ real input.
 - **Lessons loop.** After correction or surprise bug, append rule to `.claude/context/lessons.md`.
 - **Pause for elegance on non-trivial changes** (3+ files or new abstraction). Ask "cleaner path?" before commit.
 - **Surgical changes only.** Touch only what request requires. Match existing style. Remove only imports/vars your changes made unused.

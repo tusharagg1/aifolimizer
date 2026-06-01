@@ -86,10 +86,10 @@ Token lifecycle:
 
 ## PII Filter Contract
 
-Every MCP tool response passes through `pii_filter.filter_portfolio()` before returning to Claude.
+Every MCP tool response passes `pii_filter.filter_portfolio()` before return to Claude.
 
 **Stripped:** account_id, account_number, email, full name, WS internal IDs, phone
-**Kept:** symbol, name (company), quantity, book_cost, market_value, weight, day_change_pct, total_return_pct, asset_class, sector, cash_balance (aggregate only), account_type label (TFSA/RRSP — NOT the ID)
+**Kept:** symbol, name (company), quantity, book_cost, market_value, weight, day_change_pct, total_return_pct, asset_class, sector, cash_balance (aggregate only), account_type label (TFSA/RRSP — NOT ID)
 
 ## Key Service Contracts
 
@@ -117,7 +117,7 @@ Every MCP tool response passes through `pii_filter.filter_portfolio()` before re
 - Cache: 1h
 
 ### quant.portfolio_risk_metrics(returns, weights) → RiskMetrics
-- Input: pd.DataFrame of daily returns + weight vector
+- Input: pd.DataFrame daily returns + weight vector
 - Returns: vol, sharpe, sortino, var_95, expected_shortfall, max_drawdown
 
 ### health_score.compute_health_score(portfolio) → dict
@@ -141,17 +141,16 @@ SUPABASE_URL=...        # optional
 SUPABASE_SERVICE_KEY=...  # optional
 TELEGRAM_BOT_TOKEN=...  # optional — Telegram bot token for alert push (BotFather)
 TELEGRAM_CHAT_ID=...    # optional — Telegram chat/channel ID receiving alerts
-
-# frontend/.env.local (LOCAL ONLY)
-NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
+
+No frontend — analysis runs in Claude Code / Claude Desktop.
 
 ## File Index
 
 | File | Purpose |
 |------|---------|
 | `backend/mcp_server.py` | All MCP tools (80 total) |
-| `backend/main.py` | FastAPI app entry point + CORS |
+| `backend/main.py` | FastAPI app entry + CORS |
 | `backend/run.py` | uvicorn launcher |
 | `backend/scripts/build_skills.py` | Auto skills builder / scaffold tool |
 | `backend/app/api/ws.py` | REST endpoints |
@@ -173,11 +172,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 | `backend/app/services/data_cache.py` | SQLite disk cache (quotes/history/fundamentals) |
 | `backend/app/services/paper_trade.py` | Forward rec logging + mark-to-market scoring |
 | `backend/app/services/alpha_attribution.py` | Alpha/beta vs SPY/XEQT/TSX/QQQ |
-| `backend/app/services/skill_backtest.py` | Backtest 13 codified-rule skills (LLM-driven skills not replayed) |
+| `backend/app/services/skill_backtest.py` | Backtest 13 codified-rule skills (LLM skills not replayed) |
 | `backend/app/services/trust_report.py` | Generate TRACK_RECORD.md + JSONL |
 | `backend/app/services/recommendations.py` | Rule-based BUY/SELL/HOLD/WATCH scoring |
 | `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
-| `backend/scripts/run_alerts.py` | CLI: evaluate alerts, push to Telegram (cron-friendly) |
+| `backend/scripts/run_alerts.py` | CLI: eval alerts, push to Telegram (cron-friendly) |
 | `backend/scripts/schedule_alerts.ps1` | Register Windows Task Scheduler job |
 | `backend/app/models/portfolio.py` | Pydantic data models |
 | `backend/app/core/config.py` | Env var loading |
