@@ -1077,11 +1077,13 @@ async def score_signal_horizons(horizons: list[int] | None = None) -> dict:
     elapsed, fetches historical bars and computes realized return at each
     horizon. SELL/TRIM returns are sign-flipped so positive == correct call.
 
-    Default horizons: 5 and 21 trading days.
+    Default horizons: full set (1, 3, 5, 10, 21, 42, 63) — must cover the
+    decay-curve queries; restricting to (5, 21) silently emptied 5 of 7
+    decay buckets.
     Writes back to .claude/context/signal_history.jsonl in place.
     Returns counts: scored_new, skipped_window, skipped_data, total_rows.
     """
-    h = tuple(horizons) if horizons else (5, 21)
+    h = tuple(horizons) if horizons else signal_history_svc._DEFAULT_HORIZONS
     return await asyncio.to_thread(signal_history_svc.score_horizons, h)
 
 
@@ -1142,9 +1144,11 @@ async def get_alpha_attribution(lookback_days: int = 365) -> dict:
 async def get_quote_with_source(symbol: str, max_age_s: int = 300) -> dict:
     """Live quote with explicit data-source attribution.
 
-    Tries yfinance -> finnhub -> tiingo -> stooq. Returns price, prev_close,
-    day_change_pct, source, and as_of timestamp. Use to verify provenance
-    or when freshness matters more than cache speed.
+    Source order is asset-class specific — see `data_router._chain_for` in
+    `backend/app/services/data_router.py` (US/CA equities differ from crypto,
+    FX, and indices). Returns price, prev_close, day_change_pct, source, and
+    as_of timestamp. Use to verify provenance or when freshness matters more
+    than cache speed.
     """
     return await asyncio.to_thread(
         data_router.get_quote, symbol, float(max_age_s)

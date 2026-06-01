@@ -110,7 +110,7 @@ def get_alpha_attribution(
             bd = bench_data.get(bsym)
             if bd is not None and len(bd) >= 2:
                 b_ret = _total_return(bd)
-                b_ann = _annualize(b_ret, len(bd))
+                b_ann = _annualize(b_ret, bd)
                 result["benchmarks"][bsym] = {
                     "name": bname,
                     "total_return_pct": b_ret,
@@ -119,7 +119,7 @@ def get_alpha_attribution(
         return result
 
     port_ret_total = _total_return(port_series)
-    port_ret_ann = _annualize(port_ret_total, len(port_series))
+    port_ret_ann = _annualize(port_ret_total, port_series)
     daily_ret = port_series.pct_change().dropna()
     port_sharpe = _sharpe(daily_ret)
     port_mdd = _max_dd(port_series)
@@ -140,7 +140,7 @@ def get_alpha_attribution(
             continue
 
         b_ret = _total_return(bd)
-        b_ann = _annualize(b_ret, len(bd))
+        b_ann = _annualize(b_ret, bd)
         b_daily = bd.pct_change().dropna()
 
         # Align series to shared dates
@@ -249,8 +249,21 @@ def _total_return(s: pd.Series) -> float | None:
     return round((float(s.iloc[-1]) / float(s.iloc[0]) - 1) * 100, 2)
 
 
-def _annualize(total_ret_pct: float | None, days: int) -> float | None:
-    if total_ret_pct is None or days <= 0:
+def _annualize(total_ret_pct: float | None, series: pd.Series) -> float | None:
+    """Annualize a total return over the calendar span of `series`.
+
+    Earlier impl divided len(series) by 365.25, which conflated trading bars
+    (~252/yr) with calendar days; a 1y benchmark with 252 bars came out
+    annualized at ~14.9% for a true 10% return. Use the calendar delta of
+    the index instead.
+    """
+    if total_ret_pct is None or series is None or len(series) < 2:
+        return None
+    try:
+        days = (series.index[-1] - series.index[0]).days
+    except Exception:
+        days = len(series)
+    if days <= 0:
         return None
     years = days / 365.25
     try:
