@@ -60,4 +60,20 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 
 - **MCP server cold-start gates session tool exposure.** Eager top-level imports of heavy modules (yfinance, ta, pandas) in MCP server entry point can push cold start past Claude Code's handshake window. `claude mcp list` may still show ✓ Connected later, but tools never made it into session's tool schema → invocations fail with "tool not found." Fix: `_LazyModule` proxy defers `importlib.import_module` until first attribute access; tool bodies unchanged. *(Source: aifolimizer mcp_server.py 5.0s → 1.1s cold start, May 29 2026.)*
 
+- **Pivot ≠ spot. Never infer current_price from pivot levels.** `get_technicals` pivots are computed from PRIOR session H/L/C — NOT the live quote. When `current_price` is null (partial yfinance fetch / pre-market / data race), call `get_quote_with_source` for spot before producing any trade plan. *(Source: stock-analysis incident Jun 2026 — inferred spot from pivot, real spot ~9% lower after a sector-gap event. Trade plan stale.)*
+
 - **`claude mcp list` shows server health, not session schema availability.** Connected server can have zero tools exposed in current session if schema fetch raced startup. Verify with actual tool call, not list output.
+
+## Strategy / Behavioral Analysis
+
+- **Bias audit must not symmetrize all biases.** When the original analysis cites concrete evidence (specific track-record patterns, cycle math, horizon-bounded math), an abstract "recency anchor" critique should not silently soften the verdict. Weigh evidence quality, don't treat both sides as equal.
+
+- **Specific evidence beats abstract framework.** When two analyses contradict, weight the one grounded in concrete data over the one citing only general behavioral-finance framework names.
+
+- **Plan flip between iterations damages trust more than a single wrong call.** Restoring an earlier verdict requires explicit acknowledgment + change log + lesson, never a silent revert.
+
+- **Behavioral guardrails must err harder toward mechanical discipline when the user's revealed pattern is hold-and-hope.** Generic "don't sell at the bottom" advice is dangerous for hold-pattern investors. Mechanical sell rules beat nuanced "what if it recovers" hedging for that risk profile.
+
+- **Self-learning: name the specific bias dynamic, not the generic principle.** "Audit overcorrected the original verdict without re-weighing concrete evidence" is useful. "Be consistent" is not.
+
+- **Repo files stay clean of session-specific data.** No tickers, no $ amounts, no holdings, no drawdown %, no balances, no account labels. Lessons capture process rules. Session context belongs in transient memory.
