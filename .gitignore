@@ -29,6 +29,10 @@ Thumbs.db
 .vscode/
 *.orig
 
+# Tooling caches at repo root (per-machine)
+.pytest_cache/
+.ruff_cache/
+
 # Local runtime caches + logs (per-machine, not portable)
 .claude/context/.diskcache/
 .claude/context/alerts.jsonl

@@ -1,0 +1,11 @@
+# Default owner for everything in the repo.
+*                                       @tusharagg1
+
+# Sensitive surfaces — explicit lock to maintainer.
+/backend/app/services/pii_filter.py     @tusharagg1
+/backend/app/services/wealthsimple.py   @tusharagg1
+/backend/app/security.py                @tusharagg1
+/.github/workflows/                     @tusharagg1
+/SECURITY.md                            @tusharagg1
+/.env.example                           @tusharagg1
+/.gitignore                             @tusharagg1

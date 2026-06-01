@@ -31,7 +31,7 @@ line-length = 120
 [tool.ruff.lint.per-file-ignores]
 "backend/mcp_server.py" = ["E402"]
 "backend/mcp_login.py" = ["E402"]
-"backend/run_mcp_tools.py" = ["E402"]
+"backend/scripts/smoke_mcp_tools.py" = ["E402"]
 "backend/app/services/llm_router.py" = ["E402"]
 "backend/tests/test_kpi_suite.py" = ["E402"]
 
