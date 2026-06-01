@@ -65,7 +65,11 @@ def _call_tool(fn):
     if inspect.iscoroutine(result):
         import asyncio
 
-        result = asyncio.get_event_loop().run_until_complete(result)
+        # `asyncio.get_event_loop()` raises on Python 3.12+ when there is
+        # no running loop in the main thread. `asyncio.run` creates a
+        # fresh loop and tears it down per call — exactly what we need
+        # for a one-shot test invocation.
+        result = asyncio.run(result)
     return result
 
 

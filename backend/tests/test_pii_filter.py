@@ -60,7 +60,7 @@ def test_filter_portfolio_strips_pii_keys():
                 "account_number": "1234567890",
                 "ws_internal_id": "secret",
                 "user_id": "tushar-prod",
-                "email": "tusharagg1@gmail.com",
+                "email": "test@example.invalid",
                 "full_name": "Tushar Agg",
             }
         ],
@@ -134,7 +134,7 @@ def test_filter_user_context_pseudonymizes_account_types():
         "total_invested": 62000,
         "account_types": ["TFSA", "Non-Reg"],
         # Top-level PII
-        "email": "tusharagg1@gmail.com",
+        "email": "test@example.invalid",
         "user_id": "prod-123",
     }
     safe = filter_user_context(raw)
