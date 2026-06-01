@@ -18,9 +18,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 python -m pip install --quiet --upgrade pip uv
+# Target the CI runner's platform (ubuntu-latest x86_64) explicitly so a
+# maintainer regenerating from Windows doesn't pull in pywin32 / colorama
+# wheels that Linux can't install. CI is the source of truth for "what
+# must install"; dev machines install whatever transitives their OS needs
+# from the same requirements.txt without going through the lockfile.
 python -m uv pip compile \
   --generate-hashes \
   --python-version 3.12 \
+  --python-platform x86_64-unknown-linux-gnu \
   --output-file requirements.lock \
   requirements.txt
 echo "Wrote backend/requirements.lock"
