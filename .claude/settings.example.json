@@ -1,4 +1,5 @@
 {
+  "_comment": "Copy to .claude/settings.json on first checkout. Replace <REPO_ROOT> and <USER_HOME> with absolute paths for your machine. settings.json is gitignored - your local copy never gets committed. Hooks reference user-level scripts under ~/.claude/scripts/ - safe to delete the hooks block if you don't run sync_coordinator / obsidian_export.",
   "permissions": {
     "allow": [
       "mcp__code-review-graph__build_or_update_graph_tool",
@@ -41,7 +42,6 @@
       "Edit(/.claude/skills/portfolio-health/**)",
       "Edit(/.claude/skills/risk-assessment/**)",
       "Bash(npx tsc *)",
-      "Bash(\"..\\\\aifolimizer\\\\backend\\\\.venv\\\\Scripts\\\\python.exe\" backend/scripts/build_skills.py)",
       "Bash(\"backend\\\\.venv\\\\Scripts\\\\python.exe\" backend/scripts/build_skills.py)",
       "WebFetch(domain:claudemarketplaces.com)",
       "WebFetch(domain:github.com)",
@@ -49,7 +49,7 @@
       "Bash(.venv/Scripts/python.exe -m uvicorn main:app --reload --port 8000)",
       "Bash(npm run *)",
       "Bash(uvicorn main:app --reload --port 8000)",
-      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c npm run dev\" -WorkingDirectory \"c:\\\\Users\\\\Tusha\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\" -WindowStyle Normal)",
+      "PowerShell(Start-Process -FilePath \"cmd.exe\" -ArgumentList \"/c npm run dev\" -WorkingDirectory \"<REPO_ROOT>\\\\frontend\" -WindowStyle Normal)",
       "WebFetch(domain:www.reddit.com)",
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:www.linkedin.com)",
@@ -60,8 +60,8 @@
       "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.LocalPort -in 8000, 3000} | Select-Object LocalPort, @{Name=\"ProcessName\";Expression={\\(Get-Process -Id $_.OwningProcess\\).Name}})",
       "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\backend\"; .\\\\.venv\\\\Scripts\\\\Activate.ps1; uvicorn main:app --reload --port 8000)",
       "PowerShell(cd \"$env:USERPROFILE\\\\Documents\\\\projects\\\\aifolimizer\\\\frontend\"; npm run dev)",
-      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\sync_coordinator.py\" *)",
-      "Bash(python \"C:\\\\Users\\\\Tusha\\\\.claude\\\\scripts\\\\obsidian_export.py\" *)",
+      "Bash(python \"<USER_HOME>\\\\.claude\\\\scripts\\\\sync_coordinator.py\" *)",
+      "Bash(python \"<USER_HOME>\\\\.claude\\\\scripts\\\\obsidian_export.py\" *)",
       "WebFetch(domain:www.cmegroup.com)",
       "WebFetch(domain:ycharts.com)",
       "WebFetch(domain:www.fiercehealthcare.com)",
@@ -79,12 +79,10 @@
       "WebFetch(domain:www.justwealth.com)",
       "WebFetch(domain:www.theglobeandmail.com)",
       "Bash(powershell -Command \"Get-Item ~/.aifolimizer/ws_session.json | Select-Object Name, LastWriteTime, Length\")",
-      "Bash(rm -f CONTRIBUTING.md CHANGELOG.md FAQ.md KNOWN_ISSUES.md .pre-commit-config.yaml .python-version .github/CODEOWNERS .github/PULL_REQUEST_TEMPLATE.md .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml)",
-      "Bash(rmdir .github/ISSUE_TEMPLATE)",
       "Bash(python -c \"import json,sys; r=json.load\\(sys.stdin\\)[0]; print\\(f\\\\\"{r['headSha'][:7]} {r['status']} {r.get\\('conclusion'\\)}\\\\\"\\)\")"
     ],
     "additionalDirectories": [
-      "c:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\.claude\\context"
+      "<REPO_ROOT>\\.claude\\context"
     ]
   },
   "hooks": {
@@ -94,7 +92,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-dirty \"${TOOL_INPUT_file_path:-}\"",
+            "command": "python \"<USER_HOME>\\.claude\\scripts\\sync_coordinator.py\" mark-dirty \"${TOOL_INPUT_file_path:-}\"",
             "timeout": 10
           }
         ]
@@ -104,7 +102,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-graph-rebuilt",
+            "command": "python \"<USER_HOME>\\.claude\\scripts\\sync_coordinator.py\" mark-graph-rebuilt",
             "timeout": 10
           }
         ]
@@ -116,7 +114,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" status",
+            "command": "python \"<USER_HOME>\\.claude\\scripts\\sync_coordinator.py\" status",
             "timeout": 15
           }
         ]
@@ -127,12 +125,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" should-export && python \"C:\\Users\\Tusha\\.claude\\scripts\\obsidian_export.py\" --stop-hook",
+            "command": "python \"<USER_HOME>\\.claude\\scripts\\sync_coordinator.py\" should-export && python \"<USER_HOME>\\.claude\\scripts\\obsidian_export.py\" --stop-hook",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "python \"C:\\Users\\Tusha\\.claude\\scripts\\sync_coordinator.py\" mark-obsidian-synced",
+            "command": "python \"<USER_HOME>\\.claude\\scripts\\sync_coordinator.py\" mark-obsidian-synced",
             "timeout": 10
           }
         ]

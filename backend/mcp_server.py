@@ -2,7 +2,7 @@
 aifolimizer MCP server — exposes Wealthsimple portfolio + quant analytics as MCP tools.
 
 Register with Claude Code:
-  claude mcp add aifolimizer "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\backend\\.venv\\Scripts\\python.exe" "C:\\Users\\Tusha\\Documents\\projects\\aifolimizer\\backend\\mcp_server.py"
+  claude mcp add aifolimizer "<REPO_ROOT>\\backend\\.venv\\Scripts\\python.exe" "<REPO_ROOT>\\backend\\mcp_server.py"
 
 Reads WS_EMAIL and WS_PASSWORD from .env so Claude never sees credentials.
 All portfolio data passed through pii_filter before returning to Claude.
@@ -82,7 +82,13 @@ geopolitical_svc = _LazyModule("app.services.geopolitical")
 recommendations_svc = _LazyModule("app.services.recommendations")
 watchlist_svc = _LazyModule("app.services.watchlist")
 
-from app.services.pii_filter import filter_portfolio, filter_user_context
+from app.services.pii_filter import (
+    filter_personal_context_full,
+    filter_portfolio,
+    filter_user_context,
+)
+from app.services import personal_context as personal_context_svc
+from app.models.personal_context import PersonalContext
 from app.models.portfolio import PortfolioResponse
 from ws_api import WSAPISession
 
@@ -257,6 +263,77 @@ async def get_profile() -> dict:
     if not session or not session.get("profile"):
         raise RuntimeError("Session lost — please re-authenticate via the web UI")
     return filter_user_context(session["profile"].model_dump())
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Personal-finance context (life context: salary/age/room/expenses/etc.)
+# Separate from get_profile (which returns WS-account data only).
+# All fields optional — skills must degrade gracefully when present=false.
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def get_personal_context() -> dict:
+    """Return the user's personal-finance context (life context, not WS data).
+
+    Shape: {present: bool, context?: {...}, derived?: {...}, context_hash: str}.
+    `derived` includes marginal_tax_rate_pct, emergency_fund_target_cad,
+    fhsa_priority_first, account_waterfall — pre-computed so skills don't
+    duplicate the math. Returns {present: false} when user has not set up.
+
+    Personal-portfolio skills (cash-deployment, tax-loss-review, dividend-strategy,
+    portfolio-health, risk-assessment, daily-briefing, pre-trade-check, etc.)
+    should call this AFTER get_profile to personalize. Stock-research skills
+    (stock-analysis, momentum-scanner, adversarial-research) should NOT call
+    this — keeps research bias-free.
+    """
+    env = await asyncio.to_thread(personal_context_svc.envelope)
+    return filter_personal_context_full(env)
+
+
+@mcp.tool()
+async def set_personal_context_field(field: str, value: Any) -> dict:
+    """Set one personal-context field. Validates via Pydantic; idempotent.
+
+    field: e.g. 'province', 'gross_salary_cad', 'room_tfsa_cad', 'fthb_yes'.
+    See PersonalContext model for full field list.
+    Pass null/empty value to clear the field.
+    """
+    if value == "":
+        value = None
+    new_ctx = await asyncio.to_thread(personal_context_svc.update_field, field, value)
+    return {
+        "set": True,
+        "field": field,
+        "value": getattr(new_ctx, field, None),
+        "context_hash": personal_context_svc.context_hash(new_ctx),
+    }
+
+
+@mcp.tool()
+async def set_personal_context_bulk(payload: dict) -> dict:
+    """Replace personal context with a full payload. Validates entire object.
+
+    Use this for the paste-template flow: user fills the JSON template and
+    submits the whole thing at once. Atomic — partial-write impossible.
+    Unknown fields are ignored.
+    """
+    valid_fields = set(PersonalContext.model_fields.keys())
+    cleaned = {k: v for k, v in (payload or {}).items() if k in valid_fields and v not in ("", None, [])}
+    ctx = PersonalContext.model_validate(cleaned)
+    await asyncio.to_thread(personal_context_svc.save, ctx)
+    return {
+        "set": True,
+        "fields_set": sorted(cleaned.keys()),
+        "context_hash": personal_context_svc.context_hash(ctx),
+    }
+
+
+@mcp.tool()
+async def clear_personal_context() -> dict:
+    """Delete the local personal-context file. Returns whether a file was deleted."""
+    deleted = await asyncio.to_thread(personal_context_svc.clear)
+    return {"deleted": deleted}
 
 
 @mcp.tool()

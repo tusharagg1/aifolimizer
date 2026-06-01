@@ -21,6 +21,10 @@ backend/.env
 # Per-machine MCP registration (contains absolute paths) — use .mcp.example.json
 .mcp.json
 
+# Per-machine Claude Code overrides (absolute paths, personal hooks)
+.claude/settings.local.json
+.claude/settings.json
+
 # OS
 .DS_Store
 Thumbs.db

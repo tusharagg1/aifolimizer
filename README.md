@@ -1,42 +1,39 @@
 # aifolimizer
 
-> Local-first MCP portfolio brain - your brokerage, your machine, your Claude Pro session, **no Anthropic API key**. 80 analysis tools, 21 skills, 12 swappable data adapters, walk-forward backtests, forward-tested track record.
+Local MCP portfolio analysis driven by Claude Desktop or Claude Code, with optional Wealthsimple integration for full portfolio awareness. Exposes 80 MCP tools and 21 analysis skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Backed by 12 swappable market-data adapters behind a shared interface.
 
-> Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 80 analysis tools, and ships 21 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Reference brokerage today is Wealthsimple; the market-data layer (yfinance, FRED, CoinGecko, plus 9 more adapters) sits behind a shared interface so paid feeds drop in one file at a time.
->
-> Runs locally, uses an existing Claude Pro subscription, **no Anthropic API key required**.
+Runs locally on an existing Claude Pro subscription.
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-native-purple.svg)](https://modelcontextprotocol.io)
-![Status: alpha](https://img.shields.io/badge/status-alpha-orange)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status--roadmap)
 
-> **Disclaimer.** Educational and research tool. Output comes from an LLM and may be wrong. Verify independently before acting on any signal. Use at your own risk.
+> **Disclaimer.** Output comes from an LLM and may be wrong. Not financial advice; verify before acting.
 
 ---
 
 ## Who it's for
 
-- **Self-directed investors** who want institutional-grade analysis they can own, audit, and extend on a self-hosted stack.
-- **Quant researchers and developers** who want a working reference for backtest rigor (deflated Sharpe, walk-forward, signal decay) and live track-record forward-testing.
-- **Educators** teaching portfolio theory, factor investing, or LLM tooling - every skill is a documented playbook styled after a public investing tradition.
+- **Self-directed investors** running ticker-level research - fundamentals, technicals, earnings, macro, adversarial bull/bear theses. Broker-agnostic; no portfolio connection required.
+- **Wealthsimple users** wanting the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, sector rotation, daily briefings wired to live holdings. Other brokers slot into the same `Brokerage` abstraction.
+- **Quant developers** needing a working forward-test reference: walk-forward OOS validation, deflated-Sharpe overfitting gates, signal-decay curves, regime-conditional weight tuning.
+- **MCP integrators** wanting a real reference: 80 typed tools, circuit-breaker fallback across 12 data adapters, response-layer PII filtering, 21-skill prompt-template harness.
 
-## What it does
+## Features
 
-- **Live brokerage portfolio.** Reference Wealthsimple integration ships in-box (MFA-aware, GraphQL via `ws-api`, TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side. Plaid / Schwab / IBKR are on the roadmap behind a `Brokerage` interface.
-- **12 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, Massive cross-check, plus the Wealthsimple broker adapter) share a clean abstract base at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
-- **80 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Any MCP client - Claude Desktop, Claude Code, Cursor - picks them up the moment the server is registered.
-- **21 analysis skills** styled after public investing traditions: Graham / Buffett / Lynch fundamental lenses, Dalio All-Weather risk concepts, allocation health, sector rotation, endowment-style income, pre-earnings, technical analysis, top-down macro, plus quant anomaly skills (PEAD, momentum). Auto-trigger on natural-language intent. (Firm names indicate stylistic inspiration drawn from public writing.)
-- **Forward-tested where it matters.** Trade-oriented skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution` once the daily NAV pipeline (`snapshot_portfolio_equity`) has ~30 days of history. Other skills are read-only analysis surfaces - they inform decisions without carrying forward-tracked predictions.
-- **Quant rigor**, not vibes - walk-forward OOS validation ([`skill_backtest.py:585-740`](backend/app/services/skill_backtest.py)), deflated Sharpe with Bailey-López de Prado 2014 ([`skill_backtest.py:68-128`](backend/app/services/skill_backtest.py)), Brier + ECE reliability bins ([`calibration.py:72-148`](backend/app/services/calibration.py)), signal-decay curves ([`signal_history.py:506-569`](backend/app/services/signal_history.py)), regime-conditional gating + nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
+- **Live brokerage portfolio.** Wealthsimple integration via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) (MFA-aware, all account types - TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side.
+- **12 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, plus a cross-check adapter and the Wealthsimple broker adapter) share a base class at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
+- **80 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
+- **21 analysis skills** covering allocation health, risk, fundamentals, technicals, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on natural-language intent or invoke directly as slash commands.
+- **Forward-tested where it's tracked.** Two of 21 skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution`. The other 19 skills are read-only analysis surfaces and aren't tracked. Live numbers - wins and losses - in [TRACK_RECORD.md](TRACK_RECORD.md).
+- **Statistical safeguards.** Walk-forward OOS validation ([`skill_backtest.py`](backend/app/services/skill_backtest.py)), deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration ([`calibration.py`](backend/app/services/calibration.py)), empirical signal-decay curves at 1/3/5/10/21/42/63 days ([`signal_history.py`](backend/app/services/signal_history.py)), regime-conditional gating, and a nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
 - **Runs locally.** Most state lives in JSONL files under `~/.aifolimizer/` and `backend/.claude/context/`. Postgres (TimescaleDB) and Redis are available via `docker compose up -d` for richer history and cross-process caching.
 
-Primary inference runs inside an existing Claude Pro session - no separate API key, no third-party LLM beyond Claude. Optional free-tier LLM fallbacks (GitHub Models, Gemini, OpenRouter, Qwen) are off unless a provider key is set; the same redaction rules apply (see [Privacy](#privacy)).
+### Inference & fallback
 
-## Status & Roadmap
-
-aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and route handlers are exercised manually. Coming: a `Brokerage` interface for Plaid / Schwab / IBKR, multi-user identity with OAuth/SSO, append-only audit logging, KMS-backed token storage, and integration tests on the auth and MCP-route surface.
+Inference runs inside an existing Claude Pro session - symbols, weights (% of NLV), returns %, and scores reach Anthropic; no dollar balances, no account IDs. If Claude Pro is unavailable (logged out, subscription lapsed, no API key), scheduled skills fall back to free-tier LLMs (GitHub Models, Gemini, OpenRouter, Qwen) routed through `llm_router.py`. Fallback is opt-in - off unless a provider key is set in `.env`. Output is tagged `[fallback: free-LLM]` and quality is meaningfully lower than Claude on adversarial reasoning. Same redaction rules apply (see [Privacy](#privacy)). Full fallback runbook in [scripts/AUTOMATION.md](scripts/AUTOMATION.md) and [docs/FAQ.md](docs/FAQ.md).
 
 ## Architecture
 
@@ -55,11 +52,32 @@ Claude Code / Claude Desktop   (Pro subscription)
    JSONL state files                     (always - ~/.aifolimizer/, backend/.claude/context/)
 ```
 
+## Living docs
+
+These three files update as the project runs:
+
+- [TRACK_RECORD.md](TRACK_RECORD.md) - every recommendation, marked to market nightly
+- [.claude/context/lessons.md](.claude/context/lessons.md) - corrections from sessions, do-not-repeat rules
+- [.claude/context/changes.md](.claude/context/changes.md) - change log
+
+## Status & Roadmap
+
+aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and MCP route handlers are exercised manually. Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identity, KMS-backed token storage, and append-only audit logging are all out of scope for the single-user posture today - open as issues / PRs if any of these matter for your use case.
+
+## Limitations
+
+- yfinance throttles intermittently on TSX symbols (~2x a week); the adapter chain falls back but logs noise.
+- Wealthsimple tokens default to 14-day TTL (override via `WS_TOKEN_TTL_HOURS`, range 1-720h). MFA re-auth is `python mcp_login.py`.
+- The Wealthsimple API is reverse-engineered. Wealthsimple does not officially support automated access; the integration may break on any release and may violate their ToS.
+- Macro skill cites FRED data that's 1-3 days stale.
+- No auto-trading. Output is suggestions; trades are placed manually.
+- Don't expose this server to anything outside localhost until route-handler tests land.
+
 ## Quick start
 
 > Commands below use bash (works on macOS/Linux/WSL/Git-Bash). For native Windows PowerShell equivalents, see [scripts/AUTOMATION.md](scripts/AUTOMATION.md). Replace `<REPO>` with the absolute repo path.
 
-**Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), a Wealthsimple account.
+**Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), Wealthsimple account (optional - required only for portfolio-aware skills).
 
 ```bash
 # 1. Postgres password file (required before docker compose up)
@@ -74,10 +92,15 @@ python -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip && pip install -r requirements.txt
 cp ../.env.example .env && $EDITOR .env    # fill WS_EMAIL, WS_PASSWORD
 
-# 4. First-time Wealthsimple login (MFA - re-run only when WS forces re-auth)
+# 4. (Optional) Claude Code permissions / hooks - skip to use defaults (more permission prompts)
+cd .. && cp .claude/settings.example.json .claude/settings.json
+$EDITOR .claude/settings.json   # replace <REPO_ROOT> and <USER_HOME>; delete the hooks block if you don't run sync_coordinator/obsidian_export
+cd backend
+
+# 5. First-time Wealthsimple login (MFA - re-run only when WS forces re-auth)
 python mcp_login.py
 
-# 5. Run the backend (http://127.0.0.1:8000)
+# 6. Run the backend (http://127.0.0.1:8000)
 python run.py
 ```
 
@@ -131,7 +154,7 @@ Skills auto-trigger on intent in Claude. Or invoke directly:
 
 The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/scheduler.py`; they are also invocable on demand. Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
 
-## MCP tools (80 total - table below highlights core 32; see `backend/mcp_server.py` for the full list)
+## MCP tools (80 total - table highlights core 32; full list in `backend/mcp_server.py`)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -196,11 +219,11 @@ aifolimizer/
 
 ## Privacy
 
-`pii_filter.py` strips account IDs, account numbers, internal Wealthsimple IDs, user IDs, email, and full name from the three portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`). Dollar amounts (book cost, market value, cash balance) stay on the machine within the local Claude Pro session. Most other MCP tools (technicals, fundamentals, macro, news, crypto) carry no PII and bypass the filter.
+`pii_filter.py` strips account IDs, account numbers, internal Wealthsimple IDs, user IDs, email, and full name from the portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`, `get_xray`). Dollar amounts (book cost, market value, cash balance) stay on the machine within the local Claude Pro session. Most other MCP tools (technicals, fundamentals, macro, news, crypto) carry no PII and bypass the filter.
 
-**What leaves the machine:** prompts to Anthropic via the local Claude Pro session - symbols, weights (% of NLV), returns %, scores, and public market data. Optional free-LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) follow the same %-of-NAV redaction rules and only fire if their key is set in `.env`. Outbound market-data fetches (yfinance / FRED / CoinGecko) see the ticker list, nothing else.
+**What leaves the machine:** prompts to Anthropic via the local Claude Pro session - symbols, weights (% of NLV), returns %, scores, and public market data. Optional free-LLM fallbacks (GitHub Models / Gemini / OpenRouter / Qwen) follow the same %-of-NAV redaction rules - never absolute dollar balances, account IDs, email, name, or WS token - and only fire if their key is set in `.env`. Outbound market-data fetches (yfinance / FRED / CoinGecko) see the ticker list, nothing else.
 
-**What never leaves:** Wealthsimple email, password, OTP, access/refresh tokens, account IDs, account numbers, full name. Credentials live in local `backend/.env` (gitignored, never persisted to disk past process memory). Tokens persist to `~/.aifolimizer/ws_session.json` outside the repo.
+**What never leaves:** Wealthsimple email, password, OTP, access/refresh tokens, account IDs, account numbers, full name. Credentials live in local `backend/.env` (gitignored, never persisted to disk past process memory). Tokens persist to `~/.aifolimizer/ws_session.json` outside the repo with a 14-day default TTL (override via `WS_TOKEN_TTL_HOURS`, range 1-720h) and auto-clear when stale or rejected.
 
 `get_trade_ticket` is a notable exception - it returns raw `dollar_amount_cad` and `max_loss_cad` for the local Claude consumer, so its output stays inside the local session.
 
@@ -262,4 +285,4 @@ nssm remove aifolimizer-backend confirm      # 5. NSSM service (only if installe
 - [yfinance](https://github.com/ranaroussi/yfinance) - Yahoo Finance market data
 - [FRED](https://fred.stlouisfed.org/) - Federal Reserve Economic Data
 - [CoinGecko](https://www.coingecko.com/) - Crypto market data
-- [Anthropic Claude](https://www.anthropic.com/claude) - analysis engine
+- [Anthropic Claude](https://www.anthropic.com/claude) - analysis engine via MCP
