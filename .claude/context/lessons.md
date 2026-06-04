@@ -91,3 +91,10 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Self-learning: name the specific bias dynamic, not the generic principle.** "Audit overcorrected the original verdict without re-weighing concrete evidence" is useful. "Be consistent" is not.
 
 - **Repo files stay clean of session-specific data.** No tickers, no $ amounts, no holdings, no drawdown %, no balances, no account labels. Lessons capture process rules. Session context belongs in transient memory.
+## WS token rotation: never skip persist on email=None (2026-06-04)
+- **Symptom**: MFA re-prompt ~40min after a valid session, despite S448 Bug 1/3/4 persistence fixes. Worsened by parallel MCP load (4-agent workflow).
+- **Root cause**: `_persist_session(session, email=None)` had `if email is None: return`. ws-api's auto-refresh grant calls persist WITHOUT a username, so every rotated refresh_token was silently dropped. Disk kept the old refresh_token; WS invalidates it server-side on rotation; next `restore_session` -> refresh fails -> MFA.
+- **Why prior fixes missed it**: Bug 4 fixed the str-vs-object crash in persist, but the `email is None` guard then discarded the very refresh writes it rescued. Concurrency just rotated the token faster.
+- **Fix**: module-global `_last_email` set in `_finalize_session`; `_persist_session` falls back email -> `_last_email` -> on-disk email, skips only if all None.
+- **Rule**: token-rotation persist callbacks must NOT depend on a username arg the library may omit. Persist the session_json whenever any owner identity resolves. A dropped rotation write = a dead session at the access-token horizon, not the refresh-token horizon.
+- **Op note**: a dropped rotation can't be revived — re-auth once (`mcp_login.py`) to seed a fresh refresh_token, and restart the long-running MCP process so the patched module loads.

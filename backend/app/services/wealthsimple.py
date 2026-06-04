@@ -57,6 +57,11 @@ _PENDING_TTL_SECONDS = 300  # OTP must be entered within 5 minutes of starting l
 
 # {session_id: {state: "pending"|"authed", session: WSAPISession?, email, password?, profile, accounts_raw, expires_at}}
 _sessions: dict[str, dict[str, Any]] = {}
+# Last email seen on an authed flow. ws-api's auto-refresh path calls
+# persist_session_fct WITHOUT a username, so _persist_session falls back to
+# this to still write the rotated token (otherwise rotation is silently lost
+# and the next restore dies on the stale refresh_token → avoidable MFA).
+_last_email: Optional[str] = None
 _LAST_CLEANUP_TIME = 0
 _CLEANUP_INTERVAL_SECONDS = 3600  # Clean up every hour
 
@@ -109,9 +114,23 @@ def _persist_session(session: "WSAPISession | str", email: Optional[str] = None)
     object and called ``.to_json()`` on the str, raising AttributeError that was
     swallowed — so refreshed tokens were NEVER persisted and every restart
     reused the dead access token, forcing avoidable MFA. Accept both forms.
+
+    ws-api's auto-refresh path calls this WITHOUT a username (email is None).
+    The refresh-token grant rotates the refresh_token, so skipping that write
+    leaves a stale (server-side-invalidated) refresh_token on disk and the next
+    restore dies on it → MFA. Fall back to the last authed email, then to the
+    email already on disk, and only skip if we genuinely have none.
     """
     if email is None:
-        return  # ws-api may invoke without username during token refresh — skip
+        email = _last_email
+    if email is None:
+        try:
+            email = json.loads(_PERSIST_FILE.read_text(encoding="utf-8")).get("email")
+        except Exception:
+            email = None
+    if email is None:
+        _LOG.warning("[WS] persist skipped: no email (token rotation may be lost)")
+        return
     try:
         session_json = session if isinstance(session, str) else session.to_json()
         _atomic_write_json(
@@ -392,6 +411,8 @@ def verify_otp(session_id: str, otp: str) -> dict:
 
 
 def _finalize_session(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
+    global _last_email
+    _last_email = email
     sid = session_id or _new_session_id()
     ws = WealthsimpleAPI.from_token(session, persist_session_fct=_persist_session, username=email)
 
