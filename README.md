@@ -89,7 +89,16 @@ Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identi
 
 **Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), Wealthsimple account (optional - required only for portfolio-aware skills).
 
-**Fastest path — one command.** Creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
+**Easiest path — install as a Claude Code plugin.** Requires [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH (one binary). No clone, no venv, no manual wiring:
+
+```bash
+claude plugin marketplace add tusharagg1/aifolimizer
+claude plugin install aifolimizer@aifolimizer
+```
+
+The plugin ships all 25 skills and launches the MCP server via `uv run`, which builds the dependency env on first use. The **first launch takes ~1-2 min** while uv downloads wheels — if the `mcp__aifolimizer__*` tools don't show up immediately, restart Claude once (the env is cached afterward). All 85 market-data tools work out of the box; the 15 Wealthsimple portfolio tools stay dormant until you run `mcp_login.py` (see below). Note: plugin state (paper-trade history etc.) lives in the per-version plugin cache and resets on plugin updates — for persistent history + the always-on scheduler, use the local clone path below.
+
+**Full local install — one command.** Creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
 
 ```bash
 ./setup.sh                                            # macOS / Linux / WSL / Git-Bash

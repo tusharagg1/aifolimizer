@@ -6,6 +6,8 @@ This guide assumes you're comfortable with a terminal and Python. If you'd rathe
 
 > **Shortcut.** If you just want it working, `./setup.sh` (macOS/Linux/WSL/Git-Bash) or `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) does the venv, deps, `backend/.env`, `.mcp.json`, MCP registration, and a health check in one idempotent pass. Then fill `backend/.env`, run `mcp_login.py`, start `run.py`. Read on for the same steps explained, or when something needs hand-tuning. Re-run the diagnostics any time with `python backend/scripts/health_check.py`.
 
+> **Even faster, no clone — Claude Code plugin.** With [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH: `claude plugin marketplace add tusharagg1/aifolimizer` then `claude plugin install aifolimizer@aifolimizer`. Ships all 25 skills; the MCP server runs via `uv run` (first launch builds the dep env in ~1-2 min — restart Claude once if tools don't appear). Market-data tools work immediately; Wealthsimple portfolio is opt-in via `mcp_login.py`. Caveat: plugin-cache state resets on plugin updates and the nightly scheduler isn't wired — use the clone path below if you want persistent paper-trade history or always-on alerts.
+
 ---
 
 ## How the pieces fit
