@@ -26,7 +26,10 @@ load_dotenv()
 from app.core.config import settings  # noqa: E402
 
 NOTIFY_FILE = Path.home() / ".aifolimizer" / ".mfa-notify.last"
-COOLDOWN_SEC = 6 * 3600  # one heads-up per 6h while expired
+# One heads-up per expiry EVENT, then at most a daily reminder while still
+# expired. clear_flag() (called on successful re-auth) resets this so the
+# next expiry notifies immediately rather than waiting out the window.
+COOLDOWN_SEC = 24 * 3600
 TG_API = "https://api.telegram.org"
 
 
@@ -42,6 +45,15 @@ def _last_sent() -> float:
 def _stamp() -> None:
     NOTIFY_FILE.parent.mkdir(parents=True, exist_ok=True)
     NOTIFY_FILE.write_text(str(time.time()), encoding="utf-8")
+
+
+def clear_flag() -> None:
+    """Reset the notify cursor on successful auth so the next real expiry
+    fires a fresh heads-up instead of being suppressed by the daily window."""
+    try:
+        NOTIFY_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def main() -> int:

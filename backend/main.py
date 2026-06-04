@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 import subprocess
 import sys
@@ -54,7 +55,46 @@ def _fire_mfa_notify() -> None:
             cwd=str(Path(__file__).parent),
         )
     except Exception:
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
+
+
+def _clear_mfa_flag() -> None:
+    """Session restored OK — reset the MFA notify cursor so the next real
+    expiry fires a fresh heads-up instead of being suppressed by the window."""
+    try:
+        (Path.home() / ".aifolimizer" / ".mfa-notify.last").unlink(missing_ok=True)
+    except OSError:
         pass
+
+
+def _fire_system_up() -> None:
+    """Push one 'backend online' heads-up per boot, deduped 30 min so a
+    restart/crash-loop doesn't spam. Non-fatal."""
+    import time
+
+    if not (settings.telegram_bot_token and settings.telegram_chat_id):
+        return
+    marker = Path.home() / ".aifolimizer" / ".online-notify.last"
+    try:
+        if marker.exists() and time.time() - float(marker.read_text(encoding="utf-8").strip() or 0) < 1800:
+            return
+    except (OSError, ValueError):
+        pass
+    try:
+        import httpx
+
+        httpx.post(
+            f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+            json={
+                "chat_id": settings.telegram_chat_id,
+                "text": "🟢 aifolimizer online — backend up, scheduler + worker running.",
+            },
+            timeout=10.0,
+        ).raise_for_status()
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(str(time.time()), encoding="utf-8")
+    except Exception:
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
 
 @asynccontextmanager
@@ -80,12 +120,17 @@ async def lifespan(app: FastAPI):
     # If restore returns None (no file / stale / WS rejected), fire a single
     # Telegram heads-up via mfa_notify.py. Event-driven: no polling watchdog
     # required — user gets one message per real expiry event.
+    # System-up heads-up: one Telegram ping per boot (deduped) so the user
+    # knows the machine came back after a shutdown/restart.
+    asyncio.create_task(asyncio.to_thread(_fire_system_up))
     try:
         sid = await asyncio.to_thread(wealthsimple.restore_session)
         if sid is None:
             asyncio.create_task(asyncio.to_thread(_fire_mfa_notify))
+        else:
+            _clear_mfa_flag()
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     scheduler.start_scheduler()
     yield
     scheduler.stop_scheduler()
