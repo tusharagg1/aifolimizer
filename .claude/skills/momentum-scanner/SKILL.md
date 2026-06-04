@@ -28,8 +28,10 @@ Mechanism: anchoring bias - investors slow to push past prior resistance, so nea
 3. Call `mcp__aifolimizer__get_technicals` for all held symbols - `pct_from_52w_high`, `pct_from_52w_low`, `minervini_score`, `technical_score`, trend
 4. Call `mcp__aifolimizer__backtest_portfolio` with `strategy="buy_hold"` for 12-month return per symbol
 5. Call `mcp__aifolimizer__get_positioning_signals` for top 8 holdings - crowding check before any add signal
+6. Call `mcp__aifolimizer__get_factor_snapshot` - is the MOMENTUM FACTOR itself working? `Mom` trailing-252d positive = regime tailwind for this whole scan; negative = momentum regime weak, downgrade all continuation conviction one notch
+7. Call `mcp__aifolimizer__get_search_interest` with `keywords=[top 3-5 momentum names]` - search-demand confirmation. Rising interest + price momentum = retail fuel; but cross with crowding (surge + consensus = late-stage, suppress add)
 
-Call steps 3-5 in parallel after step 2 resolves.
+Call steps 3-7 in parallel after step 2 resolves.
 
 ## Momentum scoring
 
@@ -98,3 +100,4 @@ For each Strong Momentum name flagged ADD and each Laggard flagged TRIM/EXIT, ca
 - ETFs (XEQT, VFV, etc.) have momentum but different dynamics than single stocks. They don't exhibit the same earnings-driven drift. Rank them separately or flag.
 - Crowding data sparse for TSX names - label "neutral" if `crowding_score` null, don't suppress signal on absence of data.
 - Minervini score null for tickers with <200 days price history. Score as 0/7, mark "insufficient history."
+- `get_factor_snapshot` Mom is the US momentum factor - a negative reading is a regime caution for the whole scan, not a per-ticker signal. `get_search_interest` is rate-limited (429) and US-name biased; if it errors, proceed without it - it's confirmation, not a gate.

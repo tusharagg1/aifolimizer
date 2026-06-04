@@ -11,7 +11,9 @@ description: Run a JPMorgan-style pre-earnings analysis on a specific ticker. Us
 2. Confirm ticker via `mcp__aifolimizer__get_portfolio` (or use stock with nearest earnings from get_earnings_calendar)
 3. Call `mcp__aifolimizer__get_earnings_calendar` - confirmed next earnings date and days until
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` - EPS TTM, analyst target price, analyst recommendation
-5. WebSearch for: last 4 quarters EPS beat/miss history, consensus estimates for upcoming quarter, management guidance from last call, options-implied move (require historical data not reliably in yfinance)
+5. Call `mcp__aifolimizer__get_recent_filings` with `ticker=ticker, forms=["8-K"]` - pre-earnings 8-K events (guidance preannounce, M&A, exec change) that reshape the setup. US-listed only
+6. Call `mcp__aifolimizer__get_finnhub_news` with `ticker=ticker` - news sentiment tally heading into the print (positioning into the event)
+7. WebSearch for: last 4 quarters EPS beat/miss history, consensus estimates for upcoming quarter, management guidance from last call, options-implied move (require historical data not reliably in yfinance)
 
 ## Output structure
 

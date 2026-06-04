@@ -10,10 +10,13 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 1. Call `mcp__aifolimizer__get_profile` - actual account types and capital. CAD/USD macro impact matters more for USD-heavy accounts
 2. Call `mcp__aifolimizer__get_portfolio` - current holdings
 3. Call `mcp__aifolimizer__get_macro_snapshot` - live FRED data (Fed funds, 10Y yield, US/Canada CPI, CAD/USD, BoC rate, unemployment)
-4. Call `mcp__aifolimizer__get_market_breadth` - VIX, SPY regime (bull/bear vs SMA200), composite market_regime signal
-5. WebSearch only if you need details FRED doesn't cover (geopolitics, breaking news)
-6. Map each macro factor to specific holdings in portfolio
-7. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
+4. Call `mcp__aifolimizer__get_boc_snapshot` - authoritative Bank of Canada data (BoC overnight target, USD/CAD, GoC 2/5/10y yields, 10y-2y curve slope). Prefer over FRED's lagged BoC mirror for Canadian rates; cite `curve_signal` (inverted/normal)
+5. Call `mcp__aifolimizer__get_statcan_snapshot` - official StatCan CPI YoY inflation + unemployment (use over FRED's Canadian mirror)
+6. Call `mcp__aifolimizer__get_factor_snapshot` - which Fama-French style factors (value/size/momentum/quality) lead now; feeds the sector-rotation call in section 8
+7. Call `mcp__aifolimizer__get_market_breadth` - VIX, SPY regime (bull/bear vs SMA200), composite market_regime signal
+8. WebSearch only if you need details the above don't cover (geopolitics, breaking news)
+9. Map each macro factor to specific holdings in portfolio
+10. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
 
 ## Investor profile
 
@@ -48,3 +51,5 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 - `market_regime` is composite (VIX + SPY vs SMA200) - bear_high_fear ≠ recession; state components, not just label.
 - CAD/USD impact applies only to USD-denominated holdings; .TO tickers already CAD-quoted - don't double-count FX.
 - BoC and Fed rate differentials matter more than absolute levels for CAD/USD direction; cite spread, not just one rate.
+- `get_boc_snapshot` / `get_statcan_snapshot` are official Canadian sources — when they disagree with `get_macro_snapshot`'s FRED mirror, trust BoC/StatCan and note the FRED lag.
+- `get_factor_snapshot` returns US factors (Ken French) — read factor leadership as a global style signal, not a Canada-specific one.

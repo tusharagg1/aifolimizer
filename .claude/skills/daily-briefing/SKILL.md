@@ -7,7 +7,7 @@ description: Run a one-shot morning portfolio digest that ties together health, 
 
 ## Goal
 
-One scroll-length brief surfacing what matters today. Composes 7 MCP tools. No new data fetches outside listed below.
+One scroll-length brief surfacing what matters today. Composes the MCP tools listed below (8 core + BoC; crypto pair only if held). No new data fetches outside that list.
 
 ## State check (BEFORE any tool calls)
 
@@ -29,6 +29,8 @@ Call in parallel (no inter-dependencies):
 6. `mcp__aifolimizer__get_earnings_calendar` (next 14d)
 7. `mcp__aifolimizer__get_positioning_signals` (top 15 holdings)
 8. `mcp__aifolimizer__get_technicals_intraday` (top 5 holdings + any focus-list tickers - only if US market is open or pre-market)
+9. `mcp__aifolimizer__get_boc_snapshot` (cheap, 12h cache) - Canadian rate/FX/curve context; surface `curve_signal` in section 4 if inverted
+10. `mcp__aifolimizer__get_crypto_fear_greed` + `mcp__aifolimizer__get_crypto_macro` - ONLY if portfolio holds crypto; skip both otherwise (list in section 6)
 
 ## Catalyst day check (FIRST - before anything else)
 
@@ -80,7 +82,8 @@ Suggested action is one of: `review`, `trim`, `hedge`, `hold`, `add (small)`.
 - Single-position concentration > 10%
 - Sector concentration > 35%
 - Consensus-crowded names with negative day change > 3% (late-entry risk materializing)
-- Yield curve / VIX / Fear-Greed extremes if macro snapshot flags
+- Yield curve / VIX / Fear-Greed extremes if macro snapshot flags; inverted `curve_signal` from `get_boc_snapshot` is a Canadian recession flag
+- Crypto sleeve (only if held): `get_crypto_fear_greed` extreme (≤20 fear / ≥80 greed) + falling DefiLlama TVL = risk-off in crypto
 
 ### 5. Intraday addendum (only if US market open or pre-market)
 From `get_technicals_intraday` on focus-list + top 5 by weight, surface:

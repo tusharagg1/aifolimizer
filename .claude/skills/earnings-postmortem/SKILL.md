@@ -12,7 +12,8 @@ description: Run a post-earnings report breakdown on a specific ticker - beat/mi
 3. Call `mcp__aifolimizer__get_earnings_results` with `symbols=[ticker]`, `quarters=4` - last 4 quarters EPS actual vs estimate, surprise %, beat/meet/miss outcome
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` - current P/E, forward P/E, EPS TTM, analyst target, recommendation, profit margin, revenue growth
 5. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` - post-report news + analyst reactions
-6. WebSearch only for: full earnings call transcript quotes, segment revenue breakdown, forward guidance text, options-implied move that already played out, sell-side rating changes post-report
+6. Call `mcp__aifolimizer__get_recent_filings` with `ticker=ticker, forms=["8-K","10-Q","10-K"]` - the actual results 8-K + the 10-Q/10-K with a direct EDGAR link; confirms the filing exists and timestamps it (primary source for section 2 numbers). US-listed only
+7. WebSearch only for: full earnings call transcript quotes, segment revenue breakdown, forward guidance text, options-implied move that already played out, sell-side rating changes post-report
 
 ## Investor profile
 

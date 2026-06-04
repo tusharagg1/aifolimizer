@@ -16,7 +16,9 @@ Modelled on TradingAgents multi-agent hedge fund workflow. Explicit DAG: memory 
 Layer 0 (serial):   get_profile + get_ticker_decision_history + get_cross_ticker_lessons + recall_preferences
 Layer 1 (parallel): get_portfolio | get_fundamentals | get_technicals |
                     get_news_headlines | get_macro_snapshot | get_positioning_signals |
-                    get_stocktwits_sentiment | get_community_sentiment
+                    get_stocktwits_sentiment | get_community_sentiment |
+                    get_insider_sentiment | get_finnhub_news | get_recent_filings |
+                    get_search_interest
 Layer 2 (parallel): Bull Agent | Bear Agent | Consensus Agent
                     (all receive identical Layer 1 snapshot + Layer 0 memory context)
 Layer 2.5 (serial): Probability Assignment - PM reads Layer 2 outputs, assigns scenario probs,
@@ -29,7 +31,7 @@ Layer 5 (serial):   Decision output + log_trade_decision
 
 Rules for DAG execution:
 - Layer 0: 4 MCP calls in ONE message (true parallel)
-- Layer 1: 8 MCP calls in ONE message (true parallel)
+- Layer 1: 12 MCP calls in ONE message (true parallel); the 4 US-only adds (insider/news/filings/search) return empty for .TO names — that's fine, agents note "unavailable"
 - Layer 2: 3 Agent calls in ONE message (true parallel); pass identical data to all three
 - Layer 2.5: IN MAIN CONTEXT - read all three Layer 2 outputs, produce ARBITER_MEMO (see below). Do NOT spawn agent.
 - Layer 3: 3 Agent calls in ONE message (true parallel); pass Layer 2 outputs + Layer 1 data + ARBITER_MEMO
@@ -57,6 +59,12 @@ If cross-ticker lessons contain patterns relevant to this ticker (same sector, s
 6. `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]` - crowding score, institutional ownership, short interest
 7. `mcp__aifolimizer__get_stocktwits_sentiment` with `ticker=ticker` - real-time retail labeled sentiment
 8. `mcp__aifolimizer__get_community_sentiment` with `ticker=ticker` - Reddit community signal
+9. `mcp__aifolimizer__get_insider_sentiment` with `ticker=ticker` - insider MSPR buying-pressure trend (feeds Bull/Bear conviction)
+10. `mcp__aifolimizer__get_finnhub_news` with `ticker=ticker` - news bull/bear tally + net_sentiment (corroborates or contradicts headline narrative)
+11. `mcp__aifolimizer__get_recent_filings` with `ticker=ticker` - recent material SEC filings; an 8-K in the last week is a catalyst both advocates must address
+12. `mcp__aifolimizer__get_search_interest` with `keywords=[company name]` - retail search-demand proxy; a surge is crowding confirmation for the Consensus agent
+
+(Items 9-12 are US-only — empty for .TO tickers; pass through as "unavailable".)
 
 ## Stage 2 - Adversarial sub-agents (spawn ALL THREE in parallel)
 
@@ -88,7 +96,7 @@ Pass each agent: full Layer 1 data snapshot + memory context from Stage 0.
 
 **Consensus Agent prompt (crowding + retail sentiment lens):**
 > [MEMORY CONTEXT IF ANY]
-> You are a positioning analyst at a multi-strategy hedge fund. Given the positioning and sentiment data for [TICKER] (institutional crowding, short interest, StockTwits bull/bear count, Reddit community score, analyst coverage, headline velocity), determine: (1) Is this name consensus-crowded by AI-driven retail + quant flows? (2) What does the labeled StockTwits sentiment say - is retail positioned ahead of or behind the move? (3) What is the marginal buyer thesis - who is left to buy? (4) What's the contrarian view that current price ignores? (5) If consensus is wrong, what's the unwind path? No hedging. Data: [paste positioning_signals + stocktwits + reddit + fundamentals + news]
+> You are a positioning analyst at a multi-strategy hedge fund. Given the positioning and sentiment data for [TICKER] (institutional crowding, short interest, StockTwits bull/bear count, Reddit community score, analyst coverage, headline velocity), determine: (1) Is this name consensus-crowded by AI-driven retail + quant flows? (2) What does the labeled StockTwits sentiment say - is retail positioned ahead of or behind the move? (3) What is the marginal buyer thesis - who is left to buy? (4) What's the contrarian view that current price ignores? (5) If consensus is wrong, what's the unwind path? Treat a `get_search_interest` surge + consensus crowding as late-cycle retail fuel; treat insider MSPR buying against bearish retail as a contrarian tell. No hedging. Data: [paste positioning_signals + stocktwits + reddit + search_interest + insider_sentiment + fundamentals + news]
 >
 > Respond in this exact structure:
 > CROWDING_VERDICT: [CROWDED / NEUTRAL / CONTRARIAN] - score: [X/100]

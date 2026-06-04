@@ -23,7 +23,11 @@ not for numbers that a tool already provides.
 5. Call `mcp__aifolimizer__get_technicals` with `symbols=[ticker]` - SMA20/50/200, RSI, MACD, Bollinger Bands, trend signal
 6. Call `mcp__aifolimizer__get_news_headlines` with `ticker=ticker` - recent news
 7. Call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]` - crowding score, institutional ownership, short interest, headline velocity. Flag "edge already priced" before issuing buy
-8. Use MCP data as primary source. WebSearch only for: recent earnings call quotes, analyst upgrade/downgrade news, or gaps in MCP response
+8. Call `mcp__aifolimizer__get_insider_sentiment` with `ticker=ticker` - insider MSPR (net buying-pressure) trend; feeds fundamental item 6 (insider trend). US-listed only
+9. Call `mcp__aifolimizer__get_finnhub_news` with `ticker=ticker` - news bull/bear tally + net_sentiment; cross-check the `get_news_headlines` narrative for divergence
+10. Call `mcp__aifolimizer__get_recent_filings` with `ticker=ticker` - recent material SEC filings; flag any 8-K filed in the last 5 days as event risk before issuing a call. US-listed only
+11. Call `mcp__aifolimizer__get_factor_exposure` with `ticker=ticker` - dominant style factor (value/momentum/quality/size); use to pick which INVESTOR LENS applies
+12. Use MCP data as primary source. WebSearch only for: recent earnings call quotes, analyst upgrade/downgrade news, or gaps in MCP response
 
 ## Investor profile
 
@@ -39,7 +43,7 @@ not for numbers that a tool already provides.
 3. Competitive moat rating (none/narrow/wide) with reasoning
 4. Growth catalysts (next 12 months) and key headwinds
 5. Valuation vs sector peers: P/E, P/S, EV/EBITDA
-6. Insider trading and institutional ownership trend
+6. Insider trading and institutional ownership trend - cite `get_insider_sentiment` avg_mspr + net_signal (bullish/bearish/neutral)
 7. Bear case + bull case with 12-month price targets
 8. Recommendation: Buy / Hold / Sell with entry zone and stop-loss
 
@@ -103,4 +107,6 @@ Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM)
 - Headline velocity counts yfinance news only - misses Reddit/X chatter. Underestimates retail surge.
 - `pivot_levels` null for symbols with <2 trading days of data (new listings, halted). State "pivot data unavailable" rather than guessing.
 - `volume_score` null when volume data missing (common for some TSX ETFs). Do not comment on volume conviction in that case.
+- `get_insider_sentiment` / `get_recent_filings` are US-only (Finnhub/EDGAR) — for .TO tickers they return `no_api_key`/`no_cik`; state "US-only data unavailable for TSX name", don't fabricate.
+- `get_finnhub_news` sentiment is a crude keyword tally, not NLP — use as a tie-breaker, not a primary signal. `get_factor_exposure` low R² (<0.2) = factor model doesn't fit; skip the lens-selection use.
 - `technical_score` weights are fixed (40/25/20/10/5). Treat as screening signal, not a precise model output.

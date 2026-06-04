@@ -11,8 +11,9 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 2. Call `mcp__aifolimizer__get_portfolio` - current sector exposure
 3. Call `mcp__aifolimizer__get_xray` - true sector + geographic exposure after ETF expansion
 4. Call `mcp__aifolimizer__get_market_breadth` - VIX, SPY regime (bull/bear vs SMA200). Use `market_regime` to calibrate rotation conviction: bull_low_fear = high conviction; bear_high_fear = defensive only
-5. WebSearch for: 30-day S&P 500 and TSX sector performance, relative strength rotations, ETF money flows, recent 13F filings (Berkshire, Renaissance, Bridgewater)
-6. Identify rotations and translate to actions for user's portfolio
+5. Call `mcp__aifolimizer__get_factor_snapshot` - Fama-French factor leadership. Factor rotation drives sector rotation: value leading → financials/energy/industrials; growth/momentum leading → tech/discretionary; quality (RMW) leading → defensives/staples
+6. WebSearch for: 30-day S&P 500 and TSX sector performance, relative strength rotations, ETF money flows, recent 13F filings (Berkshire, Renaissance, Bridgewater)
+7. Identify rotations and translate to actions for user's portfolio
 
 ## Investor profile
 
@@ -48,3 +49,4 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 - Rotation trades in non-reg trigger capital gains; in TFSA tax-free - always pair recommendation with right account.
 - Seasonal patterns are statistical priors, NOT predictions - present as base rate, not directive.
 - Don't confuse sector ETF performance with underlying sector - track index, not just ETF, when comparing.
+- `get_factor_snapshot` trailing-252d shows the established regime; latest-daily is noise. Cite the trailing window for rotation direction, not one day.
