@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -110,6 +111,36 @@ mcp = FastMCP("aifolimizer")
 
 _state: dict[str, Any] = {"session_id": None, "file_mtime": 0.0}
 _session_lock = asyncio.Lock()
+
+# WS blocking calls run on a dedicated pool, NOT the default asyncio.to_thread
+# executor. A stalled Wealthsimple/Cloudflare socket used to occupy default-pool
+# workers and starve every other tool — including ones with no network at all
+# (get_personal_context) — so the whole MCP server appeared to "stick".
+_WS_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ws-op")
+# Hard async-layer ceiling on a single WS operation. The requests-level timeout
+# in wealthsimple.py is the first line of defense; this guarantees the tool
+# call RAISES (visible error) instead of hanging forever even if that path is
+# bypassed (stale ws-api, slow-drip socket). Override via WS_OP_TIMEOUT_S.
+_WS_OP_TIMEOUT_S = float(os.getenv("WS_OP_TIMEOUT_S", "90") or 90)
+
+
+async def _ws_call(fn, *args):
+    """Run a blocking Wealthsimple call on the dedicated pool with a hard ceiling.
+
+    Replaces bare ``asyncio.to_thread(ws_fn, ...)`` for every WS-touching call so
+    a network stall surfaces as a bounded RuntimeError, never an infinite stick,
+    and can't contend with non-WS tools for the shared thread pool.
+    """
+    loop = asyncio.get_running_loop()
+    fut = loop.run_in_executor(_WS_EXECUTOR, lambda: fn(*args))
+    try:
+        return await asyncio.wait_for(fut, timeout=_WS_OP_TIMEOUT_S)
+    except asyncio.TimeoutError as e:
+        raise RuntimeError(
+            f"Wealthsimple request timed out after {_WS_OP_TIMEOUT_S:.0f}s "
+            "(network stall or stale token). Retry; if it persists, re-auth: "
+            "cd backend && .venv/Scripts/python mcp_login.py"
+        ) from e
 # Unified WS session file — same path _persist_session rewrites on token
 # refresh, so headless runs survive rotation for the full refresh-token life.
 _SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
@@ -201,10 +232,10 @@ async def _ensure_session() -> str:
         # Try cached session from mcp_login.py first. Retry once on transient
         # failure (network blip during _finalize_session) before declaring
         # the file dead and demanding an MFA re-login.
-        sid = await asyncio.to_thread(_load_cached_session)
+        sid = await _ws_call(_load_cached_session)
         if not sid:
             await asyncio.sleep(0.5)
-            sid = await asyncio.to_thread(_load_cached_session)
+            sid = await _ws_call(_load_cached_session)
         if sid:
             _state["session_id"] = sid
             return sid
@@ -219,7 +250,7 @@ async def _ensure_session() -> str:
             )
 
         try:
-            result = await asyncio.to_thread(wealthsimple.login, email, password)
+            result = await _ws_call(wealthsimple.login, email, password)
         except Exception as e:
             raise RuntimeError(
                 f"WS login failed ({type(e).__name__}: {e}). "
@@ -244,22 +275,33 @@ async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
         raise RuntimeError("Session lost — please re-authenticate")
 
     per_account = session.get("per_account", {})
+    net_deposits_cad = float(session.get("net_deposits_cad") or 0.0)
+    simple_return_pct = session.get("simple_return_pct")
     if account_id and account_id in per_account:
         acc = per_account[account_id]
         cash_balance = float(acc.get("cash_balance") or 0.0)
+        usd_cash_balance = float(acc.get("usd_cash_balance") or 0.0)
         ws_account_total = float(acc.get("invested_value") or 0.0)
         unrealized_pnl_cad = float(acc.get("unrealized_pnl_cad") or 0.0)
     else:
         cash_balance = sum(a.cash_balance for a in profile.accounts)
+        usd_cash_balance = sum(float(a.get("usd_cash_balance") or 0.0) for a in per_account.values())
         ws_account_total = sum(a.invested_value for a in profile.accounts)
         unrealized_pnl_cad = float(session.get("unrealized_pnl_cad") or 0.0)
 
     if account_id:
-        raw_positions = await asyncio.to_thread(wealthsimple.get_positions, session_id, account_id)
+        raw_positions = await _ws_call(wealthsimple.get_positions, session_id, account_id)
     else:
-        raw_positions = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
+        raw_positions = await _ws_call(wealthsimple.get_all_positions, session_id)
     return await asyncio.to_thread(
-        market_data.enrich, raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad
+        market_data.enrich,
+        raw_positions,
+        cash_balance,
+        ws_account_total,
+        unrealized_pnl_cad,
+        usd_cash_balance,
+        net_deposits_cad,
+        simple_return_pct,
     )
 
 
@@ -1588,7 +1630,7 @@ async def get_skill_track_record(
         if session_id:
             try:
                 ws = WSAPISession.from_token(session_id)
-                portfolio = await asyncio.to_thread(wealthsimple.get_portfolio_response, ws)
+                portfolio = await _ws_call(wealthsimple.get_portfolio_response, ws)
                 top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:10]
                 universe = [p.symbol for p in top]
                 label = label or "holdings"

@@ -19,7 +19,10 @@ import json
 import os
 import time
 import uuid
+
+import requests as _requests
 from concurrent.futures import ThreadPoolExecutor
+from filelock import FileLock, Timeout as FileLockTimeout
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Any
@@ -36,6 +39,33 @@ _WS_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 WealthsimpleAPI.set_user_agent(_WS_USER_AGENT)
+
+# ws-api (0.33.0) calls requests.request(...) with NO timeout (wealthsimple_api.py
+# _send), so requests defaults to timeout=None = block forever. When WS/Cloudflare
+# accepts the socket but stalls the response, every WS call (login, refresh-token,
+# restore_session validation, get_positions) hangs indefinitely — surfacing as the
+# MCP tool "sticking" and, because restore_session can't finish validating the
+# cached token, an endless forced-MFA loop. ws-api resolves `requests.request` on
+# the module per call, so patching it here injects a default timeout into every WS
+# HTTP call without forking the package. Override via WS_HTTP_TIMEOUT_S.
+_WS_HTTP_TIMEOUT_S = float(os.environ.get("WS_HTTP_TIMEOUT_S", "30") or 30)
+
+
+def _make_timeout_request(orig):
+    """Wrap requests.request to default a timeout. `orig` is closure-captured
+    (never a module global) so importlib.reload of this module can't re-wrap an
+    already-wrapped function into infinite self-recursion."""
+
+    def _requests_request_with_timeout(method, url, **kwargs):
+        kwargs.setdefault("timeout", _WS_HTTP_TIMEOUT_S)
+        return orig(method, url, **kwargs)
+
+    _requests_request_with_timeout._aifolimizer_timeout_patched = True
+    return _requests_request_with_timeout
+
+
+if not getattr(_requests.request, "_aifolimizer_timeout_patched", False):
+    _requests.request = _make_timeout_request(_requests.request)
 
 _LOG = get_logger("aifolimizer.services.wealthsimple")
 
@@ -75,6 +105,13 @@ _CLEANUP_INTERVAL_SECONDS = 3600  # Clean up every hour
 
 # Disk persistence — restores the authenticated session across backend restarts.
 _PERSIST_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
+# Cross-process lock guarding token refresh/rotation+persist. Sidecar file so it
+# never collides with the atomic-rename writer on _PERSIST_FILE itself. All
+# aifolimizer processes (MCP servers, FastAPI, scripts) share this path, so only
+# one finalizes/rotates the single-use refresh_token at a time.
+_PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+_PERSIST_LOCK = FileLock(str(_PERSIST_FILE) + ".lock")
+_PERSIST_LOCK_TIMEOUT_S = float(os.environ.get("WS_PERSIST_LOCK_TIMEOUT_S", "45") or 45)
 _DEBUG = os.environ.get("WS_DEBUG", "").lower() in ("1", "true", "yes")
 
 
@@ -419,6 +456,43 @@ def verify_otp(session_id: str, otp: str) -> dict:
 
 
 def _finalize_session(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
+    """Cross-process serialized wrapper around the real finalize.
+
+    Multiple aifolimizer processes (several Claude-Code MCP servers, the FastAPI
+    backend, scheduled scripts) share ONE ws_session.json holding a single-use,
+    rotating refresh_token. Concurrent finalize calls used to (a) race the
+    rotation — one process consumes+rotates the refresh_token, the others' copy
+    dies → forced MFA — and (b) burst identical-UA auth traffic at Cloudflare,
+    which throttles by holding sockets open → 30s-per-call stalls → the tool
+    "sticks". A file lock makes at most one process establish/refresh the WS
+    session at a time. After waiting, we re-read the freshly-rotated token from
+    disk so we never finalize on a token a peer just invalidated.
+    """
+    try:
+        with _PERSIST_LOCK.acquire(timeout=_PERSIST_LOCK_TIMEOUT_S):
+            disk_session, disk_email = _reload_session_from_disk()
+            if disk_session is not None:
+                session, email = disk_session, (disk_email or email)
+            return _finalize_session_locked(session, email, session_id=session_id)
+    except FileLockTimeout:
+        raise ValueError(
+            "Wealthsimple session is busy (another aifolimizer process is "
+            "refreshing the token). Retry in a moment."
+        )
+
+
+def _reload_session_from_disk() -> tuple[Optional[WSAPISession], Optional[str]]:
+    """Read the latest persisted token from disk (called while holding the
+    lock, so a peer mid-rotation has already finished). Returns (None, None)
+    when the file is absent/unreadable — caller keeps its in-memory session."""
+    try:
+        payload = json.loads(_PERSIST_FILE.read_text(encoding="utf-8"))
+        return WSAPISession.from_json(payload["session_json"]), payload.get("email")
+    except Exception:
+        return None, None
+
+
+def _finalize_session_locked(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
     global _last_email
     _last_email = email
     sid = session_id or _new_session_id()
@@ -588,6 +662,18 @@ def get_positions(session_id: str, account_id: str) -> list[dict]:
 def _position_account_id(pos: dict) -> str:
     if not isinstance(pos, dict):
         return ""
+    # WS FetchIdentityPositions returns account membership under `accounts`
+    # (a list of {id, __typename}). Reading the older singular `account`
+    # shape returned "" for every node, so per-account filtering dropped all
+    # holdings — single-account views came back empty while totals (from NLV)
+    # still looked right.
+    accts = pos.get("accounts")
+    if isinstance(accts, list) and accts:
+        first = accts[0]
+        if isinstance(first, dict) and first.get("id"):
+            return str(first["id"])
+        if isinstance(first, str) and first:
+            return first
     acc = pos.get("account") or pos.get("accountInfo") or {}
     if isinstance(acc, dict):
         for key in ("id", "account_id", "uuid"):
@@ -626,6 +712,19 @@ def _resolve_account_id(accounts_raw: list[dict], account_id: str) -> str:
     return ""
 
 
+def _cad_per_usd() -> float:
+    """CAD-per-USD FX, used to convert WS's CAD-base per-holding money back to
+    the security's native currency. Lazy import avoids a circular dependency
+    (market_data imports nothing from here at module load). Falls back to 1.0
+    so a FX outage degrades to CAD display rather than crashing the fetch."""
+    try:
+        from app.services.market_data import _get_cad_per_usd
+
+        return float(_get_cad_per_usd() or 1.0) or 1.0
+    except Exception:
+        return 1.0
+
+
 def _extract_currency(raw: Any, default: str = "CAD") -> str:
     """Pull currency code from a WS money dict, e.g. {'amount': 646.68, 'currency': 'USD'}."""
     if isinstance(raw, dict):
@@ -661,9 +760,23 @@ def _to_position_dict(item: dict) -> dict:
     except Exception:
         quantity = 0.0
 
+    # WS reports per-holding money (totalValue, bookValue, averagePrice) in the
+    # ACCOUNT base currency (CAD) regardless of where the security trades — even
+    # the money "currency" tag reads CAD for a NYSE/USD stock. The security
+    # node's own `currency` is the authoritative native trading currency. Skills
+    # do per-holding analysis (valuation, price levels) that needs the native
+    # currency, so convert CAD→native here. Return % is FX-invariant and the CAD
+    # totals/weights are preserved because enrich re-multiplies by the same FX.
+    native_ccy = str(security.get("currency") or "").upper() if isinstance(security, dict) else ""
+    if native_ccy not in ("USD", "CAD"):
+        native_ccy = _extract_currency(item.get("totalValue") or 0)
+    if native_ccy not in ("USD", "CAD"):
+        native_ccy = "CAD"
+    fx = _cad_per_usd() if native_ccy == "USD" else 1.0
+
     mv_raw = item.get("totalValue") or item.get("marketValue") or item.get("market_value") or item.get("value") or 0
-    market_currency = _extract_currency(mv_raw)
-    market_value = _money(mv_raw)
+    market_currency = native_ccy
+    market_value = round(_money(mv_raw) / fx, 2) if fx else _money(mv_raw)
 
     ap_raw = (
         item.get("averagePrice")
@@ -672,15 +785,14 @@ def _to_position_dict(item: dict) -> dict:
         or item.get("cost_basis")
         or 0
     )
-    avg_price = _money(ap_raw)
+    avg_price = round(_money(ap_raw) / fx, 2) if fx else _money(ap_raw)
 
     bv_raw = item.get("bookValue") or item.get("marketBookValue") or item.get("book_value") or 0
-    book_currency = _extract_currency(bv_raw, default=market_currency)
-    book_value = _money(bv_raw)
+    book_currency = native_ccy
+    book_value = round(_money(bv_raw) / fx, 2) if fx else _money(bv_raw)
 
     if book_value == 0 and avg_price > 0 and quantity > 0:
-        book_value = avg_price * quantity
-        book_currency = _extract_currency(ap_raw, default=market_currency)
+        book_value = round(avg_price * quantity, 2)
 
     sec_type = ""
     if isinstance(security, dict):
