@@ -44,7 +44,7 @@ def xray_exposures(portfolio: PortfolioResponse) -> dict[str, float]:
 
     exposures: dict[str, float] = {}
     for pos in portfolio.positions:
-        weight = pos.market_value / total
+        weight = pos.market_value_cad / total
         mapped = ETF_EXPOSURE_MAP.get(pos.symbol.upper())
         if mapped:
             for label, inner_weight in mapped.items():
@@ -53,7 +53,7 @@ def xray_exposures(portfolio: PortfolioResponse) -> dict[str, float]:
             label = pos.sector if pos.sector and pos.sector != "Unknown" else pos.asset_class
             exposures[label] = exposures.get(label, 0.0) + weight
 
-    return dict(sorted(exposures.items(), key=lambda item: item[1], reverse=True))
+    return {k: round(v, 6) for k, v in sorted(exposures.items(), key=lambda item: item[1], reverse=True)}
 
 
 def sector_concentration(portfolio: PortfolioResponse) -> dict[str, float]:
@@ -65,7 +65,7 @@ def sector_concentration(portfolio: PortfolioResponse) -> dict[str, float]:
     for pos in portfolio.positions:
         label = pos.sector or pos.asset_class or "Unknown"
         out[label] = out.get(label, 0.0) + (pos.market_value_cad / total)
-    return dict(sorted(out.items(), key=lambda item: item[1], reverse=True))
+    return {k: round(v, 6) for k, v in sorted(out.items(), key=lambda item: item[1], reverse=True)}
 
 
 def asset_class_breakdown(portfolio: PortfolioResponse) -> dict[str, float]:
@@ -76,22 +76,22 @@ def asset_class_breakdown(portfolio: PortfolioResponse) -> dict[str, float]:
     for pos in portfolio.positions:
         label = pos.asset_class or "Unknown"
         out[label] = out.get(label, 0.0) + (pos.market_value_cad / total)
-    return dict(sorted(out.items(), key=lambda item: item[1], reverse=True))
+    return {k: round(v, 6) for k, v in sorted(out.items(), key=lambda item: item[1], reverse=True)}
 
 
 def tax_loss_candidates(portfolio: PortfolioResponse, threshold_pct: float = -5.0) -> list[dict[str, Any]]:
     """Positions sitting below threshold % return. Flags for tax-loss harvesting review."""
     candidates: list[dict[str, Any]] = []
     for pos in portfolio.positions:
-        if pos.total_return_pct < threshold_pct and pos.market_value > 0:
-            unrealized_loss_value = pos.market_value - pos.book_cost
+        if pos.total_return_pct < threshold_pct and pos.market_value_cad > 0:
+            unrealized_loss_value = pos.market_value_cad - pos.book_cost_cad
             candidates.append(
                 {
                     "symbol": pos.symbol,
                     "name": pos.name,
                     "unrealized_loss": round(unrealized_loss_value, 2),
                     "unrealized_loss_pct": round(pos.total_return_pct, 2),
-                    "market_value": round(pos.market_value, 2),
+                    "market_value": round(pos.market_value_cad, 2),
                     "note": "Potential tax-loss review. In Canada, check superficial-loss rules (30-day window) and account type (TFSA/RRSP losses are not deductible) before acting.",
                 }
             )
