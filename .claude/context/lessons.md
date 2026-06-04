@@ -118,3 +118,15 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Windows console is cp1252**; `print()` of emoji raises UnicodeEncodeError. `sys.stdout.reconfigure(encoding="utf-8")` in scripts that emit unicode.
 - **Nightly scheduler is coupled to the FastAPI lifespan** (`start_scheduler()` in main.py), NOT the MCP server process. If the backend process is down, zero nightly automation runs even though MCP tools still work. Keep the backend task alive (logon/boot trigger + restart) for self-learning loops to fire.
 - **Notify cadence != check cadence.** A 30-min alert sweep is fine if the Telegram push is gated (per-day dedup + min-severity); the spam came from un-gated pushes and a crash-looping auth path, not the schedule itself.
+
+## WS per-holding money is account-base CAD, not native (2026-06-04)
+- **Symptom**: USD-listed holdings (UNH, INTU…) shown as CAD; per-account portfolio empty; inflated/garbage returns into skills.
+- **Root causes**: (a) `_position_account_id` read `account` but WS FetchIdentityPositions uses `accounts` (list of {id}) → per-account filter dropped all 29 holdings. (b) `_to_position_dict` took currency from `totalValue.currency` which WS reports as CAD even for NYSE stocks; the authoritative native currency is `security.currency`. (c) `_load_portfolio` passed only 4 positional args to `enrich`, silently defaulting usd_cash_balance/net_deposits/simple_return → cash_available_usd always 0.
+- **Fix**: read `accounts[0].id`; tag holdings from `security.currency` and divide CAD→native by current FX (enrich re-multiplies, so CAD totals/weights/return-% unaffected); pass the full enrich arg list.
+- **Data limit**: WS position payload exposes cost basis ONLY in CAD at *historical* purchase FX (bookValue, averagePrice). Native USD cost (hence WS-app native return %) is NOT recoverable from this endpoint — only the live native quote (quoteV2.price) is. CAD return ≠ native return by the FX-since-purchase component.
+
+## MCP hang = stale process + no async backstop + shared thread pool (2026-06-04)
+- **Symptom**: get_profile/get_portfolio_analysis/get_personal_context hang forever, no error, interrupt then proceeds; restarting FastAPI "temporarily" helps.
+- **Root cause**: ws_api calls `requests.request` with no timeout. The disk fix (30s patch) was correct but the *running* MCP server predated it — and Claude Code keeps the MCP server alive across chat sessions, so "every new session" reconnected to the same stale process with permanently-blocked worker threads. Worse, all WS calls ran on the shared `asyncio.to_thread` default executor, so a stall starved even zero-network tools (get_personal_context).
+- **Fix**: dedicated `_WS_EXECUTOR` (4 workers) + `_ws_call()` with `asyncio.wait_for` ceiling. WS stall → bounded RuntimeError, isolated from other tools.
+- **Rule**: any indefinite blocking I/O behind an MCP tool needs BOTH a transport timeout AND an async-layer `wait_for` backstop, and must not share the default to_thread pool with unrelated tools. Editing a .py does NOT reload a live MCP server — must reconnect/restart it.
