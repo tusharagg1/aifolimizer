@@ -55,6 +55,9 @@ backend/data/run_cards/
 # Backup files created by skill scaffolding / plugin tools
 *.original.md
 
+# Per-machine personal docs (beginner walkthroughs, private notes) — never commit
+*.local.md
+
 # Agent worktrees (per-session ephemeral checkouts)
 .claude/worktrees/
 

@@ -1,14 +1,20 @@
+<div align="center">
+
 # aifolimizer
 
-Local MCP portfolio analysis driven by Claude Desktop or Claude Code, with optional Wealthsimple integration for full portfolio awareness. Exposes 84 MCP tools and 22 analysis skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Backed by 12 swappable market-data adapters behind a shared interface.
-
-Runs locally on an existing Claude Pro subscription.
+***Your real portfolio, wired into Claude — then ask it anything.***
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-native-purple.svg)](https://modelcontextprotocol.io)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange)](#status--roadmap)
+
+**[Setup guide](docs/SETUP.md)** · [FAQ](docs/FAQ.md) · [Track record](TRACK_RECORD.md) · [Security](SECURITY.md)
+
+</div>
+
+Local MCP portfolio analysis driven by Claude Desktop or Claude Code, with optional Wealthsimple integration for full portfolio awareness. Exposes 102 MCP tools and 25 analysis skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies — all backed by 12 swappable market-data adapters behind a shared interface, and running on an existing Claude Pro subscription.
 
 > **Disclaimer.** Outcomes are LLM-generated. Verify before acting. Not financial advice.
 
@@ -19,15 +25,15 @@ Runs locally on an existing Claude Pro subscription.
 - **Self-directed investors** running ticker-level research - fundamentals, technicals, earnings, macro, adversarial bull/bear theses. Broker-agnostic; no portfolio connection required.
 - **Wealthsimple users** wanting the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, sector rotation, daily briefings wired to live holdings. Other brokers slot into the same `Brokerage` abstraction.
 - **Quant developers** needing a working forward-test reference: walk-forward OOS validation, deflated-Sharpe overfitting gates, signal-decay curves, regime-conditional weight tuning.
-- **MCP integrators**: if you're building MCP servers, the tool layout, fallback adapter chain, and PII filter approach may be worth a look (84 tools, 12 adapters, 22 skills).
+- **MCP integrators**: if you're building MCP servers, the tool layout, fallback adapter chain, and PII filter approach may be worth a look (102 tools, 12 adapters, 25 skills).
 
 ## Features
 
 - **Live brokerage portfolio.** Wealthsimple integration via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) (MFA-aware, all account types - TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side.
 - **12 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, plus a cross-check adapter and the Wealthsimple broker adapter) share a base class at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
-- **98 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
+- **102 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
 - **25 analysis skills** covering allocation health, risk, fundamentals, technicals, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on natural-language intent or invoke directly as slash commands.
-- **Forward-tested where it's tracked.** Two of 22 skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution`. The other 20 skills are read-only analysis surfaces and aren't tracked. Live numbers - wins and losses - in [TRACK_RECORD.md](TRACK_RECORD.md).
+- **Forward-tested where it's tracked.** Two of 25 skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution`. The other 23 skills are read-only analysis surfaces and aren't tracked. Live numbers - wins and losses - in [TRACK_RECORD.md](TRACK_RECORD.md).
 - **Statistical safeguards.** Walk-forward OOS validation ([`skill_backtest.py`](backend/app/services/skill_backtest.py)), deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration ([`calibration.py`](backend/app/services/calibration.py)), empirical signal-decay curves at 1/3/5/10/21/42/63 days ([`signal_history.py`](backend/app/services/signal_history.py)), regime-conditional gating, and a nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
 - **Runs locally.** Most state lives in JSONL files under `~/.aifolimizer/` and `backend/.claude/context/`. Postgres (TimescaleDB) and Redis are available via `docker compose up -d` for richer history and cross-process caching.
 
@@ -40,9 +46,9 @@ Inference runs inside an existing Claude Pro session - symbols, weights (% of NL
 ```
 Claude Code / Claude Desktop   (Pro subscription)
          ↓ invokes
-   .claude/skills/*            (22 analysis skills)
+   .claude/skills/*            (25 analysis skills)
          ↓ calls MCP tools
-   backend/mcp_server.py       (FastMCP - 98 tools)
+   backend/mcp_server.py       (FastMCP - 102 tools)
          ↓ uses
    app/services/*              (50+ service modules)
          ↓
@@ -76,6 +82,8 @@ Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identi
 - Don't expose this server to anything outside localhost until route-handler tests land.
 
 ## Quick start
+
+> The condensed version is below. If you want every step explained — what each setting does, where files go, Windows + macOS commands side by side — follow the **[full setup guide](docs/SETUP.md)** instead.
 
 > Commands below use bash (works on macOS/Linux/WSL/Git-Bash). For native Windows PowerShell equivalents, see [scripts/AUTOMATION.md](scripts/AUTOMATION.md). Replace `<REPO>` with the absolute repo path.
 
@@ -156,7 +164,7 @@ Skills auto-trigger on intent in Claude. Or invoke directly:
 
 The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/scheduler.py`; they are also invocable on demand. Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
 
-## MCP tools (98 total - table highlights core 32; full list in `backend/mcp_server.py`)
+## MCP tools (102 total - table highlights core 32; full list in `backend/mcp_server.py`)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -207,7 +215,7 @@ aifolimizer/
 │       ├── models/      # Pydantic models
 │       └── services/    # 50+ service modules
 ├── .claude/
-│   ├── skills/          # 22 analysis skills
+│   ├── skills/          # 25 analysis skills
 │   ├── context/         # architecture.md, changes.md, lessons.md, STATE.md
 │   └── agents/
 ├── docs/                # FAQ + sample skill outputs
@@ -255,7 +263,7 @@ Data persisted in `.data/` (gitignored). Secrets in `.secrets/pg_password.txt`.
 
 ## Contributing
 
-Issues and PRs welcome. Counts of MCP tools (80) and skills (21) cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` - runs in CI after lint, fails the build if a doc claim drifts. Run locally before editing those numbers. `TRACK_RECORD.md` is auto-generated by the `generate_trust_report` MCP tool - refresh by calling the tool rather than editing by hand.
+Issues and PRs welcome. Counts of MCP tools (102) and skills (25) cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` - runs in CI after lint, fails the build if a doc claim drifts. Run locally before editing those numbers. `TRACK_RECORD.md` is auto-generated by the `generate_trust_report` MCP tool - refresh by calling the tool rather than editing by hand.
 
 ## Troubleshooting
 
