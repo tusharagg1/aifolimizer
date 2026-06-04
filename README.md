@@ -4,7 +4,7 @@
 
 <sub>(**AI** Port**foli**o Opti**mizer**)</sub>
 
-***Markets analysis in Claude — any ticker, or your whole Wealthsimple portfolio.***
+***Markets analysis in Claude: any ticker, or your whole Wealthsimple portfolio.***
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -16,20 +16,20 @@
 
 </div>
 
-aifolimizer turns Claude into a markets analyst you drive in plain English — fundamentals, technicals, earnings, macro, options, and quant signals on any ticker, no brokerage account required. Connect Wealthsimple (optional) and the same tools go portfolio-aware: allocation, concentration, tax-loss, and rebalancing on your real holdings.
+aifolimizer turns Claude into a markets analyst you drive in plain English: fundamentals, technicals, earnings, macro, options, and quant signals on **any ticker, no brokerage account required**. Connect Wealthsimple (optional) and the same tools go portfolio-aware: allocation, concentration, tax-loss, and rebalancing on your real holdings.
 
-It runs on your Claude Pro plan, on your own machine — only tickers and percentages ever leave it. 102 MCP tools, 25 skills, 15 market-data adapters. Claude does the analysis; the integration, privacy filter, forward-test harness, and adapter layer are built around it.
+It runs on your own Claude Pro plan and your own machine, and only tickers and percentages ever leave it. **102 MCP tools, 25 skills, 15 market-data adapters.** Claude writes the analysis; the integration, privacy filter, forward-test harness, and adapter layer are built around it.
 
 ### Example prompts
 
 ```text
-/stock-analysis NVDA        fundamentals + technicals + news — no account needed
+/stock-analysis NVDA        fundamentals + technicals + news (no account needed)
 /adversarial-research VFV   parallel bull / bear / consensus passes, scored into one thesis
 /daily-briefing             (Wealthsimple) portfolio value, concentration flags, this week's earnings, ranked actions
 should I add to NVDA?        (Wealthsimple) weighs your holding and a crowding score before answering
 ```
 
-*Illustrative — live answers use current market data and, where connected, your real holdings.*
+*Results pull live market data, and your real holdings once Wealthsimple is connected.*
 
 > **Disclaimer.** Analysis is LLM-generated and can be wrong. Verify before acting. Not financial advice.
 
@@ -37,28 +37,30 @@ should I add to NVDA?        (Wealthsimple) weighs your holding and a crowding s
 
 ## Why not just ask Claude directly?
 
-Claude on its own has no live prices, can't see your holdings, and can't verify a P/E or RSI it quotes. aifolimizer closes that gap:
+Ask a chatbot about your portfolio and it answers from a stale training cutoff, with no idea what you actually hold, making up a P/E or an RSI when it doesn't know one. aifolimizer changes what Claude is working with:
 
-- **Real numbers, computed — not guessed.** Prices, fundamentals, technicals, and option Greeks come from live feeds and real math, so Claude reasons over facts.
-- **Your actual portfolio.** Concentration, Canadian tax (TFSA / RRSP / FHSA), crowding, and rebalancing run on your live Wealthsimple holdings — not a snapshot you paste into a chat.
-- **Kept honest.** Tracked skills log every call and get marked to market — a real win/loss record, with deflated-Sharpe and calibration gates.
-- **Private by default.** Only tickers and percentages leave the machine — never balances, account numbers, or names.
+- **Real numbers, computed, not guessed.** Every price, fundamental, technical, and option Greek comes from a live feed or real math, so Claude reasons over facts instead of plausible-sounding fiction.
+- **Your actual holdings.** Concentration, Canadian tax (TFSA / RRSP / FHSA), crowding, and rebalancing run on your live Wealthsimple positions, not a screenshot you paste in.
+- **A track record, not guesswork.** Tracked skills log every call with entry, stop, and target, then get marked to market nightly. Deflated-Sharpe and calibration gates flag the strategies that are only luck.
+- **Private by default.** Only tickers and percentages leave your machine. Balances, account numbers, and your name never do.
+
+Same Claude, now grounded in live data, your real book, and a track record you can audit.
 
 ## Who it's for
 
-- **Self-directed investors** — ticker-level research (fundamentals, technicals, earnings, macro, bull/bear theses). Broker-agnostic; no portfolio connection needed.
-- **Wealthsimple users** — the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, daily briefings on live holdings.
-- **Quant developers** — a working forward-test reference: walk-forward OOS validation, deflated-Sharpe gates, signal-decay curves, regime-conditional weight tuning.
-- **MCP integrators** — a real-world tool layout, fallback adapter chain, and PII-filter pattern (102 tools, 15 adapters, 25 skills).
+- **Self-directed investors:** ticker-level research (fundamentals, technicals, earnings, macro, bull/bear theses). Broker-agnostic; no portfolio connection needed.
+- **Wealthsimple users:** the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, daily briefings on live holdings.
+- **Quant developers:** a working forward-test reference: walk-forward OOS validation, deflated-Sharpe gates, signal-decay curves, regime-conditional weight tuning.
+- **MCP integrators:** a real-world tool layout, fallback adapter chain, and PII-filter pattern (102 tools, 15 adapters, 25 skills).
 
 ## Features
 
-- **Live brokerage portfolio.** Wealthsimple via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) — MFA-aware, every account type (TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, and cash flow from the real account; cross-account aggregation and tax-aware logic run server-side.
-- **102 MCP tools** — live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), FRED macro, crowding, crypto, insider activity, options chains with Greeks, Reddit + StockTwits sentiment, GDELT geopolitics. Verified on Claude Desktop and Claude Code.
-- **25 analysis skills** — allocation health, risk, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on intent, or invoke as slash commands.
-- **15 data adapters** behind one base class ([`data_sources/base.py`](backend/app/services/data_sources/base.py)) — yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage + the Wealthsimple broker. `data_router` chains them with circuit-breaker fallback; adding Polygon or any paid feed is one file.
+- **Live brokerage portfolio.** Wealthsimple via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python): MFA-aware, every account type (TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, and cash flow from the real account; cross-account aggregation and tax-aware logic run server-side.
+- **102 MCP tools:** live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), FRED macro, crowding, crypto, insider activity, options chains with Greeks, Reddit + StockTwits sentiment, GDELT geopolitics. Verified on Claude Desktop and Claude Code.
+- **25 analysis skills:** allocation health, risk, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on intent, or invoke as slash commands.
+- **15 data adapters** behind one base class ([`data_sources/base.py`](backend/app/services/data_sources/base.py)): yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage, plus the Wealthsimple broker. `data_router` chains them with circuit-breaker fallback; adding Polygon or any paid feed is one file.
 - **Forward-tested where tracked.** Two skills (`pre-trade-check`, `position-review`) log every call with entry/stop/target; a nightly job marks them to market for 7/30/90-day win rates and alpha vs XEQT/SPY/TSX/QQQ. The other 23 are read-only. Wins and losses both: [TRACK_RECORD.md](TRACK_RECORD.md).
-- **Statistical safeguards.** Walk-forward OOS validation, deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration, signal-decay curves (1–63 days), regime-conditional gating, nightly weight tuner.
+- **Statistical safeguards.** Walk-forward OOS validation, deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration, signal-decay curves (1 to 63 days), regime-conditional gating, nightly weight tuner.
 - **Runs locally.** State in JSONL under `~/.aifolimizer/` and `backend/.claude/context/`; Postgres + Redis optional via `docker compose up -d`.
 
 ### Inference & fallback
@@ -92,35 +94,31 @@ These three files update as the project runs:
 
 ## Status & Roadmap
 
-aifolimizer is a single-user local tool today. Brokerage support is Wealthsimple. Market data flows from yfinance, FRED, and CoinGecko on free, delayed feeds. Tests cover the quant logic and core services; auth and MCP route handlers are exercised manually.
+A single-user local tool today: Wealthsimple as the broker, free delayed data (yfinance / FRED / CoinGecko), quant logic and core services under test. Multi-broker, multi-user (OAuth/SSO), and audit logging are natural next steps; open an issue if you'd use them.
 
-Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identity, KMS-backed token storage, and append-only audit logging are out of scope for the single-user posture today. Open an issue or PR if any of these matter for your use case.
+## Good to know
 
-## Limitations
-
-- yfinance throttles intermittently on TSX symbols (~2x a week); the adapter chain falls back but emits noisy log output.
-- Wealthsimple tokens default to 14-day TTL (override via `WS_TOKEN_TTL_HOURS`, range 1-720h). MFA re-auth is `python mcp_login.py`.
-- The Wealthsimple API is reverse-engineered. Wealthsimple does not officially support automated access; the integration may break on any release and may violate their ToS.
-- Macro skill cites FRED data that's 1-3 days stale.
-- No auto-trading. Output is advisory; place trades manually.
-- Don't expose this server to anything outside localhost until route-handler tests land.
+- Advisory only: no auto-trading, you place every trade.
+- Wealthsimple access uses the unofficial reverse-engineered `ws-api`; it can break on a WS release and may conflict with their ToS.
+- Free, delayed data: FRED macro lags a day or two, and yfinance occasionally throttles TSX symbols (the adapter chain falls back automatically).
+- Local by design: run on localhost. Tokens default to a 14-day TTL; MFA re-auth is `python mcp_login.py`.
 
 ## Quick start
 
-> The condensed version is below. If you want every step explained — what each setting does, where files go, Windows + macOS commands side by side — follow the **[full setup guide](docs/SETUP.md)** instead.
+> The condensed version is below. If you want every step explained (what each setting does, where files go, Windows + macOS commands side by side), follow the **[full setup guide](docs/SETUP.md)** instead.
 
 > Commands below use bash (works on macOS/Linux/WSL/Git-Bash). For native Windows PowerShell equivalents, see [scripts/AUTOMATION.md](scripts/AUTOMATION.md). Replace `<REPO>` with the absolute repo path.
 
 **Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), Wealthsimple account (optional - required only for portfolio-aware skills).
 
-**Easiest path — install as a Claude Code plugin.** Requires [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH (one binary). No clone, no venv, no manual wiring:
+**Easiest path: install as a Claude Code plugin.** Requires [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH (one binary). No clone, no venv, no manual wiring:
 
 ```bash
 claude plugin marketplace add tusharagg1/aifolimizer
 claude plugin install aifolimizer@aifolimizer
 ```
 
-The plugin ships all 25 skills and launches the MCP server via `uv run`, which builds the dependency env on first use. The **first launch takes ~1-2 min** while uv downloads wheels — if the `mcp__aifolimizer__*` tools don't show up immediately, restart Claude once (the env is cached afterward). All 85 market-data tools work out of the box; the 15 Wealthsimple portfolio tools stay dormant until you run `mcp_login.py` (see below). Note: plugin state (paper-trade history etc.) lives in the per-version plugin cache and resets on plugin updates — for persistent history + the always-on scheduler, use the local clone path below.
+The plugin ships all 25 skills and launches the MCP server via `uv run`, which builds the dependency env on first use. The first launch takes ~1-2 min while uv downloads wheels; if the `mcp__aifolimizer__*` tools don't show up immediately, restart Claude once (the env is cached afterward). All 85 market-data tools work out of the box; the 15 Wealthsimple portfolio tools stay dormant until you run `mcp_login.py` (see below). Note: plugin state (paper-trade history etc.) lives in the per-version plugin cache and resets on plugin updates, so for persistent history and the always-on scheduler, use the local clone path below.
 
 **Full local install — one command.** Creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
 
@@ -129,7 +127,7 @@ The plugin ships all 25 skills and launches the MCP server via `uv run`, which b
 powershell -ExecutionPolicy Bypass -File setup.ps1    # native Windows
 ```
 
-Then edit `backend/.env` (WS creds), run `mcp_login.py`, and start `run.py` (steps 5-6 below). The manual walkthrough below is the same thing, spelled out — use it if you'd rather do each step yourself or `setup` fails.
+Then edit `backend/.env` (WS creds), run `mcp_login.py`, and start `run.py` (steps 5-6 below). The manual walkthrough below is the same thing, spelled out; use it if you'd rather do each step yourself or `setup` fails.
 
 ```bash
 # 1. Postgres password file (required before docker compose up)
@@ -313,12 +311,11 @@ Issues and PRs welcome. Counts of MCP tools (102) and skills (25) cited in CLAUD
 
 ## Troubleshooting
 
-- **Port conflicts (5432, 6379, 8000).** Remap in `docker-compose.yml` (e.g. `"5433:5432"`) or change the backend port via `uvicorn main:app --port 8001`.
-- **First `/daily-briefing` is slow (~30s).** Cold cache - fundamentals, technicals, and macro all fetch from upstream on the first call. Subsequent calls hit L1 + diskcache and return in <2s.
-- **Wealthsimple MFA timeout.** Refresh token expired or WS forced re-auth. Re-run `python mcp_login.py` from `backend/`.
-- **Telegram `getUpdates` returns empty.** Telegram exposes `chat.id` only after the bot has received at least one message. Open the bot, send any text, then re-fetch.
-- **`claude mcp list` is slow (~5s).** Eager imports in `mcp_server.py` (yfinance, pandas, ta). Harmless - only paid on first invocation per session.
-- **Setup not working / unsure what's wired.** Run the doctor: `python backend/scripts/health_check.py` (or it runs at the end of `setup.sh` / `setup.ps1`). PASS/WARN/FAIL on Python version, MCP import + tool count, core services, WS session freshness, `backend/.env`, and MCP registration.
+Start with the doctor: `python backend/scripts/health_check.py` reports PASS/WARN/FAIL on Python, MCP import, tool count, services, WS session, and registration. The usual fixes:
+
+- `get my profile` empty or MFA looping? Re-auth with `python mcp_login.py` from `backend/`.
+- Port conflict (5432 / 6379 / 8000)? Remap in `docker-compose.yml` or pass `--port`.
+- First `/daily-briefing` slow (~30s)? Cold cache; the next call returns in seconds.
 
 More in [docs/FAQ.md](docs/FAQ.md).
 
