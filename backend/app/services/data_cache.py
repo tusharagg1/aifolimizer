@@ -71,6 +71,8 @@ def _conn_get() -> sqlite3.Connection:
         return _conn
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(_DB_PATH), check_same_thread=False, timeout=5.0)
+    c.execute("PRAGMA journal_mode=WAL")  # concurrent readers during writes
+    c.execute("PRAGMA synchronous=NORMAL")
     c.executescript(_SCHEMA)
     c.commit()
     _conn = c

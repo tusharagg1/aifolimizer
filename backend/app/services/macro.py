@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import math
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -60,7 +61,10 @@ def _fred_csv(series_id: str) -> tuple[str, float] | None:
         return None
 
     rows = list(csv.reader(io.StringIO(text)))
-    for date, value in reversed(rows[1:]):
+    for row in reversed(rows[1:]):
+        if len(row) != 2:
+            continue
+        date, value = row
         try:
             val = float(str(value).replace(",", ""))
             if not math.isnan(val):
@@ -113,9 +117,9 @@ def _commodity_snapshot() -> dict[str, Any]:
                         val = float(col.dropna().iloc[-1])
                         out[name] = round(val, 4)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     _commodity_cache = (now, out)
     return out
@@ -143,7 +147,7 @@ def macro_snapshot() -> dict[str, Any]:
         commodities = _commodity_snapshot()
         out["commodities"] = commodities
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     return out
 
@@ -181,7 +185,7 @@ def fear_and_greed() -> dict[str, Any]:
             _fg_cache = (now, result)
             return result
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     return {}
 
@@ -211,7 +215,7 @@ def market_breadth() -> dict[str, Any]:
                 out["vix_signal"] = "neutral"
                 out["vix_regime"] = "normal"
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # SPY regime vs 200-day SMA
     try:
@@ -237,7 +241,7 @@ def market_breadth() -> dict[str, Any]:
                 out["spy_vs_sma200_pct"] = pct
                 out["spy_regime"] = "bull" if current > sma200_val else "bear"
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # Composite regime signal
     vix_regime = out.get("vix_regime", "normal")
@@ -274,13 +278,13 @@ def market_breadth() -> dict[str, Any]:
             out["ten_year_yield"] = r10[1]
             out["two_year_yield"] = r2[1]
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # Merge Fear & Greed (non-fatal)
     try:
         out.update(fear_and_greed())
     except Exception:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # ── Portfolio-level defensive signal ──────────────────────────────────────
     # Fires when multiple macro risk factors align — tells you to raise cash

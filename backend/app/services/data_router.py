@@ -30,7 +30,7 @@ Wealthsimple-as-source is VERIFICATION-ONLY:
 
 Fault-tolerance features:
   - Per-asset chain selection via classify_asset()
-  - In-process circuit breaker per source (4 failures / 60s -> 5min cooldown)
+  - In-process circuit breaker per source (6 failures / 60s -> 5min cooldown)
   - Staleness gate: cached quote rejected if older than asset-specific budget
   - Currency stamp validation: payload currency must be in expected set
   - Optional verify=True: fetch from 2 sources, return mean if delta<2%, else
@@ -41,6 +41,8 @@ Fault-tolerance features:
 
 from __future__ import annotations
 
+import logging
+import re
 import time
 from typing import Callable
 
@@ -134,6 +136,14 @@ def _fundamentals_chain(symbol: str) -> list[DataSource]:
     return [_eodhd, _yf, _finnhub, _alpha]
 
 
+_SECRET_RE = re.compile(r"(?i)(api[_-]?key|apikey|token|key)=[^&\s]+")
+
+
+def _scrub(msg: str) -> str:
+    """Strip credential query-params from provider error strings before they are logged/persisted."""
+    return _SECRET_RE.sub(r"\1=***", msg)
+
+
 def _try_source(
     src: DataSource,
     fn: Callable[[DataSource], object],
@@ -151,14 +161,16 @@ def _try_source(
         return True, out, None, latency
     except SourceUnavailable as e:
         latency = (time.perf_counter() - start) * 1000
-        cache.log_source_call(src.name, False, latency, str(e))
+        msg = _scrub(str(e))
+        cache.log_source_call(src.name, False, latency, msg)
         _breaker.record(src.name, ok=False)
-        return False, None, str(e), latency
+        return False, None, msg, latency
     except Exception as e:
         latency = (time.perf_counter() - start) * 1000
-        cache.log_source_call(src.name, False, latency, f"unexpected:{e}")
+        msg = _scrub(f"unexpected:{e}")
+        cache.log_source_call(src.name, False, latency, msg)
         _breaker.record(src.name, ok=False)
-        return False, None, f"unexpected:{e}", latency
+        return False, None, msg, latency
 
 
 def _validate_currency(payload: dict, asset_class: str) -> bool:
@@ -198,6 +210,7 @@ def get_quote(
         cached = cache.get_quote(symbol, src.name, max_age_s)
         if cached and _validate_currency(cached, info.asset_class):
             if not cached.get("currency") and info.currency:
+                cached = dict(cached)
                 cached["currency"] = info.currency
             if verify:
                 return _augment_with_ws_verification(cached, info.asset_class)
@@ -445,7 +458,7 @@ def get_quotes_batch(symbols: list[str], max_age_s: float | None = None) -> dict
         try:
             out[sym] = get_quote(sym, max_age_s=max_age_s)
         except DataRouterError:
-            pass
+            logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     return out
 
@@ -460,7 +473,7 @@ def prewarm(symbols: list[str]) -> dict[str, str]:
             get_fundamentals(sym, max_age_s=21600)
             results[sym] += "+fundamentals"
         except DataRouterError:
-            pass
+            logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     return results
 
 

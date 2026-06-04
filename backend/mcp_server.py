@@ -11,6 +11,7 @@ All portfolio data passed through pii_filter before returning to Claude.
 import asyncio
 import importlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -256,7 +257,9 @@ async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
         raw_positions = await asyncio.to_thread(wealthsimple.get_positions, session_id, account_id)
     else:
         raw_positions = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
-    return market_data.enrich(raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad)
+    return await asyncio.to_thread(
+        market_data.enrich, raw_positions, cash_balance, ws_account_total, unrealized_pnl_cad
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -2214,8 +2217,8 @@ def _active_tenant_hash() -> str | None:
 
     sid = _state.get("session_id")
     if sid:
-        return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
-    return hashlib.sha1(b"legacy").hexdigest()[:16]
+        return hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    return hashlib.sha1(b"legacy", usedforsecurity=False).hexdigest()[:16]
 
 
 @mcp.tool()
@@ -2591,7 +2594,7 @@ async def get_alert_suite(account_id: str = "", since_hours: int = 24) -> dict:
                     }
                 )
             except (ValueError, TypeError):
-                pass
+                logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     earnings.sort(key=lambda x: x["earnings_date"])
 
     return {

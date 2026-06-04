@@ -28,8 +28,18 @@ _cache: dict[str, tuple[dict, float]] = {}
 
 # Material forms worth flagging by default (drops routine Form 4 / 144 noise).
 _MATERIAL = {
-    "8-K", "10-K", "10-Q", "6-K", "20-F", "40-F", "S-1",
-    "DEF 14A", "SC 13D", "SC 13G", "SC 13D/A", "SC 13G/A",
+    "8-K",
+    "10-K",
+    "10-Q",
+    "6-K",
+    "20-F",
+    "40-F",
+    "S-1",
+    "DEF 14A",
+    "SC 13D",
+    "SC 13G",
+    "SC 13D/A",
+    "SC 13G/A",
 }
 
 
@@ -45,8 +55,7 @@ def recent_filings(ticker: str, forms: list[str] | None = None, limit: int = 15)
 
     cik = fundamentals._load_cik_map().get(sym)
     if not cik:
-        return {"error": "no_cik", "ticker": sym,
-                "note": "US-listed only (EDGAR has no Canadian filings)."}
+        return {"error": "no_cik", "ticker": sym, "note": "US-listed only (EDGAR has no Canadian filings)."}
 
     try:
         resp = httpx.get(_SUBMISSIONS.format(cik=cik), headers=_HDR, timeout=_TIMEOUT)
@@ -66,13 +75,15 @@ def recent_filings(ticker: str, forms: list[str] | None = None, limit: int = 15)
         acc = (recent.get("accessionNumber") or [""] * (i + 1))[i]
         doc = (recent.get("primaryDocument") or [""] * (i + 1))[i]
         acc_nodash = acc.replace("-", "")
-        out.append({
-            "form": form,
-            "filed": (recent.get("filingDate") or [None] * (i + 1))[i],
-            "report_period": (recent.get("reportDate") or [None] * (i + 1))[i],
-            "description": (recent.get("primaryDocDescription") or [None] * (i + 1))[i],
-            "url": f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_nodash}/{doc}",
-        })
+        out.append(
+            {
+                "form": form,
+                "filed": (recent.get("filingDate") or [None] * (i + 1))[i],
+                "report_period": (recent.get("reportDate") or [None] * (i + 1))[i],
+                "description": (recent.get("primaryDocDescription") or [None] * (i + 1))[i],
+                "url": f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_nodash}/{doc}",
+            }
+        )
         if len(out) >= limit:
             break
 

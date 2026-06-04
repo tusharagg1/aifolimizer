@@ -368,6 +368,11 @@ def generate_trade_ticket(
         else:
             account_rec = "Match the account where position is held."
 
+        # Exit tickets have no long-side target / R:R — null phantom upside levels.
+        if action in ("SELL", "EXIT"):
+            target_price = None
+            risk_reward = None
+
         result: dict[str, Any] = {
             "symbol": symbol,
             "action": action,

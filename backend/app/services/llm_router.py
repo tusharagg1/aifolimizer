@@ -57,16 +57,15 @@ def _audit_outbound(
             "skill": task,
             "prompt_sha256": hashlib.sha256(prompt_str.encode("utf-8")).hexdigest(),
             "prompt_len_chars": len(prompt_str),
-            "prompt_first_120_chars": prompt_str[:120],
         }
         with _AUDIT_PATH.open("a", encoding="utf-8") as f:
             f.write(_json.dumps(row, ensure_ascii=False) + "\n")
         try:
             _os.chmod(_AUDIT_PATH, 0o600)
         except OSError:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
 
 # ── Per-task model routing ─────────────────────────────────────────────────────
@@ -464,7 +463,7 @@ def _portfolio_cache_key(summary: dict, recs: list[dict]) -> str:
     holdings = sorted(
         ((str(r.get("symbol") or ""), round(float(r.get("weight") or 0), 1)) for r in recs if r.get("symbol"))
     )
-    digest = hashlib.sha1(repr(holdings).encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(repr(holdings).encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"{_PORTFOLIO_PROMPT_VERSION}_{digest}"
 
 
@@ -640,7 +639,7 @@ async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | Non
         return None
 
     sample = headlines[:10]
-    hkey = (symbol, hashlib.md5("|".join(sample).encode()).hexdigest())
+    hkey = (symbol, hashlib.md5("|".join(sample).encode(), usedforsecurity=False).hexdigest())
     entry = _SENT_LLM_CACHE.get(hkey)
     if entry and time.time() - entry[1] < _SENT_LLM_TTL:
         return entry[0]

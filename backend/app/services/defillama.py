@@ -45,26 +45,26 @@ def crypto_macro() -> dict[str, Any]:
     out: dict[str, Any] = {"data_source": "DefiLlama (free, no key)"}
 
     try:
-        chains = httpx.get(_CHAINS, timeout=_TIMEOUT).json()
+        _r = httpx.get(_CHAINS, timeout=_TIMEOUT)
+        _r.raise_for_status()
+        chains = _r.json()
         total_tvl = sum(c.get("tvl") or 0 for c in chains)
         top = sorted(chains, key=lambda c: c.get("tvl") or 0, reverse=True)[:8]
         out["total_defi_tvl_b"] = _b(total_tvl)
-        out["top_chains"] = [
-            {"name": c.get("name"), "tvl_b": _b(c.get("tvl") or 0)} for c in top
-        ]
+        out["top_chains"] = [{"name": c.get("name"), "tvl_b": _b(c.get("tvl") or 0)} for c in top]
     except Exception as e:
         _LOG.warning(f"[defillama] chains fetch failed: {e}")
         out["tvl_error"] = "fetch_failed"
 
     try:
-        stables = httpx.get(_STABLES, timeout=_TIMEOUT).json()
+        _rs = httpx.get(_STABLES, timeout=_TIMEOUT)
+        _rs.raise_for_status()
+        stables = _rs.json()
         pegged = stables.get("peggedAssets") or []
         total_sc = sum(_circulating(a) for a in pegged)
         top_sc = sorted(pegged, key=_circulating, reverse=True)[:5]
         out["total_stablecoin_mcap_b"] = _b(total_sc)
-        out["top_stablecoins"] = [
-            {"symbol": a.get("symbol"), "mcap_b": _b(_circulating(a))} for a in top_sc
-        ]
+        out["top_stablecoins"] = [{"symbol": a.get("symbol"), "mcap_b": _b(_circulating(a))} for a in top_sc]
     except Exception as e:
         _LOG.warning(f"[defillama] stablecoins fetch failed: {e}")
         out["stablecoin_error"] = "fetch_failed"

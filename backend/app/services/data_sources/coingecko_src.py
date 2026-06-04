@@ -1,7 +1,8 @@
 """CoinGecko public adapter — crypto, free, no API key.
 
 Public market endpoint is rate-limited to ~30 requests/min and prices
-are CAD-denominated to match the Canadian portfolio context. Falls
+are USD-denominated (vs_currency='usd'); the router stamps currency='USD'.
+(crypto_data.py is a separate CAD path.) Falls
 through if the symbol is unknown to the local map (intentional — we
 don't want to query 17000 coins).
 

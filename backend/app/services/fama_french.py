@@ -141,9 +141,7 @@ def factor_exposure(ticker: str, lookback_days: int = 252) -> dict[str, Any]:
     ss_tot = float(((y - y.mean()) ** 2).sum())
     r2 = round(1 - ss_res / ss_tot, 3) if ss_tot else None
 
-    loadings = {
-        _FACTOR_LABELS[f]: round(float(b), 3) for f, b in zip(factors, beta[1:])
-    }
+    loadings = {_FACTOR_LABELS[f]: round(float(b), 3) for f, b in zip(factors, beta[1:])}
     return {
         "ticker": sym,
         "n_obs": len(merged),
