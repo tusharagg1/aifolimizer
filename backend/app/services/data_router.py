@@ -304,12 +304,39 @@ def get_quote(
     raise DataRouterError(f"all sources failed for quote {symbol} ({info.asset_class}): {'; '.join(errors)}")
 
 
+_fx_cache: dict[tuple[str, str], tuple[float, float]] = {}
+_FX_TTL = 3600.0
+
+
+def _fx_rate(from_ccy: str, to_ccy: str) -> float | None:
+    """Units of `to_ccy` per 1 `from_ccy`, via the FX chain. Cached 1h."""
+    if from_ccy == to_ccy:
+        return 1.0
+    key = (from_ccy, to_ccy)
+    hit = _fx_cache.get(key)
+    if hit and time.time() - hit[0] < _FX_TTL:
+        return hit[1]
+    try:
+        q = get_quote(f"{from_ccy}{to_ccy}", max_age_s=_FX_TTL)  # verify=False -> no recursion
+        rate = float(q.get("price") or 0) or None
+    except Exception:
+        rate = None
+    if rate:
+        _fx_cache[key] = (time.time(), rate)
+    return rate
+
+
 def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
     """Cross-check primary quote against the user's broker (Wealthsimple).
 
     Only fires when the WS session is currently authed. Expired/missing
     session is silently ignored — the primary payload is returned
     untouched so freshness is never coupled to broker auth state.
+
+    Currency is reconciled first: WS reports held US stocks in the account
+    currency (CAD), so the WS price is FX-converted into the payload's
+    currency before comparing — otherwise every USD holding falsely flags a
+    'disagreement' equal to the USD/CAD rate.
     """
     if not _ws_src.is_configured():
         return payload
@@ -327,10 +354,21 @@ def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
     p_ws = float(ws_q.price or 0)
     if p_main <= 0 or p_ws <= 0:
         return payload
+
+    out = dict(payload)
+    ws_ccy = (ws_q.currency or "").upper()
+    pay_ccy = (payload.get("currency") or "").upper()
+    if ws_ccy and pay_ccy and ws_ccy != pay_ccy:
+        rate = _fx_rate(ws_ccy, pay_ccy)
+        if not rate:
+            out["_ws_verify_status"] = "currency_unreconciled"
+            out["_ws_verify_price"] = p_ws
+            return out
+        p_ws = p_ws * rate
+
     delta_pct = abs(p_main - p_ws) / ((p_main + p_ws) / 2) * 100
     threshold = 2.0 if asset_class == "crypto" else 1.5
-    out = dict(payload)
-    out["_ws_verify_price"] = p_ws
+    out["_ws_verify_price"] = round(p_ws, 4)
     out["_ws_verify_delta_pct"] = round(delta_pct, 3)
     out["_ws_verify_status"] = "agreement" if delta_pct <= threshold else "broker_disagreement"
     return out
