@@ -83,7 +83,7 @@ def main() -> int:
     session_id = _load_session()
     portfolio = asyncio.run(_load_portfolio(session_id))
 
-    tenant = hashlib.sha1(session_id.encode("utf-8")).hexdigest()[:16]
+    tenant = hashlib.sha1(session_id.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     out = skill_runner.run_all_skills(portfolio, tenant_id=tenant)
     briefing = out.get("daily-briefing") or {}
     if briefing.get("status") == "error":

@@ -81,7 +81,7 @@ async def _run(skill: str) -> tuple[dict | None, int]:
         return None, 4
     ctx = {
         "session_id": sid,
-        "tenant_hash": hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16],
+        "tenant_hash": hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16],
     }
     if asyncio.iscoroutinefunction(runner):
         snap = await runner(ctx)
