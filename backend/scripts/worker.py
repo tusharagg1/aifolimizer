@@ -27,7 +27,13 @@ log = logging.getLogger("aifolimizer.worker")
 
 
 def main() -> None:
-    from rq import Worker
+    import os
+
+    from rq import SimpleWorker, Worker
+
+    # RQ's default Worker forks a work-horse per job; os.fork() is absent on
+    # Windows. SimpleWorker runs jobs in-process (no fork) — fine for solo use.
+    worker_cls = Worker if hasattr(os, "fork") else SimpleWorker
 
     r = get_redis_sync()
     if r is None:
@@ -39,8 +45,8 @@ def main() -> None:
         log.error("no queues available; worker cannot start.")
         sys.exit(1)
 
-    log.info("worker starting on queues: %s", [q.name for q in queues])
-    Worker(queues, connection=r).work()
+    log.info("worker starting (%s) on queues: %s", worker_cls.__name__, [q.name for q in queues])
+    worker_cls(queues, connection=r).work()
 
 
 if __name__ == "__main__":
