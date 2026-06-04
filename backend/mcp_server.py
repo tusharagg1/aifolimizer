@@ -141,6 +141,8 @@ async def _ws_call(fn, *args):
             "(network stall or stale token). Retry; if it persists, re-auth: "
             "cd backend && .venv/Scripts/python mcp_login.py"
         ) from e
+
+
 # Unified WS session file — same path _persist_session rewrites on token
 # refresh, so headless runs survive rotation for the full refresh-token life.
 _SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"

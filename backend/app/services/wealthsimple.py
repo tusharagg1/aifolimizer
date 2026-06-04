@@ -476,8 +476,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
             return _finalize_session_locked(session, email, session_id=session_id)
     except FileLockTimeout:
         raise ValueError(
-            "Wealthsimple session is busy (another aifolimizer process is "
-            "refreshing the token). Retry in a moment."
+            "Wealthsimple session is busy (another aifolimizer process is refreshing the token). Retry in a moment."
         )
 
 
