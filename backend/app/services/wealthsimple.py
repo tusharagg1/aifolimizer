@@ -33,8 +33,7 @@ from app.security import get_logger
 # flagged/rate-limited (CF error 1015) faster than a browser UA. Set once on
 # import so every WS call (login, refresh-token, GraphQL) presents a browser UA.
 _WS_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 WealthsimpleAPI.set_user_agent(_WS_USER_AGENT)
 

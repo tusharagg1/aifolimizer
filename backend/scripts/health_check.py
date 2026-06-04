@@ -131,14 +131,17 @@ def _check_mcp_registered() -> None:
         _add("mcp_registered", _WARN, "claude CLI not on PATH — cannot verify")
         return
     try:
-        out = subprocess.run(
-            [claude, "mcp", "list"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=20,
-        ).stdout or ""
+        out = (
+            subprocess.run(
+                [claude, "mcp", "list"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=20,
+            ).stdout
+            or ""
+        )
     except Exception as exc:
         _add("mcp_registered", _WARN, f"`claude mcp list` failed: {exc}")
         return

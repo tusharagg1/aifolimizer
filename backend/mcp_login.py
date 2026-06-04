@@ -29,8 +29,7 @@ from ws_api.exceptions import CurlException
 # WS sits behind Cloudflare; the default python-requests User-Agent is
 # flagged/rate-limited (CF error 1015) faster than a browser UA.
 _WS_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 WealthsimpleAPI.set_user_agent(_WS_USER_AGENT)
 
@@ -45,6 +44,7 @@ def _exit_rate_limited(exc: Exception) -> None:
     else:
         print(f"ERROR: WS request failed — {exc}")
     sys.exit(1)
+
 
 # Unified WS session file — same path app.services.wealthsimple persists/reads.
 # Schema must match wealthsimple._persist_session so refresh + restore + MCP all
