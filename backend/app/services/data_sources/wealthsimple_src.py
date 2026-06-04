@@ -82,6 +82,37 @@ def _ensure_fresh() -> None:
         _refresh_from_ws()
 
 
+def held_symbols_cached() -> set[str]:
+    """Held tickers from the cache ONLY — never triggers a WS refresh.
+
+    Zero-latency: returns whatever the last positions snapshot loaded (the
+    session warms it during normal portfolio loads). Empty if nothing cached
+    yet, so callers add no network cost on a cold cache.
+    """
+    with _lock:
+        return set(_cache.keys())
+
+
+def peek_quote(symbol: str) -> Quote | None:
+    """Cache-only WS quote (no refresh). None if not held / not cached."""
+    with _lock:
+        row = _cache.get(symbol.upper())
+    if not row:
+        return None
+    price = float(row.get("price") or 0)
+    if price <= 0:
+        return None
+    return Quote(
+        symbol=symbol,
+        price=price,
+        prev_close=price,
+        currency=row.get("currency"),
+        day_change_pct=None,
+        source="wealthsimple",
+        as_of=row.get("as_of", time.time()),
+    )
+
+
 class WealthsimpleSource(DataSource):
     name = "wealthsimple"
 

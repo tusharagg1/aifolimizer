@@ -270,7 +270,10 @@ def get_quote(
                 cached = dict(cached)
                 cached["currency"] = info.currency
             if verify:
-                return _augment_with_ws_verification(cached, info.asset_class)
+                return _augment_with_ws_verification(cached, info.asset_class, allow_refresh=True)
+            if _held_cached(symbol):
+                # Free broker cross-check on holdings (cache-only, no network).
+                return _augment_with_ws_verification(cached, info.asset_class, allow_refresh=False)
             return cached
 
     primary: dict | None = None
@@ -288,6 +291,8 @@ def get_quote(
                 d["currency"] = info.currency
             cache.put_quote(symbol, src.name, d)
             if not verify:
+                if _held_cached(symbol):
+                    return _augment_with_ws_verification(d, info.asset_class, allow_refresh=False)
                 return d
             if primary is None:
                 primary, primary_latency = d, latency
@@ -326,12 +331,26 @@ def _fx_rate(from_ccy: str, to_ccy: str) -> float | None:
     return rate
 
 
-def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
+def _held_cached(symbol: str) -> bool:
+    """True if the symbol is in the WS positions cache — zero network."""
+    try:
+        from app.services.data_sources import wealthsimple_src as _wss
+
+        return symbol.upper() in _wss.held_symbols_cached()
+    except Exception:
+        return False
+
+
+def _augment_with_ws_verification(payload: dict, asset_class: str, *, allow_refresh: bool = True) -> dict:
     """Cross-check primary quote against the user's broker (Wealthsimple).
 
     Only fires when the WS session is currently authed. Expired/missing
     session is silently ignored — the primary payload is returned
     untouched so freshness is never coupled to broker auth state.
+
+    allow_refresh=False reads the WS positions cache only (no network) — used
+    for the held-position default check so it adds no latency; True permits a
+    refresh and is used on explicit verify=True.
 
     Currency is reconciled first: WS reports held US stocks in the account
     currency (CAD), so the WS price is FX-converted into the payload's
@@ -344,10 +363,17 @@ def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
     if not sym:
         return payload
     try:
-        ws_q = _ws_src.get_quote(sym)
+        if allow_refresh:
+            ws_q = _ws_src.get_quote(sym)
+        else:
+            from app.services.data_sources import wealthsimple_src as _wss
+
+            ws_q = _wss.peek_quote(sym)
     except SourceUnavailable:
         return payload
     except Exception:
+        return payload
+    if ws_q is None:
         return payload
 
     p_main = float(payload.get("price") or 0)
@@ -358,6 +384,7 @@ def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
     out = dict(payload)
     ws_ccy = (ws_q.currency or "").upper()
     pay_ccy = (payload.get("currency") or "").upper()
+    fx_converted = False
     if ws_ccy and pay_ccy and ws_ccy != pay_ccy:
         rate = _fx_rate(ws_ccy, pay_ccy)
         if not rate:
@@ -365,11 +392,19 @@ def _augment_with_ws_verification(payload: dict, asset_class: str) -> dict:
             out["_ws_verify_price"] = p_ws
             return out
         p_ws = p_ws * rate
+        fx_converted = True
 
     delta_pct = abs(p_main - p_ws) / ((p_main + p_ws) / 2) * 100
-    threshold = 2.0 if asset_class == "crypto" else 1.5
+    # WS is the broker's converted position value, not a native quote. When a
+    # currency round-trip is involved (WS-CAD -> payload-USD), the WS and ECB
+    # FX rates differ by a basis spread, so this is a GROSS-error sanity check,
+    # not a precision price validator — widen the band to tolerate FX basis and
+    # flag only large divergences (wrong ticker, missed split, stale/corrupt).
+    base = 2.0 if asset_class == "crypto" else 1.5
+    threshold = base + 2.5 if fx_converted else base
     out["_ws_verify_price"] = round(p_ws, 4)
     out["_ws_verify_delta_pct"] = round(delta_pct, 3)
+    out["_ws_verify_basis"] = "fx_converted" if fx_converted else "native"
     out["_ws_verify_status"] = "agreement" if delta_pct <= threshold else "broker_disagreement"
     return out
 
