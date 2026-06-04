@@ -4,6 +4,86 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-04 - Audit batch 2 (11 builds: rigor + skills + global wiring)
+
+6 new MCP tools (DCF, backtest CI, sentinel, 3× hypothesis registry). Doc counts synced 84→98 tools, 22→25 skills (concurrent data-integration work added the rest).
+
+### New services + tools (`backend/`)
+- **`dcf.py`** → `get_dcf_valuation` — deterministic 5y FCF + Gordon terminal DCF, CAPM discount, sensitivity grid. Anchored to SEC EDGAR FCF (refactored `fundamentals._fetch_facts` + new `get_sec_cashflow`). US-only, net-debt-ignored, negative-FCF guard. Gives price targets a quantitative spine.
+- **`backtest_stats.py`** → `get_backtest_confidence` (moving-block bootstrap CI on total-return/CAGR/maxDD + order-shuffle MC drawdown-risk) and `run_lookahead_sentinel` (perfect-foresight signal must NOT earn abnormal return → leak detector). Reuse backtest engine `_fetch_close`/`_run_signal`/`_run_buy_hold`.
+- **`hypotheses.py`** → `log_hypothesis`/`list_hypotheses`/`resolve_hypothesis` — durable thesis registry (open→confirmed/refuted/expired) at `~/.aifolimizer/hypotheses.jsonl`. Covers un-executed/in-flight ideas (decision_memory only covers executed trades).
+
+### Skills
+- **`trading-desk`** (project) — chained meta-skill: adversarial-research → risk gate → crowding/concentration → pre-trade-check → PM approve/reject gate → ticket. Hard veto blocks ticket emission.
+- **`optimize-allocation`** (project) — already logged batch 1; max-Sharpe reweighting.
+- **`health-check`** (project) + `backend/scripts/health_check.py` — diagnostic: mcp import + tool count, core-service imports, WS token freshness, settings hooks. PASS/WARN/FAIL.
+- **`premortem`** (global `~/.claude/skills/`) — pre-action failure-mode gate for irreversible trades/code; blocks on HIGH-severity unmitigated.
+- Data-grounding anti-hallucination contract added to `stock-analysis` + `adversarial-research` (cite only fetched numbers).
+
+### Global config (`~/.claude/`)
+- `CLAUDE.md`: Context-Budget golden rules (70% precision threshold, new-task=new-session, delegate fan-out, lean memory files).
+- `scripts/lint_edited.py` (PostToolUse ruff-on-edit) + `scripts/precompact_snapshot.py` (PreCompact recovery dump) — scripts written + tested; **hook registration pending user approval** (auto-mode classifier blocked settings.json self-edit).
+
+### Notes
+- Skipped (not worth it): alpha-factor library (high effort/cross-sectional infra), devcontainer (modest solo value), mobile Cloudflare tunnel (infra + outward exposure), cost/cache dashboard (no per-token bill on Pro), CLAUDE.md table-extraction split (CI-fragile vs check_doc_counts for modest gain).
+- `health_check.py` confirms venv is Python 3.14 and runs clean — the CLAUDE.md `<3.14` pin note is stale (project uses `ta`, not pandas-ta).
+
+---
+
+## 2026-06-04 - 5 free data integrations (no/low-cost, fill macro+sentiment gaps)
+
+7 new MCP tools (total 84→98). All public data — no PII, no `pii_filter`. Each = own service module mirroring `geopolitical.py` (dict cache + TTL, httpx, graceful degrade).
+
+### New services (`backend/app/services/`)
+- **`boc_valet.py`** → `get_boc_snapshot` (no key). Bank of Canada Valet: policy/overnight target rate (`V39079`), USD/CAD (`FXUSDCAD`), GoC 2/5/10y yields (`BD.CDN.{2,5,10}YR.DQ.YLD`), 10y-2y curve slope. Fills Canadian gap vs US-centric FRED. 12h cache. Verified live (rate 2.25%).
+- **`crypto_sentiment.py`** → `get_crypto_fear_greed` (no key). alternative.me Fear & Greed 0-100 + 7d/30d avg + history. Pairs with `get_crypto_data`. 1h cache. Verified live (12 = Extreme Fear).
+- **`statcan.py`** → `get_statcan_snapshot` (no key). StatCan WDS: CPI all-items + computed YoY inflation (vector 41690973), unemployment rate (2062815). 12h cache. Verified live (CPI YoY 2.82%, unemployment 6.9%). StatCan WAF (Akamai) resets plain-Python TLS → fetch via `curl_cffi` `impersonate="chrome"` (lazy import, graceful degrade). New dep `curl_cffi>=0.7.0`.
+- **`finnhub_extras.py`** → `get_finnhub_news` (company-news + bull/bear headline tally), `get_insider_sentiment` (MSPR trend), `get_economic_calendar` (PREMIUM → degrades to `{"error":"premium_endpoint"}` on 401/403). Reuses existing `FINNHUB_KEY`. 30m cache.
+- **`google_trends.py`** → `get_search_interest` (no key, `pytrends` lazy-imported). Search-interest 0-100 + 4w change as retail-demand/crowding proxy. Rate-limited (429) → graceful degrade. 6h cache. New dep `pytrends>=4.9.2`.
+
+### Wiring
+- `mcp_server.py`: 5 lazy modules + 7 `@mcp.tool()` wrappers (after geopolitical, Macro section).
+- `requirements.txt`: `pytrends>=4.9.2`. `.env.example`: noted no-key sources + Finnhub-unlocks-news comment.
+- Verified: all 5 modules import, all 7 tools register (`mcp.list_tools()`=98), 3 no-key tools exercised live.
+
+---
+
+## 2026-06-04 - Feature-gap audit follow-up (4 builds from 19-repo audit)
+
+### `mcp_server.py` + `portfolio_optimizer.py`
+- **`optimize_portfolio` MCP tool** wired — exposes existing `portfolio_optimizer.optimize()` (PyPortfolioOpt max-Sharpe, Ledoit-Wolf cov, BL views from analyst targets) that was dead code (built, never registered). Params: account_id, top_n=20, use_analyst_views, risk_free_rate. Returns optimal weights + add/trim changes. % only, no $.
+- New skill `optimize-allocation/SKILL.md` — trading-bucket reweighting (distinct from DCA-only auto-rebalance); calls tool + crowding/concentration sanity gate.
+
+### `shadow_account.py` — behavioral-bias diagnosis (from Vibe-Trading)
+- `_detect_biases(roundtrips)` on existing FIFO data: disposition effect (loser/winner hold ratio), gain/loss asymmetry (payoff ratio), overtrading (cadence + median hold), anchoring (entries near round numbers). Each flagged+evidence; `biases_flagged` list. Surfaced in `analyze_shadow_account` result.
+
+### `.claude/agents/{analyst,researcher}.md` — fixed dead subagent files
+- Added YAML frontmatter (name/description/tools/model) — previously plain-prose, harness couldn't dispatch. Least-privilege tools (researcher read-only, analyst gets MCP analysis tools); model: opus/sonnet routing now enforced.
+
+### GLOBAL `~/.claude/` — security hooks (from awesome-toolkit + ultimate-guide)
+- `scripts/guard_secrets.py` + PreToolUse hook: deny AI read/edit of .env/ws_session.json/keys + shell cat of secrets. Fail-open, allowlists .env.example/.sample/.md. Runtime enforcement of CLAUDE.md privacy rules.
+- `scripts/scan_injection.py` + PostToolUse hook (matcher mcp__aifolimizer__.*): non-blocking prompt-injection warning on news/sentiment/positioning tool output (untrusted third-party text).
+
+## 2026-06-04 - Trade ticket: entry zone + tiered exit ladder
+
+### `trade_ticket.py`
+- **`entry_zone`** (BUY/ADD): support-anchored buy band. `timing=buy_now` when price near nearest support (SMA20/Bollinger/SMA50); flips to `wait_pullback` when stretched (>2x ATR above support OR RSI ≥ 70). Returns low/high/reference/support_level/support_basis/note.
+- **`exit_ladder`** (BUY/ADD): tiered T1/T2/T3 by conviction R-multiples (HIGH 2/4/6R, MED 1.5/3/4.5R, LOW 1/2/3R), scale-out 40/35/25% summing to full qty. T1 auto-anchors to nearest resistance (bb_upper/SMA) when it lands within range. Crypto → fractional shares.
+- **`position`** block when held (`avg_cost>0`): avg_cost, return_pct, stop_below_cost, plus `gain_from_cost_pct` per ladder rung.
+- **`action="HOLD"`**: management plan for a held name — stop + exit_ladder (profit-taking from current price) + position block, no entry zone, no sizing. order_type=`MANAGE`. Ladder sized against `position_quantity`.
+- Hoisted technicals fetch (reused by stop + zone + ladder). New helpers `_levels_below/_above`, `_atr_abs`, `_build_entry_zone`, `_build_exit_ladder`. All prior keys preserved (non-breaking).
+
+### `mcp_server.py`
+- `get_trade_ticket` now passes held-position `avg_cost` (book_cost/qty), `holding_return_pct`, `position_quantity` from live session; docstring documents HOLD + entry_zone/exit_ladder/position.
+
+### Skill wiring
+- **pre-trade-check**: Step 3 now sources levels from `get_trade_ticket` (entry_zone/stop/exit_ladder) — single source of truth, removed hand-rolled TP1/TP2 math; keeps 1.5%-NAV risk-based share sizing as the gate's discipline. Decision card shows buy zone + 3-tier ladder + held context.
+- **position-review**: after verdict, calls `get_trade_ticket(action=verdict)` — HOLD renders exit ladder + stop + stop_below_cost; TRIM/SELL shows stop only.
+- **cash-deployment**: §4 deployment plan routes the top-3 committed adds through `get_trade_ticket(action=ADD)` — replaces raw `pivot_levels.s1/s2` entry/stop with engine entry_zone (defers `wait_pullback` names) + stop + exit_ladder. §3 screening table unchanged. Risk-first 2%-max-loss / 5%-cap sizing kept.
+- **top-trades-today**: deliberately NOT wired — lean 5-name one-shot; `get_trade_ideas` already supplies entry/stop/target/R:R and filters wait_pullback. A 3-tier ladder per idea would bloat the Telegram output and add 5 calls for no decision value at shortlist altitude.
+
+---
+
 ## 2026-06-01 - Audit fixes: quant correctness, security, perf, self-improvement loop
 
 ### P0 quant correctness

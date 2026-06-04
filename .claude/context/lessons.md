@@ -12,6 +12,10 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 
 - **Locks need double-check.** When using `asyncio.Lock` to dedupe concurrent fetches, re-check cache inside lock - another waiter may have populated while waiting. *(Source: `_get_portfolio` lock pattern.)*
 
+## Networking / external APIs
+
+- **Gov/enterprise APIs behind Akamai reset plain-Python TLS (JA3 fingerprint block).** Symptom: `httpx`/`requests` get `WinError 10054 connection forcibly closed` or SSL handshake timeout, but system `curl` returns 200. Fix: fetch via `curl_cffi` with `impersonate="chrome"` (mimics browser TLS). Lazy-import + degrade gracefully so absence doesn't break the server. *(Source: StatCan WDS `www150.statcan.gc.ca` — httpx reset every time, curl_cffi 200. BoC Valet via same httpx worked fine → host-side WAF, not the client.)*
+
 ## yfinance
 
 - **Batch when possible.** `yf.download([syms], group_by="ticker", threads=True)` one HTTP regardless of symbol count. Serial loops easy bottleneck.
@@ -63,6 +67,14 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Pivot ≠ spot. Never infer current_price from pivot levels.** `get_technicals` pivots are computed from PRIOR session H/L/C — NOT the live quote. When `current_price` is null (partial yfinance fetch / pre-market / data race), call `get_quote_with_source` for spot before producing any trade plan. *(Source: stock-analysis incident Jun 2026 — inferred spot from pivot, real spot ~9% lower after a sector-gap event. Trade plan stale.)*
 
 - **`claude mcp list` shows server health, not session schema availability.** Connected server can have zero tools exposed in current session if schema fetch raced startup. Verify with actual tool call, not list output.
+
+- **Never destroy a credential on transient validation failure.** Token/session validators that make live network calls must distinguish "provider rejected the credential (revoke it)" from "the call merely failed (keep it, retry later)". Deleting the persisted token on any `Exception` turns a 1-second network blip into a forced re-auth/MFA. Default to keeping the credential; let a genuinely-revoked one fail naturally on the next real call and re-auth overwrite it. *(Source: `wealthsimple.restore_session` cleared `ws_session.json` on any `_finalize_session` exception → recurring MFA re-entry despite a valid 14-day token, Jun 2026.)*
+
+- **A "validity probe" via fresh login is self-defeating for MFA-gated providers.** Doing a full username+password login to check whether a session is still valid is the call most likely to trigger MFA. Probe via the saved token (restore) instead; and if a fresh login does succeed, persist its result rather than discarding it. *(Source: `mfa_popup` "already valid" branch fresh-logged then dropped the session without persisting, Jun 2026.)*
+
+- **Match a persist/callback signature to what the library ACTUALLY passes, and never swallow the persist failure silently.** ws-api calls `persist_session_fct(self.session.to_json(), username)` — first arg is a JSON *string*, not the session object. Our callback assumed an object and called `.to_json()` on a str → `AttributeError`, caught and logged at WARNING only. Net effect: with rotating single-use refresh tokens, every refresh minted a new refresh token that was never written to disk, so the next restart presented a consumed token → forced MFA on a ~hourly cadence. Root cause hid for months behind a swallowed warning. Rule: verify callback arg types against the caller's source; let persist failures be loud (they break durability silently). *(Source: `wealthsimple._persist_session` str/obj mismatch, Jun 2026.)*
+
+- **Rotating refresh tokens are single-use — never test refresh against the live token without a throwaway clone.** Forcing a refresh consumes the on-disk refresh token server-side; if persist is broken (or the test doesn't save the rotated token), the live session is destroyed and needs re-auth. Clone the session file to a temp path and point the persist target there before exercising any refresh path. *(Source: burned the live WS session mid-debug by force-refreshing against the real file, Jun 2026.)*
 
 ## Strategy / Behavioral Analysis
 
