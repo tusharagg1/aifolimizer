@@ -98,3 +98,11 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Fix**: module-global `_last_email` set in `_finalize_session`; `_persist_session` falls back email -> `_last_email` -> on-disk email, skips only if all None.
 - **Rule**: token-rotation persist callbacks must NOT depend on username arg library may omit. Persist session_json whenever any owner identity resolves. Dropped rotation write = dead session at access-token horizon, not refresh-token horizon.
 - **Op note**: dropped rotation can't be revived — re-auth once (`mcp_login.py`) to seed fresh refresh_token, and restart long-running MCP process so patched module loads.
+## Windows automation gotchas + scheduler coupling (2026-06-04)
+- **RQ default `Worker` forks per job; `os.fork` absent on Windows** -> worker crashes every job, exits 0. Use `SimpleWorker` (in-process) when `not hasattr(os, "fork")`.
+- **`New-ScheduledTaskTrigger -Once` + `.DaysOfWeek` is a silent no-op** (DaysOfWeek only honored by `-Weekly`/`-Daily`); plus a bounded `-RepetitionDuration` makes the task fire one window then stop. Omit duration for indefinite 30-min repetition. Symptom: task ran once on register day, NextRun empty forever after.
+- **uvicorn `reload=True` under a non-interactive scheduled task** spawns a reloader child that can outlive the parent and orphan-hold the port (TCP entry shows a dead PID). Run services `reload=False` (single process); gate reload behind an env var for dev.
+- **PowerShell 5.1 parses a BOM-less UTF-8 file as ANSI** -> a multibyte char (em-dash) shifts tokenization and breaks an unrelated later string ("missing terminator"). Keep `.ps1` ASCII or write with a BOM.
+- **Windows console is cp1252**; `print()` of emoji raises UnicodeEncodeError. `sys.stdout.reconfigure(encoding="utf-8")` in scripts that emit unicode.
+- **Nightly scheduler is coupled to the FastAPI lifespan** (`start_scheduler()` in main.py), NOT the MCP server process. If the backend process is down, zero nightly automation runs even though MCP tools still work. Keep the backend task alive (logon/boot trigger + restart) for self-learning loops to fire.
+- **Notify cadence != check cadence.** A 30-min alert sweep is fine if the Telegram push is gated (per-day dedup + min-severity); the spam came from un-gated pushes and a crash-looping auth path, not the schedule itself.
