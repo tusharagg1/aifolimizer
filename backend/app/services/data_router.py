@@ -57,11 +57,14 @@ from app.services.data_sources.base import (
 from app.services.data_sources.alphavantage_src import AlphaVantageSource
 from app.services.data_sources.binance_src import BinanceSource
 from app.services.data_sources.circuit_breaker import default_breaker
+from app.services.data_sources.coinbase_src import CoinbaseSource
 from app.services.data_sources.coingecko_src import CoinGeckoSource
 from app.services.data_sources.eodhd_src import EODHDSource
 from app.services.data_sources.finnhub_src import FinnhubSource
 from app.services.data_sources.frankfurter_src import FrankfurterSource
+from app.services.data_sources.kraken_src import KrakenSource
 from app.services.data_sources.massive_src import MassiveSource
+from app.services.data_sources.openerapi_src import OpenErApiSource
 from app.services.data_sources.stooq_src import StooqSource
 from app.services.data_sources.symbol_classifier import (
     classify_asset,
@@ -88,6 +91,9 @@ _twelve = TwelveDataSource()
 _eodhd = EODHDSource()
 _frankfurter = FrankfurterSource()
 _binance = BinanceSource()
+_kraken = KrakenSource()
+_coinbase = CoinbaseSource()
+_openerapi = OpenErApiSource()
 _coingecko = CoinGeckoSource()
 _ws_src = WealthsimpleSource()
 _breaker = default_breaker()
@@ -111,46 +117,21 @@ def demoted_sources() -> list[str]:
     return sorted(_DEMOTED)
 
 
-# Reliability-ranked routing: each chain is reordered best-first by the
-# source's observed 30-day success rate (cached). Sources with too little
-# evidence keep their authored position (neutral default); demoted sources
-# are forced to the back regardless. Pure reorder — never drops a source.
-_RANK_TTL = 600.0  # refresh the reliability snapshot at most every 10 min
-_RANK_MIN_CALLS = 20  # below this, not enough evidence to re-rank
-_RANK_DEFAULT = 85.0  # assumed success% for unproven sources (keeps them mid)
-_rank_cache: tuple[float, dict[str, float]] | None = None
-
-
-def _reliability_rank() -> dict[str, float]:
-    global _rank_cache
-    now = time.time()
-    if _rank_cache and now - _rank_cache[0] < _RANK_TTL:
-        return _rank_cache[1]
-    rank: dict[str, float] = {}
-    try:
-        for r in cache.source_stats_summary(since_s=30 * 86400):
-            if (r.get("calls") or 0) >= _RANK_MIN_CALLS:
-                rank[r["source"]] = float(r.get("success_rate_pct") or 0.0)
-    except Exception:
-        pass
-    _rank_cache = (now, rank)
-    return rank
-
-
+# Demote-only routing. The hand-curated chain order encodes DATA-QUALITY /
+# accuracy judgement (e.g. official venue before scrape), which success-rate
+# stats cannot measure — a source can return 100% "successful" responses that
+# are stale or wrong. So observed reliability is used ONLY to push chronically
+# FAILING sources to the back (via source_drift -> demote()), never to promote
+# an available-but-unvalidated source ahead of a trusted one. Accuracy itself
+# is guarded separately at acceptance time: _validate_currency, the staleness
+# budget, price>0 checks, and opt-in cross-source consensus (verify=True).
 def _order_chain(chain: list[DataSource]) -> list[DataSource]:
-    """Stable best-first reorder by observed reliability; demoted last."""
-    rank = _reliability_rank()
-    if not rank and not _DEMOTED:
+    """Keep the curated order; move only demoted (broken) sources to the back."""
+    if not _DEMOTED:
         return chain
-
-    def _key(item: tuple[int, DataSource]) -> tuple:
-        idx, src = item
-        if src.name in _DEMOTED:
-            return (1, 0.0, idx)  # hard back, preserve relative order
-        rel = rank.get(src.name, _RANK_DEFAULT)
-        return (0, -rel, idx)  # proven: reliability desc; ties keep authored order
-
-    return [s for _, s in sorted(enumerate(chain), key=_key)]
+    keep = [s for s in chain if s.name not in _DEMOTED]
+    back = [s for s in chain if s.name in _DEMOTED]
+    return keep + back
 
 
 def _quote_chain(symbol: str) -> list[DataSource]:
@@ -169,9 +150,11 @@ def _quote_chain_base(symbol: str) -> list[DataSource]:
     info = classify_asset(symbol)
     ac = info.asset_class
     if ac == "crypto":
-        return [_binance, _coingecko, _twelve, _yf]
+        # Kraken/Coinbase lead: keyless real-time venues, accessible from
+        # Canada (Binance global is geo-blocked here).
+        return [_kraken, _coinbase, _binance, _coingecko, _twelve, _yf]
     if ac == "fx":
-        return [_frankfurter, _twelve, _yf]
+        return [_frankfurter, _openerapi, _twelve, _yf]
     if ac == "index":
         return [_yf, _twelve, _stooq]
     if ac == "us_equity":
@@ -187,7 +170,7 @@ def _history_chain_base(symbol: str) -> list[DataSource]:
     info = classify_asset(symbol)
     ac = info.asset_class
     if ac == "crypto":
-        return [_binance, _coingecko, _yf]
+        return [_kraken, _coinbase, _binance, _coingecko, _yf]
     if ac == "fx":
         return [_frankfurter, _twelve, _yf]
     if ac == "index":
