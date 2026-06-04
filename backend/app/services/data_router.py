@@ -92,8 +92,80 @@ _coingecko = CoinGeckoSource()
 _ws_src = WealthsimpleSource()
 _breaker = default_breaker()
 
+# Sources demoted by source_drift (chronically failing / rate-limited) are
+# routed LAST so a bad provider can't keep heading the chain and burning
+# latency + log noise. In-process; re-evaluated each nightly drift pass.
+_DEMOTED: set[str] = set()
+
+
+def demote(name: str) -> None:
+    """Route `name` to the back of every chain until cleared/restart."""
+    _DEMOTED.add(name)
+
+
+def clear_demotion(name: str) -> None:
+    _DEMOTED.discard(name)
+
+
+def demoted_sources() -> list[str]:
+    return sorted(_DEMOTED)
+
+
+# Reliability-ranked routing: each chain is reordered best-first by the
+# source's observed 30-day success rate (cached). Sources with too little
+# evidence keep their authored position (neutral default); demoted sources
+# are forced to the back regardless. Pure reorder — never drops a source.
+_RANK_TTL = 600.0  # refresh the reliability snapshot at most every 10 min
+_RANK_MIN_CALLS = 20  # below this, not enough evidence to re-rank
+_RANK_DEFAULT = 85.0  # assumed success% for unproven sources (keeps them mid)
+_rank_cache: tuple[float, dict[str, float]] | None = None
+
+
+def _reliability_rank() -> dict[str, float]:
+    global _rank_cache
+    now = time.time()
+    if _rank_cache and now - _rank_cache[0] < _RANK_TTL:
+        return _rank_cache[1]
+    rank: dict[str, float] = {}
+    try:
+        for r in cache.source_stats_summary(since_s=30 * 86400):
+            if (r.get("calls") or 0) >= _RANK_MIN_CALLS:
+                rank[r["source"]] = float(r.get("success_rate_pct") or 0.0)
+    except Exception:
+        pass
+    _rank_cache = (now, rank)
+    return rank
+
+
+def _order_chain(chain: list[DataSource]) -> list[DataSource]:
+    """Stable best-first reorder by observed reliability; demoted last."""
+    rank = _reliability_rank()
+    if not rank and not _DEMOTED:
+        return chain
+
+    def _key(item: tuple[int, DataSource]) -> tuple:
+        idx, src = item
+        if src.name in _DEMOTED:
+            return (1, 0.0, idx)  # hard back, preserve relative order
+        rel = rank.get(src.name, _RANK_DEFAULT)
+        return (0, -rel, idx)  # proven: reliability desc; ties keep authored order
+
+    return [s for _, s in sorted(enumerate(chain), key=_key)]
+
 
 def _quote_chain(symbol: str) -> list[DataSource]:
+    return _order_chain(_quote_chain_base(symbol))
+
+
+def _history_chain(symbol: str) -> list[DataSource]:
+    return _order_chain(_history_chain_base(symbol))
+
+
+def _fundamentals_chain(symbol: str) -> list[DataSource]:
+    return _order_chain(_fundamentals_chain_base(symbol))
+
+
+def _quote_chain_base(symbol: str) -> list[DataSource]:
     info = classify_asset(symbol)
     ac = info.asset_class
     if ac == "crypto":
@@ -111,7 +183,7 @@ def _quote_chain(symbol: str) -> list[DataSource]:
     return [_yf, _twelve, _tiingo, _stooq]
 
 
-def _history_chain(symbol: str) -> list[DataSource]:
+def _history_chain_base(symbol: str) -> list[DataSource]:
     info = classify_asset(symbol)
     ac = info.asset_class
     if ac == "crypto":
@@ -121,7 +193,9 @@ def _history_chain(symbol: str) -> list[DataSource]:
     if ac == "index":
         return [_yf, _twelve, _stooq]
     if ac == "us_equity":
-        return [_massive, _twelve, _yf, _tiingo, _stooq]
+        # yfinance leads (most reliable here); massive last — it is free-tier
+        # rate-limited (429s) and net-negative as a primary for history.
+        return [_yf, _twelve, _tiingo, _stooq, _massive]
     if ac == "ca_equity":
         return [_twelve, _yf, _tiingo, _eodhd, _stooq]
     if ac in ("uk_equity", "eu_equity"):
@@ -129,7 +203,7 @@ def _history_chain(symbol: str) -> list[DataSource]:
     return [_yf, _twelve, _tiingo, _stooq]
 
 
-def _fundamentals_chain(symbol: str) -> list[DataSource]:
+def _fundamentals_chain_base(symbol: str) -> list[DataSource]:
     info = classify_asset(symbol)
     if info.asset_class == "ca_equity":
         return [_eodhd, _yf, _finnhub, _alpha]

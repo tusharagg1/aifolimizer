@@ -1,0 +1,9 @@
+# Shell scripts and POSIX unit files MUST stay LF — CRLF breaks the shebang
+# (`#!/usr/bin/env bash\r`) and systemd/launchd parsing on Linux/macOS.
+*.sh            text eol=lf
+*.service       text eol=lf
+*.timer         text eol=lf
+*.plist         text eol=lf
+
+# PowerShell is fine either way; pin CRLF for native Windows tooling.
+*.ps1           text eol=crlf

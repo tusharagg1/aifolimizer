@@ -28,6 +28,7 @@ _AUDIT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "source_drift_aud
 
 DRIFT_THRESHOLD_PP = 10.0  # percentage-point delta that trips the gate
 MIN_CALLS = 30  # don't react to a 5-call sample
+ABS_FLOOR_PCT = 35.0  # demote a chronically-bad source even when it isn't drifting
 
 
 def _stats(window_s: float) -> dict[str, dict[str, float]]:
@@ -57,6 +58,7 @@ def detect_and_demote(
     short_window_s: float = 7 * 86400,
     long_window_s: float = 30 * 86400,
     threshold_pp: float = DRIFT_THRESHOLD_PP,
+    floor_pct: float = ABS_FLOOR_PCT,
 ) -> dict[str, Any]:
     short = _stats(short_window_s)
     long_ = _stats(long_window_s)
@@ -76,18 +78,19 @@ def detect_and_demote(
                 "delta_pp": round(delta, 2),
             }
         )
-        if delta < threshold_pp:
+        # Demote on either: drift (was-good-now-bad) OR a chronically-low
+        # absolute success rate (stably bad — never trips the drift delta).
+        is_drift = delta >= threshold_pp
+        is_chronic = s["success_rate_pct"] < floor_pct
+        if not (is_drift or is_chronic):
             continue
-        # Demote in-process — restart resets ordering. Cheap signal that
-        # the next call should prefer a different source first.
+        # Demote in-process — restart resets it. Routes the source to the
+        # back of every chain so a chronically-failing/rate-limited provider
+        # stops heading the fallback order.
         try:
             from app.services import data_router
 
-            order = list(data_router._ORDER)
-            if source in order:
-                order.remove(source)
-                order.append(source)
-                data_router._ORDER = order
+            data_router.demote(source)
         except Exception as e:
             _LOG.warning("source_drift: demote failed for %s: %s", source, e)
         row = {
@@ -97,6 +100,7 @@ def detect_and_demote(
             "short_success_pct": round(s["success_rate_pct"], 2),
             "long_success_pct": round(baseline, 2),
             "action": "demoted_to_back",
+            "reason": "drift" if is_drift else "chronic_low",
         }
         _append_audit(row)
         drifted.append(row)
