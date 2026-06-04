@@ -1,6 +1,8 @@
 import json
 import time
 import urllib.request
+
+import httpx
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, date as date_type
 import yfinance as yf
@@ -398,9 +400,11 @@ def _load_cik_map() -> dict[str, str]:
     if _CIK_MAP:
         return _CIK_MAP
     try:
-        req = urllib.request.Request(_SEC_TICKERS_URL, headers=_SEC_HEADERS)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        # httpx not urllib: www.sec.gov's Akamai WAF 403s urllib's fingerprint
+        # (data.sec.gov used by _fetch_facts is more permissive). See lessons.md.
+        resp = httpx.get(_SEC_TICKERS_URL, headers=_SEC_HEADERS, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
         for entry in data.values():
             sym = str(entry.get("ticker", "")).upper()
             cik = str(entry.get("cik_str", "")).zfill(10)

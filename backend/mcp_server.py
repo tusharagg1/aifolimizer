@@ -90,6 +90,9 @@ crypto_sentiment_svc = _LazyModule("app.services.crypto_sentiment")
 statcan_svc = _LazyModule("app.services.statcan")
 finnhub_extras_svc = _LazyModule("app.services.finnhub_extras")
 google_trends_svc = _LazyModule("app.services.google_trends")
+fama_french_svc = _LazyModule("app.services.fama_french")
+defillama_svc = _LazyModule("app.services.defillama")
+edgar_filings_svc = _LazyModule("app.services.edgar_filings")
 
 from app.services.pii_filter import (
     filter_personal_context_full,
@@ -740,6 +743,53 @@ async def get_search_interest(keywords: list[str], timeframe: str = "today 3-m")
     keywords. timeframe: pytrends syntax (e.g. "today 3-m", "today 12-m"). Cached 6h.
     """
     return await asyncio.to_thread(google_trends_svc.trends_interest, keywords, timeframe)
+
+
+@mcp.tool()
+async def get_factor_snapshot() -> dict:
+    """
+    Fama-French factor returns via Ken French Data Library (free, no key). Latest
+    daily + trailing 21d/252d returns for Mkt-RF (market), SMB (size), HML (value),
+    RMW (profitability), CMA (investment), Mom (momentum), RF. factor_legend maps
+    codes→names. Use to read which style factors are working before sizing tilts.
+    Cached 24h.
+    """
+    return await asyncio.to_thread(fama_french_svc.factor_snapshot)
+
+
+@mcp.tool()
+async def get_factor_exposure(ticker: str, lookback_days: int = 252) -> dict:
+    """
+    OLS regression of a ticker's excess returns on Fama-French 5 + momentum (free,
+    no key). Returns loadings (beta to market/size/value/profitability/investment/
+    momentum), annualized alpha %, R², n_obs. Reveals hidden style tilts vs a plain
+    market beta. US factors → non-US tickers directional only. lookback_days 60-1260.
+    """
+    return await asyncio.to_thread(fama_french_svc.factor_exposure, ticker, lookback_days)
+
+
+@mcp.tool()
+async def get_crypto_macro() -> dict:
+    """
+    DefiLlama crypto macro (free, no key). Total DeFi TVL + top chains by TVL, and
+    aggregate stablecoin market cap + top issuers (all in $B). Rising stablecoin
+    supply = dry powder entering crypto; falling TVL = risk-off. Macro-health
+    context for the crypto sleeve alongside get_crypto_data + get_crypto_fear_greed.
+    Cached 30m.
+    """
+    return await asyncio.to_thread(defillama_svc.crypto_macro)
+
+
+@mcp.tool()
+async def get_recent_filings(ticker: str, forms: list[str] = [], limit: int = 15) -> dict:
+    """
+    Recent material SEC filings via EDGAR (free, no key). Returns form, filed date,
+    report_period, description, and a direct document URL per filing. Default filter
+    = material forms (8-K, 10-K, 10-Q, 6-K, 20-F, S-1, proxy, 13D/G); pass `forms`
+    to override (e.g. ["8-K"]). Event-detection feed for catalysts. US-listed only.
+    limit 1-50. Cached 6h.
+    """
+    return await asyncio.to_thread(edgar_filings_svc.recent_filings, ticker, forms or None, limit)
 
 
 # ────────────────────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ pydantic-settings>=2.6.1
 httpx>=0.27.2
 yfinance>=0.2.43
 pandas>=2.2.2
+numpy>=1.26.0  # explicit (transitive via pandas/ta) — used directly in fama_french OLS
 ta>=0.11.0
 python-dotenv>=1.0.1
 mcp>=1.2.0
