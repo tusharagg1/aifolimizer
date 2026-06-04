@@ -618,3 +618,36 @@ Always-on BUY/SELL/HOLD/WATCH without manual Claude commands. Rule-based engine,
 - `pre-trade-check`: lottery flag = warning gate for BUY/ADD (wait for mean-revert).
 - `cash-deployment`: lottery_flag != true added to Setup Score + ideal-add cross-ref.
 - Source: review of academic-anomaly screenshots. 5 of 6 anomalies already shipped (52wk-high, PEAD, 12m momentum); pairs-trading + turn-of-month skipped (no short / tx-cost in retail TFSA). Verified: ruff clean, fires on synthetic 15% spike, no false positive on AAPL/NVDA/XEQT.
+
+## 2026-06-04 — Full audit pass (test/perf/security/logic/automation/integrations)
+Baseline: 335 pass + 1 fail. Now 336 pass / 0 fail. 12 files changed.
+- **PII test fix**: portfolio_analytics xray/sector/asset breakdowns returned unrounded float weights (16-digit fractional → tripped `\d{14,}` account-ID guard). Rounded to 6dp.
+- **Perf (high)**: mcp_server `_load_portfolio` called sync `market_data.enrich()` on event loop (blocked ~25 MCP tools). Wrapped in `asyncio.to_thread`.
+- **Logic (currency)**: `xray_exposures` used `pos.market_value` (native) vs CAD denominator; siblings use `market_value_cad`. Fixed. Same class in `tax_loss_candidates` → `market_value_cad`/`book_cost_cad`.
+- **Logic**: trade_ticket SELL/EXIT nulled phantom long-side `target_price`/`risk_reward_ratio`.
+- **Security**: data_router `_try_source` scrubs `(api)key|token=...` from provider error strings before SQLite log (`_scrub`). llm_router dropped `prompt_first_120_chars` from audit log (footgun).
+- **Integrations**: macro `_fred_csv` guards row unpack (len!=2 skip); defillama added `raise_for_status` on both calls; coingecko_src docstring CAD→USD; circuit_breaker doc drift 4→6.
+- **Perf**: data_cache enabled WAL + synchronous=NORMAL; data_router copy-before-mutate cached quote.
+- **Automation (self-logging)**: wired nightly equity NAV snapshot into scheduler `_score_once_if_due` so `get_alpha_attribution` self-populates (was manual-only).
+Verified: imports clean, ruff+format clean, 336 tests pass, e2e 14/14, live get_xray/integrations OK, all hooks fire + continuous code-graph sync confirmed.
+Deferred (not worth breakage risk): dead RQ task wrappers (nightly_q/run_risk_gate/run_alerts_for_tenant — harmless no-ops, inline+external paths work); fundamentals/technicals in-flight stampede guard (deadlock risk); signal_history calendar-vs-trading-day skip-label (no wrong numbers); py3.14 vs pyproject <3.14 pin (stale, runs fine).
+
+## 2026-06-04 — Fix: no Telegram alerts from scheduled runs
+Three independent root causes, all fixed:
+1. **Auth (blocker)**: `run_alerts.py._load_session` hand-rolled `_finalize_session` (no token refresh) → `UNAUTHENTICATED`/`invalid_grant` every run. Now uses hardened `wealthsimple.restore_session()` (force-refreshes expired access token from refresh_token). Verified: 17 alerts triggered, exit 0.
+2. **Schedule**: `schedule_alerts.ps1` used `New-ScheduledTaskTrigger -Once` + `.DaysOfWeek` (no-op on -Once) + `RepetitionDuration 6h30m` → task fired once May 28, never recurred (NextRun empty). Fixed: dropped DaysOfWeek hack, removed RepetitionDuration (=indefinite 30-min repetition), bumped ExecutionTimeLimit 3→10min (cold yfinance+massive 429s exceed 3min). Also fixed em-dash in -Description (broke PS 5.1 ANSI parse of BOM-less file). Re-registered: NextRun armed, scheduled run = result 0.
+3. **Scheduler dead**: FastAPI backend (hosts APScheduler via main.py lifespan; MCP process does NOT) wasn't running (port 8000 down, `aifolimizer-backend` task exited 0xC000013A). Started it → /health ok → nightly scoring/skills/calibration/equity-snapshot live again. `run.py` reload=True→env-gated (default off) so the scheduled service is single-process/robust (documented dev start uses `uvicorn --reload`).
+Telegram delivery confirmed end-to-end (sendMessage 200, ok:true). Dedup is per-rule/symbol/day (7d state) — correct; today's keys already seeded by test runs, fresh pushes resume tomorrow.
+Noted (not changed): `aifolimizer-daily-briefing` task mislabeled (runs run_alerts.py; works now post-auth-fix); `aifolimizer-worker` (RQ consumer) down — only affects per-tenant RQ skill ticks; nightly self-learning runs inline in scheduler.
+
+## 2026-06-04 — Daily-briefing→Telegram + RQ worker fix
+- **New `scripts/send_daily_briefing.py`**: headless/no-LLM digest. restore_session → portfolio → `skill_runner.run_all_skills` (codified composer) → formats daily-briefing snapshot (NLV/return/cash, next_action, insights, alerts) → Telegram (raw httpx, UTF-8). stdout reconfigured utf-8 for --dry-run on cp1252 consoles. Verified: real send exit 0, delivered.
+- **Repointed `aifolimizer-daily-briefing` task** from run_alerts.py → send_daily_briefing.py (kept Mon-Fri 8:30 trigger; ExecutionTimeLimit 10min). NextRun tomorrow 8:30.
+- **Worker fix `scripts/worker.py`**: RQ default Worker forks per job; `os.fork()` absent on Windows → worker crashed/exited every start. Now `SimpleWorker` (in-process, no fork) when `not hasattr(os,'fork')`. Verified: processes queued `run_skill_tick_for_tenant`, stays listening. Started persistently (Redis reachable at redis://localhost:6379/0).
+- Discovered: scheduler HAD been enqueuing per-tenant skill ticks all along — they sat unconsumed because the worker never ran on Windows.
+
+## 2026-06-04 — Alert noise reduction + lifecycle notifications
+User: MFA alerts too frequent (30min); portfolio alerts only on critical/major; add system up-after-down.
+- **Portfolio alerts → high-severity only**: `alerts.dispatch(min_severity=)` gates Telegram push (history still logs all). `run_alerts.py --min-severity` default **high** → only major price moves (≥10%) push; earnings/concentration/RSI logged + surfaced via daily briefing. Verified: 3 triggered → 1 pushed, 2 held.
+- **MFA → once per expiry event**: `mfa_notify.py` cooldown 6h→24h (daily reminder cap) + new `clear_flag()`. `run_alerts.py` on dead session fires notify once + exits 0 (was crashing every 30min); on valid session calls `clear_flag()`. `main.py` lifespan clears flag on successful restore, fires notify on None. Net: one heads-up per real expiry, reset on re-auth.
+- **System-up notification**: `main.py._fire_system_up()` pushes "🟢 aifolimizer online" once per boot, deduped 30min (crash-loop guard) via `.online-notify.last` marker. Fired from lifespan. Verified live (marker written = push sent).
