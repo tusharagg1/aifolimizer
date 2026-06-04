@@ -21,6 +21,8 @@ tags = ["pii", "owner"]
     '''^pyproject\.toml$''',
     '''^\.gitleaks\.toml$''',
     '''^\.githooks/pre-commit$''',
+    '''^\.claude-plugin/marketplace\.json$''',
+    '''^\.claude-plugin/plugin\.json$''',
   ]
 
 [[rules]]

@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PATTERNS='tusharagg1@gmail\.com|Tushar Agg(arwal)?|tushar-prod|tushar\.aggarwal|sntry[ups]_[a-f0-9]{60,80}'
-ALLOW='^(LICENSE|README\.md|pyproject\.toml|\.githooks/pre-commit|\.gitleaks\.toml)$'
+ALLOW='^(LICENSE|README\.md|pyproject\.toml|\.githooks/pre-commit|\.gitleaks\.toml|\.claude-plugin/marketplace\.json|\.claude-plugin/plugin\.json)$'
 
 added_files=$(git diff --cached --name-only --diff-filter=AM)
 [ -z "$added_files" ] && exit 0
