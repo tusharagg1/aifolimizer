@@ -177,13 +177,13 @@ def _interval_seconds(now: datetime) -> int:
 def _active_session_ids(limit: int = _MAX_TENANT_FANOUT) -> list[str]:
     """Return all known active session ids, capped at `limit`.
 
-    wealthsimple._SESSIONS is in-process; if the server restarts the scheduler
+    wealthsimple._sessions is in-process; if the server restarts the scheduler
     stays idle until users log in.
     """
-    sessions = getattr(wealthsimple, "_SESSIONS", None) or {}
+    sessions = getattr(wealthsimple, "_sessions", None) or {}
     out: list[str] = []
     for sid, sess in sessions.items():
-        if sess and sess.get("access_token"):
+        if sess and sess.get("state") == "authed":
             out.append(sid)
             if len(out) >= limit:
                 break

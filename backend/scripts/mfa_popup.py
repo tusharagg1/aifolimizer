@@ -120,12 +120,16 @@ def main() -> int:
         pass
 
     try:
-        WealthsimpleAPI.login(
+        session = WealthsimpleAPI.login(
             username=email,
             password=password,
             otp_answer=None,
             persist_session_fct=_noop,
         )
+        # WS didn't demand OTP — this login produced a fresh, valid session.
+        # Persist it so the launcher's silent-success path actually refreshes
+        # ws_session.json instead of leaving the old (possibly stale) token.
+        _persist(session, email)
         _msg("info", "WS session already valid. No MFA required.")
         return 0
     except OTPRequiredException:

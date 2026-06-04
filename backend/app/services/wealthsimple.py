@@ -96,21 +96,29 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         pass  # chmod is a no-op on Windows but try-anyway is harmless
 
 
-def _persist_session(session: WSAPISession, email: Optional[str] = None) -> None:
+def _persist_session(session: "WSAPISession | str", email: Optional[str] = None) -> None:
     """Write the live WSAPISession to disk so a backend restart can resume.
 
     File mode is set to 0600 (owner read/write only). Password is never persisted —
     only the access token, which already has WS's own server-side expiry.
     Called by ws-api whenever the access token is refreshed.
+
+    ws-api invokes this with ``self.session.to_json()`` — i.e. the first arg is
+    already a JSON *string*, not a WSAPISession. (See check_oauth_token /
+    login_internal in ws_api.wealthsimple_api.) Previously this assumed an
+    object and called ``.to_json()`` on the str, raising AttributeError that was
+    swallowed — so refreshed tokens were NEVER persisted and every restart
+    reused the dead access token, forcing avoidable MFA. Accept both forms.
     """
     if email is None:
         return  # ws-api may invoke without username during token refresh — skip
     try:
+        session_json = session if isinstance(session, str) else session.to_json()
         _atomic_write_json(
             _PERSIST_FILE,
             {
                 "email": email,
-                "session_json": session.to_json(),
+                "session_json": session_json,
                 "saved_utc": time.time(),
             },
         )
@@ -153,8 +161,25 @@ def restore_session() -> Optional[str]:
     try:
         return _finalize_session(session, email)["session_id"]
     except Exception as e:
-        _LOG.warning(f"[WS] restore validate failed: {type(e).__name__}")
-        _clear_persisted_session()
+        _LOG.warning(f"[WS] restore validate failed, forcing token refresh: {type(e).__name__}")
+
+    # Force the OAuth refresh-token grant. ws-api's check_oauth_token only
+    # auto-refreshes when its probe returns the exact message "Not Authorized.";
+    # an expired-token GraphQL response surfaces as {"errors":[...]} with no
+    # top-level "message", so ws-api re-raises instead of refreshing — and the
+    # session dies at WS's server-side access-token life (~hours), far short of
+    # our 14d ceiling, forcing needless MFA. Blanking access_token makes
+    # check_oauth_token skip the probe and mint a fresh access token straight
+    # from the (longer-lived) refresh_token, then persist it.
+    try:
+        session.access_token = None
+        return _finalize_session(session, email)["session_id"]
+    except Exception as e:
+        # Refresh genuinely failed (refresh_token expired/revoked, or WS down).
+        # Keep the file: TTL + parse paths already prune dead/corrupt sessions,
+        # and a real re-login overwrites it. Deleting here would only widen the
+        # window where a transient outage forces an avoidable MFA.
+        _LOG.warning(f"[WS] restore refresh failed (token kept): {type(e).__name__}")
         return None
 
 
