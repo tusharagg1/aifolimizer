@@ -81,6 +81,15 @@ skill_runner_svc = _LazyModule("app.services.skill_runner")
 geopolitical_svc = _LazyModule("app.services.geopolitical")
 recommendations_svc = _LazyModule("app.services.recommendations")
 watchlist_svc = _LazyModule("app.services.watchlist")
+optimizer_svc = _LazyModule("app.services.portfolio_optimizer")
+dcf_svc = _LazyModule("app.services.dcf")
+backtest_stats_svc = _LazyModule("app.services.backtest_stats")
+hypotheses_svc = _LazyModule("app.services.hypotheses")
+boc_svc = _LazyModule("app.services.boc_valet")
+crypto_sentiment_svc = _LazyModule("app.services.crypto_sentiment")
+statcan_svc = _LazyModule("app.services.statcan")
+finnhub_extras_svc = _LazyModule("app.services.finnhub_extras")
+google_trends_svc = _LazyModule("app.services.google_trends")
 
 from app.services.pii_filter import (
     filter_personal_context_full,
@@ -452,6 +461,165 @@ async def get_correlation_matrix(account_id: str = "", period: str = "1y", top_n
     }
 
 
+@mcp.tool()
+async def optimize_portfolio(
+    account_id: str = "",
+    top_n: int = 20,
+    use_analyst_views: bool = True,
+    risk_free_rate: float = 0.045,
+) -> dict:
+    """
+    Mean-variance portfolio optimization (max Sharpe) via PyPortfolioOpt.
+
+    Returns the optimal weight per holding and the add/trim CHANGES vs your
+    current allocation that maximise risk-adjusted return (Ledoit-Wolf
+    shrinkage covariance, max 35% per name, longs only). When analyst price
+    targets exist they are blended in as Black-Litterman forward-return views.
+
+    top_n: optimise over the top N holdings by weight (default 20).
+    use_analyst_views: blend analyst targets as BL views (default True).
+    risk_free_rate: annual risk-free rate for the Sharpe calc (default ~4.5%).
+
+    Answers "how much of each position to add/trim for best risk-adjusted
+    return". Output is weights/changes in % only — no dollar balances.
+    Cached 1h per symbol set.
+    """
+    portfolio = await _load_portfolio(account_id)
+    if not portfolio.positions:
+        return {"error": "No positions in portfolio"}
+
+    top_positions = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n]
+    positions = [{"symbol": p.symbol, "weight": p.weight} for p in top_positions]
+
+    analyst_targets: dict[str, float] | None = None
+    if use_analyst_views:
+        symbols = [p["symbol"] for p in positions]
+        funda = await asyncio.to_thread(fundamentals_svc.get_fundamentals, symbols)
+        analyst_targets = {
+            s: d["analyst_target_price"]
+            for s, d in funda.items()
+            if isinstance(d, dict) and d.get("analyst_target_price")
+        } or None
+
+    return await asyncio.to_thread(
+        optimizer_svc.optimize, positions, analyst_targets, risk_free_rate
+    )
+
+
+@mcp.tool()
+async def get_dcf_valuation(symbol: str) -> dict:
+    """
+    Deterministic discounted-cash-flow intrinsic value for a US-listed ticker.
+
+    5-year FCF projection + Gordon terminal value, anchored to the SEC EDGAR
+    free-cash-flow series, discounted at a CAPM cost of equity. Returns a
+    per-share fair value, upside vs current price, a discount-rate × terminal-
+    growth sensitivity grid, and the FCF history. Gives price targets a
+    quantitative spine instead of a free-hand estimate.
+
+    Caveats: US tickers only (no .TO); net debt ignored (≈ enterprise value
+    per share); unreliable when latest FCF is negative (returns a note). One
+    valuation lens, not a verdict. No API key. Cached via SEC facts (24h).
+    """
+    return await asyncio.to_thread(dcf_svc.dcf_valuation, symbol)
+
+
+@mcp.tool()
+async def get_backtest_confidence(
+    symbol: str,
+    strategy: str = "sma_cross",
+    period: str = "2y",
+    tx_cost_bps: float = 5.0,
+    n_boot: int = 1000,
+    drawdown_threshold_pct: float = -25.0,
+) -> dict:
+    """
+    Confidence intervals for a single-symbol backtest via resampling.
+
+    Moving-block bootstrap of daily returns gives 5/25/50/75/95th-percentile
+    bands on total return, CAGR, and max drawdown (preserves autocorrelation).
+    An order-shuffle Monte-Carlo gives the probability of a drawdown worse than
+    `drawdown_threshold_pct`. Turns "CAGR 14%" into "CAGR 14% [5-95th: 2-23%],
+    20% chance of >25% drawdown" — material for real-money sizing.
+
+    strategy: 'sma_cross' (default) or 'rsi_swing'. Reuses the live backtest
+    engine; no new data sources.
+    """
+    return await asyncio.to_thread(
+        backtest_stats_svc.confidence_intervals,
+        symbol,
+        strategy,
+        period,
+        tx_cost_bps,
+        n_boot,
+        drawdown_threshold_pct,
+    )
+
+
+@mcp.tool()
+async def run_lookahead_sentinel(
+    symbol: str, period: str = "2y", tx_cost_bps: float = 5.0
+) -> dict:
+    """
+    Lookahead-bias guard: inject a perfect-foresight signal into the backtest
+    engine. A correctly-lagged engine cannot exploit it; if the foresight
+    signal earns abnormal returns, lookahead has leaked. Returns passed bool +
+    peek-vs-buy-hold CAGR. Cheapest insurance against a backtest that lies.
+    """
+    return await asyncio.to_thread(
+        backtest_stats_svc.lookahead_sentinel, symbol, period, tx_cost_bps
+    )
+
+
+@mcp.tool()
+async def log_hypothesis(
+    thesis: str,
+    ticker: str = "",
+    acceptance_criteria: str = "",
+    invalidation_criteria: str = "",
+    horizon_days: int = 90,
+    linked_run_card: str = "",
+) -> dict:
+    """
+    Record a durable investment thesis ("believe X because Y; confirmed if Z,
+    refuted if W") with open status. Complements per-trade decision history by
+    tracking un-executed / in-flight ideas so research converts to action and
+    theses are not re-litigated. Stored as JSONL. Returns the record + its id.
+    """
+    return await asyncio.to_thread(
+        hypotheses_svc.log_hypothesis,
+        thesis,
+        ticker,
+        acceptance_criteria,
+        invalidation_criteria,
+        horizon_days,
+        linked_run_card,
+    )
+
+
+@mcp.tool()
+async def list_hypotheses(status: str = "", ticker: str = "") -> list[dict]:
+    """
+    List recorded investment theses, newest first. Filter by status
+    (open/confirmed/refuted/expired) and/or ticker. Call at the start of
+    research on a name to surface prior open theses and avoid duplicate work.
+    """
+    return await asyncio.to_thread(hypotheses_svc.list_hypotheses, status, ticker)
+
+
+@mcp.tool()
+async def resolve_hypothesis(
+    hypothesis_id: str, status: str, resolution_note: str = ""
+) -> dict:
+    """
+    Mark a thesis confirmed, refuted, or expired with a resolution note.
+    Closes the research-to-outcome loop. Returns the updated record.
+    """
+    return await asyncio.to_thread(
+        hypotheses_svc.resolve_hypothesis, hypothesis_id, status, resolution_note
+    )
+
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Macro
 # ────────────────────────────────────────────────────────────────────────────────
@@ -503,6 +671,85 @@ async def get_geopolitical_signals(lookback_hours: int = 24) -> dict:
     Cached 1h. Use alongside get_macro_snapshot in macro-impact skill.
     """
     return await asyncio.to_thread(geopolitical_svc.get_geopolitical_signals, lookback_hours)
+
+
+@mcp.tool()
+async def get_boc_snapshot() -> dict:
+    """
+    Bank of Canada macro via Valet API (free, no key). Official CAD source —
+    complements FRED (US-centric). Returns BoC policy/target rate, USD/CAD,
+    Government of Canada benchmark bond yields (2y/5y/10y), and the 10y-2y curve
+    slope (curve_10y_2y_bps + curve_signal: inverted/normal). Cached 12h.
+    Use in macro-impact / daily-briefing for Canadian rate + FX context.
+    """
+    return await asyncio.to_thread(boc_svc.boc_snapshot)
+
+
+@mcp.tool()
+async def get_statcan_snapshot() -> dict:
+    """
+    Statistics Canada real-economy data via WDS API (free, no key). Returns CPI
+    all-items with computed cpi_yoy_pct (headline inflation) and the headline
+    unemployment_rate_pct, each with ref_period. Pairs with get_boc_snapshot
+    (rates/FX) for a full Canadian macro picture. Cached 12h.
+    """
+    return await asyncio.to_thread(statcan_svc.statcan_snapshot)
+
+
+@mcp.tool()
+async def get_crypto_fear_greed(limit: int = 30) -> dict:
+    """
+    Crypto Fear & Greed Index via alternative.me (free, no key). 0=extreme fear,
+    100=extreme greed. Returns current_value, classification, avg_7d, avg_30d, and
+    history. Extreme fear = historical accumulation zone; extreme greed = froth.
+    Pairs with get_crypto_data for the crypto sleeve. limit: 1-365 days. Cached 1h.
+    """
+    return await asyncio.to_thread(crypto_sentiment_svc.crypto_fear_greed, limit)
+
+
+@mcp.tool()
+async def get_finnhub_news(ticker: str, days: int = 7) -> dict:
+    """
+    Company news + crude bull/bear headline tally via Finnhub (free tier; needs
+    FINNHUB_KEY). Returns article_count, bull/bear_headlines, net_sentiment
+    (-100..+100), signal (bullish/bearish/neutral), and sample_headlines.
+    days: 1-30. Returns {"error": "no_api_key"} if key unset. Cached 30m.
+    """
+    return await asyncio.to_thread(finnhub_extras_svc.finnhub_news, ticker, days)
+
+
+@mcp.tool()
+async def get_insider_sentiment(ticker: str) -> dict:
+    """
+    Insider sentiment MSPR trend via Finnhub (free tier; needs FINNHUB_KEY).
+    avg_mspr (-100..100; positive = net insider buying pressure), net_signal
+    (bullish/bearish/neutral), and last 6 months of points. Complements
+    get_insider_activity (transaction-level). Cached 30m.
+    """
+    return await asyncio.to_thread(finnhub_extras_svc.finnhub_insider_sentiment, ticker)
+
+
+@mcp.tool()
+async def get_economic_calendar() -> dict:
+    """
+    Upcoming macro releases via Finnhub. NOTE: economic calendar is PREMIUM on
+    most Finnhub plans — returns {"error": "premium_endpoint"} on a free key.
+    For free Canadian macro use get_boc_snapshot + get_statcan_snapshot instead.
+    Cached 30m.
+    """
+    return await asyncio.to_thread(finnhub_extras_svc.finnhub_economic_calendar)
+
+
+@mcp.tool()
+async def get_search_interest(keywords: list[str], timeframe: str = "today 3-m") -> dict:
+    """
+    Google Trends search interest via pytrends (free, no key; unofficial). Per
+    keyword: current_interest (0-100), change_4w, peak, trend (rising/falling/flat).
+    Search-interest spikes are a retail-demand/crowding proxy — pair with
+    get_positioning_signals. Rate-limited; degrades gracefully on 429. Up to 5
+    keywords. timeframe: pytrends syntax (e.g. "today 3-m", "today 12-m"). Cached 6h.
+    """
+    return await asyncio.to_thread(google_trends_svc.trends_interest, keywords, timeframe)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -1496,18 +1743,29 @@ async def get_trade_ticket(
     order_type (LIMIT/MARKET), limit_price, time_in_force,
     account_recommendation, and a plain-English instruction line.
 
-    action: BUY | SELL | ADD | TRIM | EXIT
+    For BUY/ADD also returns:
+      entry_zone   — buy band {timing: buy_now|wait_pullback, low, high,
+                     reference, support_level, support_basis, note}
+      exit_ladder  — tiered profit-taking [{label T1/T2/T3, price, sell_pct,
+                     shares, gain_pct, rationale, gain_from_cost_pct?}]
+    When the ticker is already held, a `position` block adds avg_cost,
+    return_pct, and stop_below_cost.
+
+    action: BUY | ADD | HOLD | TRIM | SELL | EXIT
+      HOLD returns a management plan for a held name (stop + exit_ladder
+      from current price + position block) — no entry zone, no sizing.
     conviction: HIGH | MED | LOW
-      HIGH → 7% portfolio size, 8% stop, 3:1 R/R target
-      MED  → 5% portfolio size, 6% stop, 2.5:1 R/R target
-      LOW  → 3% portfolio size, 4% stop, 2:1 R/R target
+      HIGH → 7% size, 8% stop, exit ladder 2R/4R/6R
+      MED  → 5% size, 6% stop, exit ladder 1.5R/3R/4.5R
+      LOW  → 3% size, 4% stop, exit ladder 1R/2R/3R
 
     Stop is placed at SMA20 - 1% when price > SMA20 (natural support),
-    otherwise uses conviction-based % distance.
-    Limit buy set 0.2% below current price to avoid chasing.
+    otherwise uses conviction-based % distance. The entry zone is anchored
+    to the nearest support (SMA20/Bollinger); when price is stretched
+    (>2x ATR above support or RSI ≥ 70) timing flips to wait_pullback.
 
-    Call get_profile first — portfolio_value and available_cash
-    are loaded automatically from the live session.
+    Call get_profile first — portfolio_value, available_cash, and the
+    held-position cost basis are loaded automatically from the live session.
     """
     portfolio = await _load_portfolio(account_id)
     portfolio_value = portfolio.total_value_cad
@@ -1518,6 +1776,13 @@ async def get_trade_ticket(
         None,
     )
     position_value = float(position.market_value_cad) if position else 0.0
+    avg_cost = (
+        float(position.book_cost) / float(position.quantity)
+        if position and position.quantity
+        else 0.0
+    )
+    holding_return_pct = float(position.total_return_pct) if position else 0.0
+    position_quantity = float(position.quantity) if position else 0.0
 
     return await asyncio.to_thread(
         trade_ticket_svc.generate_trade_ticket,
@@ -1528,6 +1793,9 @@ async def get_trade_ticket(
         float(available_cash),
         conviction.upper(),
         account_id,
+        avg_cost=avg_cost,
+        holding_return_pct=holding_return_pct,
+        position_quantity=position_quantity,
     )
 
 
@@ -1730,6 +1998,8 @@ async def analyze_shadow_account(transactions: list[dict]) -> dict:
     Returns:
     - summary: win-rate, avg return, avg holding days, symbols traded
     - extracted_rules: per-cluster behavioral rule with holding bounds + win-rate
+    - behavioral_biases: disposition effect, gain/loss asymmetry, overtrading,
+      anchoring — each with evidence + a flagged bool (biases_flagged lists hits)
     - roundtrips: up to 100 FIFO-paired roundtrips with return_pct
 
     No external dependencies — pure numpy k-means clustering.

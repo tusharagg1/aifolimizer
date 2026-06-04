@@ -25,8 +25,8 @@ Runs locally on an existing Claude Pro subscription.
 
 - **Live brokerage portfolio.** Wealthsimple integration via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) (MFA-aware, all account types - TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side.
 - **12 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Binance, CoinGecko, Frankfurter, Alpha Vantage, plus a cross-check adapter and the Wealthsimple broker adapter) share a base class at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
-- **84 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
-- **22 analysis skills** covering allocation health, risk, fundamentals, technicals, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on natural-language intent or invoke directly as slash commands.
+- **98 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
+- **25 analysis skills** covering allocation health, risk, fundamentals, technicals, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on natural-language intent or invoke directly as slash commands.
 - **Forward-tested where it's tracked.** Two of 22 skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution`. The other 20 skills are read-only analysis surfaces and aren't tracked. Live numbers - wins and losses - in [TRACK_RECORD.md](TRACK_RECORD.md).
 - **Statistical safeguards.** Walk-forward OOS validation ([`skill_backtest.py`](backend/app/services/skill_backtest.py)), deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration ([`calibration.py`](backend/app/services/calibration.py)), empirical signal-decay curves at 1/3/5/10/21/42/63 days ([`signal_history.py`](backend/app/services/signal_history.py)), regime-conditional gating, and a nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
 - **Runs locally.** Most state lives in JSONL files under `~/.aifolimizer/` and `backend/.claude/context/`. Postgres (TimescaleDB) and Redis are available via `docker compose up -d` for richer history and cross-process caching.
@@ -42,7 +42,7 @@ Claude Code / Claude Desktop   (Pro subscription)
          ↓ invokes
    .claude/skills/*            (22 analysis skills)
          ↓ calls MCP tools
-   backend/mcp_server.py       (FastMCP - 84 tools)
+   backend/mcp_server.py       (FastMCP - 98 tools)
          ↓ uses
    app/services/*              (50+ service modules)
          ↓
@@ -156,7 +156,7 @@ Skills auto-trigger on intent in Claude. Or invoke directly:
 
 The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/scheduler.py`; they are also invocable on demand. Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
 
-## MCP tools (84 total - table highlights core 32; full list in `backend/mcp_server.py`)
+## MCP tools (98 total - table highlights core 32; full list in `backend/mcp_server.py`)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -191,7 +191,7 @@ The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/sched
 | `get_crowding_shifts` | Detect symbols with crowding score shifts | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + full JSONL | live |
 | `get_options_chain` | Options chain with Black-Scholes Greeks | 15m |
-| `list_analysis_modes` | Filesystem-driven list of all 22 skills + their MCP tools | static |
+| `list_analysis_modes` | Filesystem-driven list of all 25 skills + their MCP tools | static |
 
 ## Project layout
 
