@@ -149,7 +149,7 @@ No frontend - analysis runs in Claude Code / Claude Desktop.
 
 | File | Purpose |
 |------|---------|
-| `backend/mcp_server.py` | All MCP tools (98 total) |
+| `backend/mcp_server.py` | All MCP tools (102 total) |
 | `backend/main.py` | FastAPI app entry + CORS |
 | `backend/run.py` | uvicorn launcher |
 | `backend/scripts/build_skills.py` | Auto skills builder / scaffold tool |

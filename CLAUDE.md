@@ -16,7 +16,7 @@ Claude Code / Claude Desktop  (Pro subscription - no API key)
         ↓ invokes
    .claude/skills/*  (25 institutional analysis skills)
         ↓ calls MCP tool
-   backend/mcp_server.py  (FastMCP, 98 tools)
+   backend/mcp_server.py  (FastMCP, 102 tools)
         ↓ uses
    app/services/{wealthsimple, market_data, fundamentals, technicals, news, macro, quant, portfolio_analytics, health_score, crypto_data}
         ↓ HTTP
@@ -36,7 +36,7 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code - r
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
-## MCP Tools (98 total - table below is a curated subset; see `mcp_server.py` for full list)
+## MCP Tools (102 total - table below is a curated subset; see `mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
 |---|---|---|
