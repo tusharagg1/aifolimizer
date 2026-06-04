@@ -1808,8 +1808,8 @@ async def get_trade_ticket(
     held-position cost basis are loaded automatically from the live session.
     """
     portfolio = await _load_portfolio(account_id)
-    portfolio_value = portfolio.total_value_cad
-    available_cash = portfolio.cash_balance
+    portfolio_value = portfolio.summary.total_value
+    available_cash = portfolio.summary.cash_available
 
     position = next(
         (p for p in portfolio.positions if p.symbol == ticker.upper()),
