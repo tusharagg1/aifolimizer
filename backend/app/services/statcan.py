@@ -28,7 +28,7 @@ _cache: tuple[dict, float] | None = None
 
 # vector id -> human label
 _VECTORS: dict[int, str] = {
-    41690973: "cpi_all_items",       # CPI, all-items, Canada, 2002=100, NSA
+    41690973: "cpi_all_items",  # CPI, all-items, Canada, 2002=100, NSA
     2062815: "unemployment_rate_pct",  # Unemployment rate, 15+, both sexes, SA
 }
 

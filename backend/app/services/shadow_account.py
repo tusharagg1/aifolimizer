@@ -244,8 +244,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
             "avg_loss_pct": round(avg_loss, 2),
             "payoff_ratio": round(payoff, 2) if payoff else None,
             "interpretation": (
-                "Average loss exceeds average gain — letting losers run. "
-                "Needs >50% win-rate just to break even."
+                "Average loss exceeds average gain — letting losers run. Needs >50% win-rate just to break even."
                 if flagged
                 else "Average gain exceeds average loss — favourable payoff."
             ),
@@ -262,8 +261,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
         "roundtrips_per_month": round(per_month, 1),
         "median_holding_days": round(median_hold, 1),
         "interpretation": (
-            "High churn — frequent short-hold roundtrips. Costs and taxes "
-            "erode edge; tighten entry criteria."
+            "High churn — frequent short-hold roundtrips. Costs and taxes erode edge; tighten entry criteria."
             if flagged
             else "Trade cadence reasonable."
         ),
@@ -272,6 +270,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
     # Anchoring: entries clustering at round-number prices.
     entries = [r["entry_price"] for r in roundtrips if r.get("entry_price")]
     if entries:
+
         def _near_round(p: float) -> bool:
             for base in (round(p), round(p / 5) * 5):
                 if base > 0 and abs(p - base) / p <= 0.01:
@@ -284,16 +283,13 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
             "flagged": flagged,
             "entries_near_round_numbers_pct": round(frac * 100, 1),
             "interpretation": (
-                "Over half of entries cluster at round-number prices — "
-                "anchoring to psychological levels over signal."
+                "Over half of entries cluster at round-number prices — anchoring to psychological levels over signal."
                 if flagged
                 else "Entries not unduly clustered at round numbers."
             ),
         }
 
-    out["biases_flagged"] = [
-        k for k, v in out.items() if isinstance(v, dict) and v.get("flagged")
-    ]
+    out["biases_flagged"] = [k for k, v in out.items() if isinstance(v, dict) and v.get("flagged")]
     return out
 
 

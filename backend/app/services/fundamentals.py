@@ -490,14 +490,10 @@ def get_sec_cashflow(symbol: str) -> dict:
     facts = _fetch_facts(symbol)
     if not facts:
         return {}
-    ocf = _extract_annual_series(
-        facts, "NetCashProvidedByUsedInOperatingActivities"
-    ) or _extract_annual_series(
+    ocf = _extract_annual_series(facts, "NetCashProvidedByUsedInOperatingActivities") or _extract_annual_series(
         facts, "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"
     )
-    capex = _extract_annual_series(
-        facts, "PaymentsToAcquirePropertyPlantAndEquipment"
-    )
+    capex = _extract_annual_series(facts, "PaymentsToAcquirePropertyPlantAndEquipment")
     capex_by_year = {e["year"]: abs(e.get("value") or 0) for e in capex}
     fcf = []
     for e in ocf:

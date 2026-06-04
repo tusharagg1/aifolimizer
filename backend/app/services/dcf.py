@@ -22,7 +22,7 @@ from app.services import fundamentals as funda
 _LOG = get_logger("aifolimizer.services.dcf")
 
 _PROJECTION_YEARS = 5
-_DEFAULT_RF = 0.045          # ~10Y UST
+_DEFAULT_RF = 0.045  # ~10Y UST
 _EQUITY_RISK_PREMIUM = 0.05
 _DEFAULT_TERMINAL_GROWTH = 0.025
 _GROWTH_BOUNDS = (-0.05, 0.20)
@@ -108,9 +108,7 @@ def dcf_valuation(symbol: str) -> dict:
         "fair_value_base": round(base, 2),
         "upside_pct": upside,
         "verdict": (
-            "undervalued" if upside and upside > 15
-            else "overvalued" if upside and upside < -15
-            else "fairly_valued"
+            "undervalued" if upside and upside > 15 else "overvalued" if upside and upside < -15 else "fairly_valued"
         ),
         "fair_value_range": {
             "low": round(min(fvs), 2) if fvs else None,

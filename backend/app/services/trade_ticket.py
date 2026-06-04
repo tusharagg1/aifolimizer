@@ -301,9 +301,7 @@ def generate_trade_ticket(
                 entry_zone["reference"], stop_price, quantity, conviction, tech, avg_cost, symbol in _CRYPTO
             )
         elif action == "HOLD":
-            exit_ladder = _build_exit_ladder(
-                price, stop_price, quantity, conviction, tech, avg_cost, symbol in _CRYPTO
-            )
+            exit_ladder = _build_exit_ladder(price, stop_price, quantity, conviction, tech, avg_cost, symbol in _CRYPTO)
 
         # ── Order type ────────────────────────────────────────────────────────
         if action == "HOLD":
@@ -338,8 +336,7 @@ def generate_trade_ticket(
                     )
                 else:
                     entry_clause = (
-                        f"Buy zone ${entry_zone['low']:,.4f}-${entry_zone['high']:,.4f}, "
-                        f"limit ${limit_price:,.4f}"
+                        f"Buy zone ${entry_zone['low']:,.4f}-${entry_zone['high']:,.4f}, limit ${limit_price:,.4f}"
                     )
                 targets = " / ".join(
                     f"{t['label']} ${t['price']:,.4f} (sell {t['sell_pct']}%)" for t in (exit_ladder or [])

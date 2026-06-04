@@ -28,10 +28,41 @@ _TIMEOUT = 12.0
 _TTL = 1800  # 30m
 _cache: dict[str, tuple[dict, float]] = {}
 
-_BULL = ("beat", "surge", "soar", "upgrade", "record", "rally", "jump", "raise",
-         "outperform", "buy", "strong", "growth", "profit", "gain", "top")
-_BEAR = ("miss", "plunge", "downgrade", "cut", "lawsuit", "probe", "fall", "drop",
-         "warn", "slump", "loss", "sell", "weak", "decline", "fraud", "recall")
+_BULL = (
+    "beat",
+    "surge",
+    "soar",
+    "upgrade",
+    "record",
+    "rally",
+    "jump",
+    "raise",
+    "outperform",
+    "buy",
+    "strong",
+    "growth",
+    "profit",
+    "gain",
+    "top",
+)
+_BEAR = (
+    "miss",
+    "plunge",
+    "downgrade",
+    "cut",
+    "lawsuit",
+    "probe",
+    "fall",
+    "drop",
+    "warn",
+    "slump",
+    "loss",
+    "sell",
+    "weak",
+    "decline",
+    "fraud",
+    "recall",
+)
 
 
 def _key() -> str:
@@ -99,25 +130,30 @@ def finnhub_news(ticker: str, days: int = 7) -> dict[str, Any]:
         elif score < 0:
             bear += 1
         if len(headlines) < 10:
-            headlines.append({
-                "headline": head,
-                "source": r.get("source"),
-                "url": r.get("url"),
-                "datetime": r.get("datetime"),
-            })
+            headlines.append(
+                {
+                    "headline": head,
+                    "source": r.get("source"),
+                    "url": r.get("url"),
+                    "datetime": r.get("datetime"),
+                }
+            )
 
     total = bull + bear
     net = round((bull - bear) / total * 100, 1) if total else 0.0
-    return _store(ck, {
-        "ticker": sym,
-        "article_count": len(rows),
-        "bull_headlines": bull,
-        "bear_headlines": bear,
-        "net_sentiment": net,  # -100 (all bear) .. +100 (all bull)
-        "signal": "bullish" if net >= 25 else ("bearish" if net <= -25 else "neutral"),
-        "sample_headlines": headlines,
-        "data_source": "Finnhub company-news (free)",
-    })
+    return _store(
+        ck,
+        {
+            "ticker": sym,
+            "article_count": len(rows),
+            "bull_headlines": bull,
+            "bear_headlines": bear,
+            "net_sentiment": net,  # -100 (all bear) .. +100 (all bull)
+            "signal": "bullish" if net >= 25 else ("bearish" if net <= -25 else "neutral"),
+            "sample_headlines": headlines,
+            "data_source": "Finnhub company-news (free)",
+        },
+    )
 
 
 def finnhub_insider_sentiment(ticker: str) -> dict[str, Any]:
@@ -141,21 +177,26 @@ def finnhub_insider_sentiment(ticker: str) -> dict[str, Any]:
 
     points = (data or {}).get("data") or []
     if not points:
-        return _store(ck, {"ticker": sym, "months": [], "net_signal": "no_data",
-                           "data_source": "Finnhub insider-sentiment (free)"})
+        return _store(
+            ck,
+            {"ticker": sym, "months": [], "net_signal": "no_data", "data_source": "Finnhub insider-sentiment (free)"},
+        )
 
     msprs = [p.get("mspr") for p in points if p.get("mspr") is not None]
     avg = round(sum(msprs) / len(msprs), 1) if msprs else None
     net = "no_data"
     if avg is not None:
         net = "bullish" if avg > 20 else ("bearish" if avg < -20 else "neutral")
-    return _store(ck, {
-        "ticker": sym,
-        "avg_mspr": avg,  # -100..100; positive = net insider buying pressure
-        "net_signal": net,
-        "months": points[-6:],
-        "data_source": "Finnhub insider-sentiment (free)",
-    })
+    return _store(
+        ck,
+        {
+            "ticker": sym,
+            "avg_mspr": avg,  # -100..100; positive = net insider buying pressure
+            "net_signal": net,
+            "months": points[-6:],
+            "data_source": "Finnhub insider-sentiment (free)",
+        },
+    )
 
 
 def finnhub_economic_calendar() -> dict[str, Any]:
@@ -168,16 +209,21 @@ def finnhub_economic_calendar() -> dict[str, Any]:
     try:
         data = _get("calendar/economic", {})
     except _Premium:
-        return {"error": "premium_endpoint",
-                "note": "Finnhub economic calendar requires a paid plan.",
-                "data_source": "finnhub"}
+        return {
+            "error": "premium_endpoint",
+            "note": "Finnhub economic calendar requires a paid plan.",
+            "data_source": "finnhub",
+        }
     except Exception as e:
         _LOG.warning(f"[finnhub_extras] econ calendar: {e}")
         return {"error": "fetch_failed", "data_source": "finnhub"}
 
     events = (data or {}).get("economicCalendar") or []
-    return _store(ck, {
-        "event_count": len(events),
-        "events": events[:50],
-        "data_source": "Finnhub economic-calendar",
-    })
+    return _store(
+        ck,
+        {
+            "event_count": len(events),
+            "events": events[:50],
+            "data_source": "Finnhub economic-calendar",
+        },
+    )

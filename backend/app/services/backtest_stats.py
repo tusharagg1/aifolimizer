@@ -89,9 +89,7 @@ def confidence_intervals(
         shuffle_maxdd.append(_max_drawdown(_equity_from_returns(shuffled)))
 
     point_total = round(float(_equity_from_returns(rets)[-1] - 1) * 100, 2)
-    prob_breach = round(
-        float(np.mean(np.asarray(shuffle_maxdd) <= drawdown_threshold_pct)) * 100, 1
-    )
+    prob_breach = round(float(np.mean(np.asarray(shuffle_maxdd) <= drawdown_threshold_pct)) * 100, 1)
 
     return {
         "symbol": symbol.upper(),
@@ -110,17 +108,15 @@ def confidence_intervals(
             "median_shuffled_max_drawdown_pct": round(float(np.median(shuffle_maxdd)), 2),
         },
         "interpretation": (
-            f"Median CAGR {round(float(np.percentile(boot_cagr,50)),1)}% "
-            f"[5-95th: {round(float(np.percentile(boot_cagr,5)),1)}% to "
-            f"{round(float(np.percentile(boot_cagr,95)),1)}%]; "
+            f"Median CAGR {round(float(np.percentile(boot_cagr, 50)), 1)}% "
+            f"[5-95th: {round(float(np.percentile(boot_cagr, 5)), 1)}% to "
+            f"{round(float(np.percentile(boot_cagr, 95)), 1)}%]; "
             f"{prob_breach}% chance of a drawdown worse than {drawdown_threshold_pct}%."
         ),
     }
 
 
-def lookahead_sentinel(
-    symbol: str, period: str = "2y", tx_cost_bps: float = 5.0
-) -> dict:
+def lookahead_sentinel(symbol: str, period: str = "2y", tx_cost_bps: float = 5.0) -> dict:
     """Inject a perfect-foresight signal; a correctly-lagged engine can't exploit it.
 
     peek_signal knows tomorrow's direction. The engine shifts signals one bar,
@@ -146,8 +142,7 @@ def lookahead_sentinel(
         "period": period,
         "passed": not leaked,
         "verdict": (
-            "LOOKAHEAD LEAK — foresight signal earned abnormal returns; the "
-            "backtest engine is peeking at future bars."
+            "LOOKAHEAD LEAK — foresight signal earned abnormal returns; the backtest engine is peeking at future bars."
             if leaked
             else "PASS — perfect-foresight signal earned no abnormal return; "
             "signals are correctly lagged, no lookahead detected."

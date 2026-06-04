@@ -501,9 +501,7 @@ async def optimize_portfolio(
             if isinstance(d, dict) and d.get("analyst_target_price")
         } or None
 
-    return await asyncio.to_thread(
-        optimizer_svc.optimize, positions, analyst_targets, risk_free_rate
-    )
+    return await asyncio.to_thread(optimizer_svc.optimize, positions, analyst_targets, risk_free_rate)
 
 
 @mcp.tool()
@@ -557,18 +555,14 @@ async def get_backtest_confidence(
 
 
 @mcp.tool()
-async def run_lookahead_sentinel(
-    symbol: str, period: str = "2y", tx_cost_bps: float = 5.0
-) -> dict:
+async def run_lookahead_sentinel(symbol: str, period: str = "2y", tx_cost_bps: float = 5.0) -> dict:
     """
     Lookahead-bias guard: inject a perfect-foresight signal into the backtest
     engine. A correctly-lagged engine cannot exploit it; if the foresight
     signal earns abnormal returns, lookahead has leaked. Returns passed bool +
     peek-vs-buy-hold CAGR. Cheapest insurance against a backtest that lies.
     """
-    return await asyncio.to_thread(
-        backtest_stats_svc.lookahead_sentinel, symbol, period, tx_cost_bps
-    )
+    return await asyncio.to_thread(backtest_stats_svc.lookahead_sentinel, symbol, period, tx_cost_bps)
 
 
 @mcp.tool()
@@ -608,16 +602,12 @@ async def list_hypotheses(status: str = "", ticker: str = "") -> list[dict]:
 
 
 @mcp.tool()
-async def resolve_hypothesis(
-    hypothesis_id: str, status: str, resolution_note: str = ""
-) -> dict:
+async def resolve_hypothesis(hypothesis_id: str, status: str, resolution_note: str = "") -> dict:
     """
     Mark a thesis confirmed, refuted, or expired with a resolution note.
     Closes the research-to-outcome loop. Returns the updated record.
     """
-    return await asyncio.to_thread(
-        hypotheses_svc.resolve_hypothesis, hypothesis_id, status, resolution_note
-    )
+    return await asyncio.to_thread(hypotheses_svc.resolve_hypothesis, hypothesis_id, status, resolution_note)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -1776,11 +1766,7 @@ async def get_trade_ticket(
         None,
     )
     position_value = float(position.market_value_cad) if position else 0.0
-    avg_cost = (
-        float(position.book_cost) / float(position.quantity)
-        if position and position.quantity
-        else 0.0
-    )
+    avg_cost = float(position.book_cost) / float(position.quantity) if position and position.quantity else 0.0
     holding_return_pct = float(position.total_return_pct) if position else 0.0
     position_quantity = float(position.quantity) if position else 0.0
 

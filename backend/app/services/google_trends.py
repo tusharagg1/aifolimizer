@@ -36,8 +36,7 @@ def trends_interest(keywords: list[str], timeframe: str = "today 3-m") -> dict[s
     try:
         from pytrends.request import TrendReq
     except ImportError:
-        return {"error": "pytrends_not_installed",
-                "note": "pip install pytrends", "data_source": "google_trends"}
+        return {"error": "pytrends_not_installed", "note": "pip install pytrends", "data_source": "google_trends"}
 
     try:
         pt = TrendReq(hl="en-US", tz=300)
@@ -50,8 +49,11 @@ def trends_interest(keywords: list[str], timeframe: str = "today 3-m") -> dict[s
     if df is None or df.empty:
         return {"error": "no_data", "data_source": "google_trends"}
 
-    out: dict[str, Any] = {"data_source": "Google Trends via pytrends (free, no key)",
-                           "timeframe": timeframe, "keywords": {}}
+    out: dict[str, Any] = {
+        "data_source": "Google Trends via pytrends (free, no key)",
+        "timeframe": timeframe,
+        "keywords": {},
+    }
     for kw in kws:
         if kw not in df.columns:
             continue

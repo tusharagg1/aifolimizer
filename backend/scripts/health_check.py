@@ -49,8 +49,14 @@ def _check_mcp_server() -> None:
 
 def _check_services() -> None:
     core = [
-        "wealthsimple", "market_data", "fundamentals", "technicals",
-        "portfolio_optimizer", "dcf", "backtest_stats", "hypotheses",
+        "wealthsimple",
+        "market_data",
+        "fundamentals",
+        "technicals",
+        "portfolio_optimizer",
+        "dcf",
+        "backtest_stats",
+        "hypotheses",
     ]
     bad = []
     for name in core:
@@ -94,8 +100,9 @@ def _check_settings_hooks() -> None:
             continue
         hooks = data.get("hooks", {})
         events = sorted(hooks.keys())
-        _add(f"settings_hooks:{p.parent.parent.name}", _OK if events else _WARN,
-             f"events: {', '.join(events) or 'none'}")
+        _add(
+            f"settings_hooks:{p.parent.parent.name}", _OK if events else _WARN, f"events: {', '.join(events) or 'none'}"
+        )
     if not found:
         _add("settings_hooks", _WARN, "no settings.json found")
 
