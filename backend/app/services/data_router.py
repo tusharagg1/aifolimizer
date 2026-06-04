@@ -272,8 +272,9 @@ def get_quote(
             if verify:
                 return _augment_with_ws_verification(cached, info.asset_class, allow_refresh=True)
             if _held_cached(symbol):
-                # Free broker cross-check on holdings (cache-only, no network).
-                return _augment_with_ws_verification(cached, info.asset_class, allow_refresh=False)
+                # Free cross-check on holdings (cache-only, no network):
+                # native consensus first, WS broker sanity as fallback.
+                return _held_cross_check(cached, info, max_age_s)
             return cached
 
     primary: dict | None = None
@@ -292,7 +293,7 @@ def get_quote(
             cache.put_quote(symbol, src.name, d)
             if not verify:
                 if _held_cached(symbol):
-                    return _augment_with_ws_verification(d, info.asset_class, allow_refresh=False)
+                    return _held_cross_check(d, info, max_age_s)
                 return d
             if primary is None:
                 primary, primary_latency = d, latency
@@ -339,6 +340,55 @@ def _held_cached(symbol: str) -> bool:
         return symbol.upper() in _wss.held_symbols_cached()
     except Exception:
         return False
+
+
+def _held_cross_check(payload: dict, info, max_age_s: float) -> dict:
+    """Zero-latency cross-check for a held position. Cache + peek only.
+
+    Primary: native consensus — compare against any OTHER source's already-
+    cached quote in the same currency (no FX, no fetch). Accurate.
+    Fallback: WS broker sanity (FX-tolerant) when no native peer is cached;
+    on a cold WS cache, kick a non-blocking warm so the next call can check.
+    """
+    sym = payload.get("symbol") or ""
+    pay_ccy = (payload.get("currency") or "").upper()
+    p_main = float(payload.get("price") or 0)
+    own = payload.get("source")
+
+    peer_name = None
+    peer_price = 0.0
+    if p_main > 0:
+        for src in _quote_chain(sym):
+            if src.name == own:
+                continue
+            c = cache.get_quote(sym, src.name, max_age_s)
+            if not c or (c.get("currency") or "").upper() != pay_ccy:
+                continue
+            pc = float(c.get("price") or 0)
+            if pc > 0 and (peer_name is None or abs(pc - p_main) < abs(peer_price - p_main)):
+                peer_name, peer_price = src.name, pc
+
+    if peer_name is not None:
+        delta = abs(p_main - peer_price) / ((p_main + peer_price) / 2) * 100
+        thr = 2.0 if info.asset_class == "crypto" else 1.5
+        out = dict(payload)
+        out["_xcheck_method"] = "native_consensus"
+        out["_xcheck_peer"] = peer_name
+        out["_xcheck_peer_price"] = round(peer_price, 4)
+        out["_xcheck_delta_pct"] = round(delta, 3)
+        out["_xcheck_status"] = "agreement" if delta <= thr else "source_disagreement"
+        return out
+
+    # No native peer cached -> WS broker sanity (cache-only), self-warm if cold.
+    augmented = _augment_with_ws_verification(payload, info.asset_class, allow_refresh=False)
+    if "_ws_verify_status" not in augmented:
+        try:
+            from app.services.data_sources import wealthsimple_src as _wss
+
+            _wss.warm_async()
+        except Exception:
+            pass
+    return augmented
 
 
 def _augment_with_ws_verification(payload: dict, asset_class: str, *, allow_refresh: bool = True) -> dict:

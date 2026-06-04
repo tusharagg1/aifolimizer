@@ -29,6 +29,7 @@ _TTL_S = 60.0
 _lock = threading.Lock()
 _cache: dict[str, dict] = {}  # symbol -> {price, currency, as_of}
 _cache_built_at = 0.0
+_warming = False  # in-flight guard so cold-misses spawn at most one refresh
 
 
 def _refresh_from_ws() -> None:
@@ -80,6 +81,29 @@ def _refresh_from_ws() -> None:
 def _ensure_fresh() -> None:
     if (time.time() - _cache_built_at) > _TTL_S or not _cache:
         _refresh_from_ws()
+
+
+def warm_async() -> None:
+    """Refresh the positions cache in a daemon thread (non-blocking).
+
+    Lets a cold-cache held-quote kick a warm without adding latency to the
+    caller — the next quote within the TTL serves from cache. At most one
+    refresh runs at a time.
+    """
+    global _warming
+    with _lock:
+        if _warming or (time.time() - _cache_built_at) <= _TTL_S and _cache:
+            return
+        _warming = True
+
+    def _run() -> None:
+        global _warming
+        try:
+            _refresh_from_ws()
+        finally:
+            _warming = False
+
+    threading.Thread(target=_run, name="ws-src-warm", daemon=True).start()
 
 
 def held_symbols_cached() -> set[str]:
