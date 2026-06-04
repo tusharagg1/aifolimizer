@@ -67,21 +67,24 @@ If user can't answer #5 with a specific reason that isn't "saw it on social medi
 | Wide spread / low volume | `volume_score < 0.5` - execution risk |
 | Below-average ADX | `adx_14 < 20` - chop regime, swing setups weak |
 
-**Step 3 - Sizing math (only if all fatal gates PASS):**
+**Step 3 - Levels + sizing (only if all fatal gates PASS):**
 
-Compute and display:
+Call `mcp__aifolimizer__get_trade_ticket` with `ticker=TICKER`, `action=<BUY|ADD|SELL|TRIM>`, `conviction=<HIGH|MED|LOW from thesis strength>`. This is the single source of truth for levels — do NOT hand-roll them:
+- `entry_zone` — `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `timing == wait_pullback`, the disciplined call is WAIT** — state the pullback band + support basis; do not approve a market entry at current price.
+- `stop_loss_price` — SMA20/ATR-anchored stop.
+- `exit_ladder` — tiered `[{label, price, sell_pct, gain_pct, rationale}]`. Render verbatim; do not recompute targets.
+- `position` block (only if already held) — `avg_cost`, `return_pct`, `stop_below_cost`.
 
-1. **Risk per trade** = 1.5% of total portfolio NAV (default; ask user if different).
-2. **Entry price** = current price OR `pivot_levels.s1` (pullback to support if RSI > 65).
-3. **Stop price** = entry − (1.5 × `atr_14`). Floor at SMA50 if SMA50 closer.
+Then apply **risk-based sizing** (the gate's discipline — OVERRIDES the tool's conviction-based size):
+
+1. **Risk per trade** = 1.5% of total NAV (default; ask if user wants different).
+2. **Entry** = `entry_zone.reference`.
+3. **Stop** = `stop_loss_price`.
 4. **Risk per share** = entry − stop.
 5. **Max shares** = floor(risk_per_trade / risk_per_share).
-6. **Position $** = max_shares × entry.
-7. **Position % of portfolio** = position_$ / total_NAV.
-8. **Take-profit 1** = entry + 2 × (entry − stop). Sell 50% here.
-9. **Take-profit 2** = trail stop at 1 × ATR below highest close after TP1.
-
-If `position_%` > 5%, cap shares so position = 5% of NAV (override risk-based sizing on max-size rule).
+6. **Position $** = max_shares × entry; **Position %** = position_$ / total_NAV.
+7. If `position_%` > 5%, cap shares so position = 5% of NAV (max-size rule wins).
+8. **Exits** = `exit_ladder` (do not recompute).
 
 **Step 4 - Output decision card:**
 
@@ -95,14 +98,14 @@ Fatal gates:  [✓] FOMO  [✓] Crowding  [✓] Sizing  [✓] Stop  [✓] Concen
 Warning gates: <list any that triggered>
 
 If PASS, trade ticket:
-  Entry:    $X.XX
-  Stop:     $X.XX (−A.A% / −1.5 ATR)
-  TP1:      $X.XX (+B.B% / +2R, sell 50%)
-  TP2:      trail 1×ATR after TP1
-  Shares:   N
+  Entry:    zone $LOW–$HIGH  (<buy_now | WAIT pullback> · <support_basis>)
+  Stop:     $X.XX (−A.A%)
+  Exits:    T1 $.. (+b% sell 40%) · T2 $.. (+c% sell 35%) · T3 $.. (+d% sell 25%)
+  Shares:   N   (risk-based: 1.5% NAV ÷ risk-per-share)
   Cost:     $C,CCC
   Position: P.P% of $NAV total
   Max loss: $L (risk = R.R% of NAV)
+  Held:     avg $.. · ret +X% · stop below cost? Y/N   (omit line if not held)
 
 Personal track record (30d):
   Win rate: X%
@@ -120,7 +123,7 @@ Call `mcp__aifolimizer__log_recommendation` with:
 - `action=<BUY/SELL>`
 - `conviction="filtered"` (this skill does not assess conviction - only rejects)
 - `rationale=<user's thesis sentence>`
-- `entry_price`, `stop_loss`, `target_price` from sizing math
+- `entry_price` = `entry_zone.reference`, `stop_loss` = `stop_loss_price`, `target_price` = `exit_ladder` T2 price (primary target)
 
 This builds the forward track record for `weekly-mirror` skill.
 

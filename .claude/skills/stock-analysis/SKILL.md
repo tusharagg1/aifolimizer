@@ -5,6 +5,15 @@ description: Run a Goldman Sachs + Citadel combined fundamental and technical an
 
 # Stock Analysis (Goldman Sachs + Citadel)
 
+## Data grounding (REQUIRED — anti-hallucination contract)
+
+Every numeric claim (price, P/E, RSI, target, FCF, weight) MUST come from a
+tool call in THIS run. After fetching, restate the verified figures in a short
+"Verified data" block and cite ONLY those numbers downstream. If a figure is
+not in any tool response, say "not available" — never estimate, recall, or
+invent it. WebSearch is allowed only for narrative (earnings quotes, upgrades),
+not for numbers that a tool already provides.
+
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - account types, cash balances, total capital. Frame tax placement recommendation at end

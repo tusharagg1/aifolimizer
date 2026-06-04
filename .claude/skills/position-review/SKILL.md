@@ -33,6 +33,11 @@ After the routed analysis yields a lean, cross-check exits:
 - Verdict SELL/TRIM on a **Non-Reg loss** → call `get_tax_loss_candidates`; note harvest opportunity + 30-day superficial-loss caution.
 - Any BUY/ADD lean → `get_positioning_signals` crowding guard (consensus ≥70 → downgrade, don't add into the crowd).
 
+Once the verdict is set, get concrete levels from `mcp__aifolimizer__get_trade_ticket` (`ticker`, `action=<verdict: HOLD|TRIM|SELL>`, `conviction`). It pulls cost basis + held quantity from the live session, so:
+- **HOLD** → `exit_ladder` (T1/T2/T3 profit-taking from current price) + `stop_loss_price` + `position.stop_below_cost`. This is the "where do I take profit / cut loss" plan.
+- **TRIM/SELL** → market-exit ticket (no ladder by design — show `stop_loss_price` only).
+Render these instead of hand-computing stop/target.
+
 ## Subagent-nesting constraint (important for the sweep)
 Subagents cannot spawn subagents. The adversarial pipeline already spawns 6 agents, so in a multi-holding sweep you CANNOT nest it per ticker. Pattern:
 - Run the heavy adversarial pipeline **inline (main context)** for at most the 1-2 highest-stakes flagged names.
@@ -43,7 +48,9 @@ Subagents cannot spawn subagents. The adversarial pipeline already spawns 6 agen
 ```
 TICKER · weight X% · VERDICT: HOLD / TRIM / SELL · conviction
   route: <earnings / postmortem / adversarial / stock-analysis>
-  levels: stop $Y · target $Z · R:R N.N   (omit R:R for TRIM)
+  held:  avg $.. · ret +X% · stop below cost? Y/N
+  HOLD → exits: T1 $.. (sell 40%) · T2 $.. (35%) · T3 $.. (25%) · stop $Y
+  TRIM/SELL → stop $Y  (no ladder by design)
   reason: <1-2 lines - the decisive factor>
   tax: <Non-Reg harvest note if SELL/TRIM at a loss, else omit>
 ```

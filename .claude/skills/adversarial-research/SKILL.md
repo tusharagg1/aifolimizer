@@ -5,6 +5,11 @@ description: Run a parallel bull/bear adversarial research pipeline on a specifi
 
 # Adversarial Research Pipeline (Stage 0-5)
 
+> **Data-grounding contract:** every numeric claim made by ANY advocate or the
+> PM must trace to a Layer-1 tool response in this run. Restate the verified
+> figures up front; cite only those. No recalled or estimated numbers — if it
+> wasn't fetched, it's "not available". This is what keeps the debate honest.
+
 Modelled on TradingAgents multi-agent hedge fund workflow. Explicit DAG: memory recall → parallel data → parallel advocates → three-tier risk debate → portfolio manager synthesis → log decision. Each layer waits for prior layer to complete.
 
 ```

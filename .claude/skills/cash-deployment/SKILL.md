@@ -54,17 +54,20 @@ Setup Score rubric (1 point each):
 - Volume score ≥ 1.0 (above-average volume confirmation)
 
 ### 4. Deployment plan (risk-first)
+For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7=HIGH, 5-6=MED, 3-4=LOW>`. This is the single source of truth for levels (same engine as pre-trade-check) — supersedes raw `pivot_levels`:
+- `entry_zone` — `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `wait_pullback`, do NOT deploy at market** — state the pullback band and route that cash to the next ranked `buy_now` candidate or hold it.
+- `stop_loss_price`, `exit_ladder` (T1/T2/T3 scale-out), `position` block (avg cost / return / stop_below_cost since these are held names).
+
 **Before sizing any position:**
 1. Check `get_concentration_warnings` - exclude overweight names FIRST
-2. For each candidate, calculate max position loss = (entry - stop) × shares. Ensure no single add risks >2% of total portfolio
-3. Entry price = `pivot_levels.s1` (wait for pullback to support) or current price if already at/near S1
-4. Stop-loss = below `pivot_levels.s2`
+2. Max position loss = (`entry_zone.reference` − `stop_loss_price`) × shares. Ensure no single add risks >2% of total portfolio
+3. Entry = `entry_zone.reference` (only deploy when `timing == buy_now`)
+4. Stop = `stop_loss_price`
 5. Position size = min(risk-based shares, 5% of total portfolio in dollar terms)
 
-- Top 3 add candidates by Setup Score (tiebreak: higher `technical_score` wins)
 - Dollar allocation per ticker (sum to cash balance, round to whole shares)
-- Total share count + estimated execution price
-- Cash remaining after deployment (if any - keep for opportunistic adds)
+- Total share count + estimated execution price; render each name's `exit_ladder` as the profit-taking plan
+- Cash remaining after deployment (if any - keep for opportunistic adds, or for `wait_pullback` names)
 - Max loss per position stated explicitly
 
 ### 5. Tax-account reasoning
