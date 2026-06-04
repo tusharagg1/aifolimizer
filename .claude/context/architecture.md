@@ -86,7 +86,7 @@ Token lifecycle:
 
 ## PII Filter Contract
 
-Every MCP tool response passes `pii_filter.filter_portfolio()` before return to Claude.
+Every MCP tool response pass `pii_filter.filter_portfolio()` before return to Claude.
 
 **Stripped:** account_id, account_number, email, full name, WS internal IDs, phone
 **Kept:** symbol, name (company), quantity, book_cost, market_value, weight, day_change_pct, total_return_pct, asset_class, sector, cash_balance (aggregate only), account_type label (TFSA/RRSP - NOT ID)
