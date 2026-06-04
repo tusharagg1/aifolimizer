@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "aifolimizer",
+  "description": "MCP-native portfolio brain for Claude — market-data, risk, earnings, macro, dividend, tax, technical, and quant analysis tools plus 25 skills.",
+  "owner": {
+    "name": "Tushar Aggarwal",
+    "url": "https://github.com/tusharagg1"
+  },
+  "plugins": [
+    {
+      "name": "aifolimizer",
+      "source": "./",
+      "description": "MCP-native portfolio brain: 102 analysis tools + 25 skills for risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Market-data tools work out of the box; Wealthsimple portfolio is opt-in via mcp_login.py."
+    }
+  ]
+}

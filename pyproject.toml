@@ -1,4 +1,7 @@
-# Python project metadata. Runtime deps live in backend/requirements.txt (unchanged for backwards-compat with existing scripts). pip install -e .[dev] for development.
+# Python project metadata. The `dependencies` list below MIRRORS backend/requirements.txt
+# (kept in sync by hand) so `uv run` can build the runtime env directly from this file —
+# that is what the Claude Code plugin (.claude-plugin/plugin.json) launches the MCP server with.
+# backend/requirements.txt remains the source for the setup.sh/setup.ps1 venv path. pip install -e .[dev] for development.
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -12,11 +15,37 @@ license = {text = "MIT"}
 requires-python = ">=3.12,<3.14"
 authors = [{name = "Tushar Aggarwal"}]
 readme = "README.md"
-# Runtime dependencies are pinned in backend/requirements.txt for now (lockable separately).
-dependencies = []
+# MIRROR of backend/requirements.txt — keep the two lists identical.
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.6",
+    "pydantic>=2.8.2",
+    "pydantic-settings>=2.6.1",
+    "httpx>=0.27.2",
+    "yfinance>=0.2.43",
+    "pandas>=2.2.2",
+    "numpy>=1.26.0",
+    "ta>=0.11.0",
+    "python-dotenv>=1.0.1",
+    "mcp>=1.2.0",
+    "ws-api>=0.33.0",
+    "diskcache>=5.6.0",
+    "asyncpg>=0.29.0",
+    "redis>=5.0.0",
+    "rq>=2.0.0",
+    "sentry-sdk[fastapi]>=2.0.0",
+    "pytrends>=4.9.2",
+    "curl_cffi>=0.7.0",
+]
 
 [project.optional-dependencies]
 dev = ["ruff", "pyright", "pytest", "pytest-cov", "pip-audit", "pre-commit"]
+
+# uv builds a deps-only env: the repo is a flat `app.*` tree rooted at backend/, not a
+# distributable package. `uv run` puts backend/ on sys.path[0] at launch, so imports resolve
+# without installing the project itself. package=false stops uv from trying to build it.
+[tool.uv]
+package = false
 
 [project.urls]
 Homepage = "https://github.com/tusharagg1/aifolimizer"

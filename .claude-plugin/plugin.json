@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "aifolimizer",
+  "displayName": "aifolimizer",
+  "version": "0.2.0",
+  "description": "MCP-native portfolio brain for Claude. 102 analysis tools across 15 data adapters + 25 skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Market-data tools work immediately; Wealthsimple portfolio awareness is opt-in.",
+  "author": {
+    "name": "Tushar Aggarwal",
+    "url": "https://github.com/tusharagg1"
+  },
+  "homepage": "https://github.com/tusharagg1/aifolimizer",
+  "repository": "https://github.com/tusharagg1/aifolimizer",
+  "license": "MIT",
+  "keywords": ["mcp", "portfolio", "investing", "stocks", "wealthsimple", "quant", "finance"],
+  "skills": "./.claude/skills/",
+  "mcpServers": {
+    "aifolimizer": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "python",
+        "${CLAUDE_PLUGIN_ROOT}/backend/mcp_server.py"
+      ]
+    }
+  }
+}
