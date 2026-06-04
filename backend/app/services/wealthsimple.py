@@ -29,6 +29,15 @@ from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, 
 from app.models.portfolio import Account, UserContext
 from app.security import get_logger
 
+# WS sits behind Cloudflare; the ws-api default python-requests User-Agent is
+# flagged/rate-limited (CF error 1015) faster than a browser UA. Set once on
+# import so every WS call (login, refresh-token, GraphQL) presents a browser UA.
+_WS_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+WealthsimpleAPI.set_user_agent(_WS_USER_AGENT)
+
 _LOG = get_logger("aifolimizer.services.wealthsimple")
 
 

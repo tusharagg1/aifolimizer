@@ -171,6 +171,26 @@ REGISTRY: dict[str, AgentSpec] = {
         category="trading",
         horizon_days=14,
     ),
+    "top-trades-today": AgentSpec(
+        name="top-trades-today",
+        description="Ranked decision-ready trade ideas — weekday pre-open push",
+        trigger="cron",
+        schedule="0 11 * * 1-5",  # 7am ET ≈ 11am UTC standard
+        runner_ref="app.services.skill_runner:run_top_trades_today",
+        model_pref="fast",
+        category="trading",
+        horizon_days=1,
+    ),
+    "position-review": AgentSpec(
+        name="position-review",
+        description="HOLD/TRIM/SELL verdict sweep over top holdings — nightly",
+        trigger="cron",
+        schedule="0 2 * * *",  # nightly 2am UTC
+        runner_ref="app.services.skill_runner:run_position_review",
+        model_pref="fast",
+        category="trading",
+        horizon_days=21,
+    ),
     # ─ Portfolio health (cron) ───────────────────────────────────────────────
     "daily-briefing": AgentSpec(
         name="daily-briefing",

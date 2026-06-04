@@ -16,6 +16,7 @@ Each runner emits four sections:
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import contextvars
 import json
@@ -884,3 +885,167 @@ def codified_skills() -> list[str]:
 
 def llm_only_skills() -> list[str]:
     return sorted(LLM_ONLY_SKILLS)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Composer fallback runners (ctx-based, deterministic — no LLM, no PII egress)
+#
+# Resolved by scripts/run_skill_fallback.py when Claude is unavailable. Unlike
+# the LLM-narrative skills in skill_llm_runner, these are pure-Python: they load
+# the portfolio from the WS session and reuse the same recommendation engine the
+# dashboard uses, so they degrade gracefully even with no LLM provider key set.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+async def _load_portfolio_from_session(session_id: str) -> PortfolioResponse:
+    """Build an enriched PortfolioResponse from a restored WS session id."""
+    from app.services import market_data, wealthsimple
+
+    session = wealthsimple.get_session(session_id)
+    profile = session.get("profile") if session else None
+    if not profile:
+        raise RuntimeError("session lost or has no profile")
+    cash = sum(a.cash_balance for a in profile.accounts)
+    nlv = sum(a.invested_value for a in profile.accounts)
+    upnl = float(session.get("unrealized_pnl_cad") or 0.0)
+    raw = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
+    return market_data.enrich(raw, cash, nlv, upnl)
+
+
+def _ctx_session_id(context: dict | None) -> str | None:
+    return (context or {}).get("session_id")
+
+
+async def run_top_trades_today(context: dict | None = None) -> dict:
+    """Ranked, decision-ready trade ideas across holdings + watchlist.
+
+    Codified mirror of the top-trades-today skill — reuses the recommendation
+    engine + trade_ideas.rank_trade_ideas so output matches the MCP tool.
+    """
+    from app.services import trade_ideas as trade_ideas_svc
+    from app.services import watchlist as watchlist_svc
+
+    sid = _ctx_session_id(context)
+    if not sid:
+        return _snapshot("top-trades-today", status="error", error="no_session")
+    try:
+        portfolio = await _load_portfolio_from_session(sid)
+        held = {p.symbol for p in portfolio.positions if p.symbol}
+        positions = _positions_as_dicts(portfolio)
+        try:
+            wl = await asyncio.to_thread(watchlist_svc.load_watchlist)
+        except Exception:
+            wl = []
+        for i in wl:
+            sym = i.get("symbol")
+            if not sym or sym in held:
+                continue
+            positions.append(
+                {
+                    "symbol": sym,
+                    "name": i.get("name") or sym,
+                    "weight": 0.0,
+                    "market_value_cad": 0.0,
+                    "total_return_pct": 0.0,
+                    "currency": "CAD" if sym.endswith((".TO", ".V")) else "USD",
+                    "asset_class": i.get("asset_class") or "stock",
+                    "sector": "",
+                }
+            )
+        recs = await asyncio.to_thread(rec_svc.get_recommendations, positions)
+        ranked = trade_ideas_svc.rank_trade_ideas(recs, held, top_n=5, min_risk_reward=1.5)
+        ideas = ranked["ideas"]
+        insights = [
+            f"{ranked['scored']} scored · {ranked['actionable']} actionable",
+        ]
+        for idea in ideas[:3]:
+            rr = idea.get("risk_reward")
+            rr_str = f" · R:R {rr:.1f}" if rr else ""
+            insights.append(
+                f"{idea['symbol']} ({'held' if idea['held'] else 'watch'}) "
+                f"{idea['action']} {idea.get('conviction') or ''}{rr_str}".strip()
+            )
+        if not ideas:
+            insights.append("No actionable setups — all HOLD/WATCH or below R:R floor.")
+        return _snapshot(
+            "top-trades-today",
+            summary={
+                "universe": "holdings+watchlist",
+                "scored": ranked["scored"],
+                "actionable": ranked["actionable"],
+            },
+            actionable=ideas,
+            key_insights=insights,
+        )
+    except Exception as e:
+        return _snapshot("top-trades-today", status="error", error=str(e))
+
+
+_REVIEW_VERDICT = {"SELL": "SELL", "TRIM": "TRIM", "ADD": "HOLD", "BUY": "HOLD"}
+
+
+async def run_position_review(context: dict | None = None) -> dict:
+    """HOLD/TRIM/SELL verdict per top holding (deterministic routing fallback).
+
+    Codified mirror of the position-review sweep — derives the verdict from the
+    recommendation engine action and attaches stop/target levels. No per-name
+    LLM routing; the deep adversarial path is Claude-only by design.
+    """
+    sid = _ctx_session_id(context)
+    if not sid:
+        return _snapshot("position-review", status="error", error="no_session")
+    try:
+        portfolio = await _load_portfolio_from_session(sid)
+        top = sorted(portfolio.positions, key=lambda p: -(p.weight or 0))[:6]
+        positions = _positions_as_dicts(portfolio)
+        recs = await asyncio.to_thread(rec_svc.get_recommendations, positions)
+        rec_by_sym = {r.get("symbol"): r for r in recs}
+        roster = {"HOLD": 0, "TRIM": 0, "SELL": 0}
+        reviewed: list[dict] = []
+        alerts: list[dict] = []
+        for p in top:
+            r = rec_by_sym.get(p.symbol) or {}
+            action = (r.get("action") or "HOLD").upper()
+            verdict = _REVIEW_VERDICT.get(action, "HOLD")
+            roster[verdict] += 1
+            reasons = (r.get("reasons") or [])[:2]
+            reviewed.append(
+                {
+                    "symbol": p.symbol,
+                    "weight_pct": p.weight,
+                    "total_return_pct": p.total_return_pct,
+                    "verdict": verdict,
+                    "conviction": r.get("confidence"),
+                    "score": r.get("score"),
+                    "stop_loss": r.get("stop_loss"),
+                    "take_profit": r.get("take_profit"),
+                    "reasons": reasons,
+                }
+            )
+            if verdict in ("SELL", "TRIM"):
+                alerts.append(
+                    {
+                        "level": "warn",
+                        "message": f"{p.symbol}: {verdict} — {(reasons or ['signal deterioration'])[0]}",
+                    }
+                )
+        # Worst first: SELL, then TRIM, then HOLD; within each, lowest score first.
+        order = {"SELL": 0, "TRIM": 1, "HOLD": 2}
+        reviewed.sort(key=lambda x: (order[x["verdict"]], x.get("score") or 99))
+        insights = [
+            f"HOLD x{roster['HOLD']} · TRIM x{roster['TRIM']} · SELL x{roster['SELL']}",
+        ]
+        for x in reviewed[:3]:
+            insights.append(f"{x['symbol']} {x['verdict']} (score {x.get('score')})")
+        return _snapshot(
+            "position-review",
+            summary={
+                "n_reviewed": len(reviewed),
+                "roster": roster,
+            },
+            actionable=reviewed,
+            alerts=alerts,
+            key_insights=insights,
+        )
+    except Exception as e:
+        return _snapshot("position-review", status="error", error=str(e))

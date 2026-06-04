@@ -82,6 +82,7 @@ skill_runner_svc = _LazyModule("app.services.skill_runner")
 geopolitical_svc = _LazyModule("app.services.geopolitical")
 recommendations_svc = _LazyModule("app.services.recommendations")
 watchlist_svc = _LazyModule("app.services.watchlist")
+trade_ideas_svc = _LazyModule("app.services.trade_ideas")
 optimizer_svc = _LazyModule("app.services.portfolio_optimizer")
 dcf_svc = _LazyModule("app.services.dcf")
 backtest_stats_svc = _LazyModule("app.services.backtest_stats")
@@ -1050,45 +1051,14 @@ async def get_trade_ideas(
         None,
     )
 
-    _SKIP_ACTIONS = {"HOLD", "WATCH", "PASS", "NO_EDGE"}
-    ideas: list[dict] = []
-    for r in recs:
-        action = (r.get("action") or "").upper()
-        if action in _SKIP_ACTIONS:
-            continue
-        if r.get("entry_timing") == "wait_pullback":
-            continue
-        rr = r.get("risk_reward")
-        if rr is not None and rr < min_risk_reward:
-            continue
-        sym = r.get("symbol")
-        ideas.append(
-            {
-                "symbol": sym,
-                "name": r.get("name") or sym,
-                "action": action,
-                "held": sym in held,
-                "score": r.get("score"),
-                "conviction": r.get("confidence"),
-                "current_price": r.get("current_price"),
-                "entry_timing": r.get("entry_timing"),
-                "stop_loss": r.get("stop_loss"),
-                "take_profit": r.get("take_profit"),
-                "risk_reward": rr,
-                "kelly_pct": r.get("kelly_pct"),
-                "currency": r.get("currency"),
-                "reasons": (r.get("reasons") or [])[:3],
-            }
-        )
-
-    ideas.sort(key=lambda x: x.get("score") or 0, reverse=True)
-    return {
-        "ideas": ideas[: max(0, top_n)],
-        "universe": "holdings+watchlist" if include_watchlist else "holdings",
-        "min_risk_reward": min_risk_reward,
-        "scored": len(positions),
-        "actionable": len(ideas),
-    }
+    ranked = trade_ideas_svc.rank_trade_ideas(
+        recs,
+        held,
+        top_n=top_n,
+        min_risk_reward=min_risk_reward,
+    )
+    ranked["universe"] = "holdings+watchlist" if include_watchlist else "holdings"
+    return ranked
 
 
 @mcp.tool()
