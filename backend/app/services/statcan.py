@@ -26,12 +26,6 @@ _TIMEOUT = 15.0
 _TTL = 12 * 3600  # 12h — StatCan releases monthly
 _cache: tuple[dict, float] | None = None
 
-# vector id -> human label
-_VECTORS: dict[int, str] = {
-    41690973: "cpi_all_items",  # CPI, all-items, Canada, 2002=100, NSA
-    2062815: "unemployment_rate_pct",  # Unemployment rate, 15+, both sexes, SA
-}
-
 
 def _fetch(vector_id: int, latest_n: int) -> list[dict]:
     try:

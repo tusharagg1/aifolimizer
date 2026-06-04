@@ -19,6 +19,7 @@ from __future__ import annotations
 import concurrent.futures
 import contextvars
 import json
+import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -771,7 +772,7 @@ def _tenant_dir(tenant_id: str | None) -> Path:
         return _SNAP_DIR
     import hashlib
 
-    h = hashlib.sha1(tenant_id.encode("utf-8")).hexdigest()[:16]
+    h = hashlib.sha1(tenant_id.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     d = _SNAP_DIR / "tenants" / h
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -862,7 +863,7 @@ def run_all_skills(
                 try:
                     write_snapshot(snap, tenant_id=tenant_id)
                 except Exception:
-                    pass
+                    logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     if "daily-briefing" in requested and "daily-briefing" in SKILL_RUNNERS:
         snap = SKILL_RUNNERS["daily-briefing"](portfolio)
@@ -871,7 +872,7 @@ def run_all_skills(
             try:
                 write_snapshot(snap, tenant_id=tenant_id)
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     _active_tenant.reset(token)
     return out

@@ -323,7 +323,7 @@ async def get_cached_top(
             if blob:
                 return json.loads(blob)
     except Exception:
-        pass
+        log.debug("suppressed exception", exc_info=True)
     # PG fallback
     try:
         from app.db.pool import get_pool

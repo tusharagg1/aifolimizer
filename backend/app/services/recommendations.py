@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import hashlib
+import logging
 import time
 import xml.etree.ElementTree as ET
 
@@ -31,6 +32,8 @@ from app.services.macro import market_breadth
 from app.services.signal_quality import score_quality
 from app.services import signal_history
 from app.services import paper_trade
+
+_log = logging.getLogger(__name__)
 
 
 _SECTOR_ETF_MAP = {
@@ -67,7 +70,6 @@ _REGIME_BUY_HOSTILE = frozenset({"bear_high_fear", "bear_low_fear"})
 _REGIME_SELL_HOSTILE = frozenset({"bull_low_fear"})
 
 _ETF_ASSET_CLASSES = {"etf", "index", "mutual_fund"}
-_CRYPTO_ASSET_CLASSES = {"crypto", "cryptocurrency"}
 
 # ── Output cache ───────────────────────────────────────────────────────────────
 _REC_CACHE: dict[str, tuple[list, float]] = {}
@@ -123,7 +125,7 @@ def _load_weights() -> dict[str, float]:
             _WEIGHTS_CACHE_TS = time.time()
     except Exception:
         # Silent — sub-signal weighting is best-effort; defaults still valid.
-        pass
+        _log.debug("suppressed exception", exc_info=True)
     return _WEIGHTS_CACHE
 
 
@@ -906,7 +908,7 @@ def get_recommendations(
         )
         for p in portfolio_positions
     )
-    cache_key = hashlib.md5(repr(composition).encode()).hexdigest()
+    cache_key = hashlib.md5(repr(composition).encode(), usedforsecurity=False).hexdigest()
     entry = _REC_CACHE.get(cache_key)
     if entry and time.time() - entry[1] < _REC_CACHE_TTL:
         return entry[0]
@@ -961,7 +963,7 @@ def get_recommendations(
         try:
             signal_history.log_signal(rec, source="recommendations")
         except Exception:
-            pass
+            _log.debug("suppressed exception", exc_info=True)
 
     # Full-contract trade log into paper_trade for benchmark-relative
     # alpha scoring. Single benchmark fetch shared across the whole batch.
@@ -1031,7 +1033,7 @@ def get_recommendations(
             sector_etf_by_symbol=sector_map,
         )
     except Exception:
-        pass
+        _log.debug("suppressed exception", exc_info=True)
 
     _REC_CACHE[cache_key] = (results, time.time())
     return results

@@ -16,6 +16,7 @@ Symbol form accepted by classify_asset and this adapter:
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import date, timedelta
 
@@ -77,7 +78,7 @@ class FrankfurterSource(DataSource):
             if prev is not None:
                 prev_rate = float(prev)
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
         price = float(rate)
         change_pct = ((price - prev_rate) / prev_rate * 100) if prev_rate else None

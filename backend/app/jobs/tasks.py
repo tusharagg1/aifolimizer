@@ -152,7 +152,7 @@ def run_discovery_scan(sid: str) -> dict:
                         )
                     except Exception:
                         portfolio = None
-                thash = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+                thash = hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
                 return await discovery.run_nightly_scan(thash, portfolio)
             finally:
                 await close_redis()
@@ -205,7 +205,7 @@ def run_llm_skills_for_tenant(sid: str) -> dict:
                     ],
                     key=lambda x: -x["weight"],
                 )
-                thash = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+                thash = hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
                 return await skill_llm_runner.run_nightly_llm_skills(
                     thash,
                     top,

@@ -14,6 +14,7 @@ Reads last-run state from registry + skill_snapshots for output payload.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any
 
@@ -22,6 +23,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from app.security import session_from_request
 from app.services import agent_registry as ar
 from app.services import skill_runner
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -57,7 +60,7 @@ async def list_agents(request: Request) -> dict[str, Any]:
                         "summary": snap.get("summary"),
                     }
             except Exception:
-                pass
+                _log.debug("suppressed exception", exc_info=True)
     return {"agents": agents, "count": len(agents)}
 
 
@@ -121,7 +124,7 @@ async def force_run(
     try:
         skill_runner.write_snapshot(snap, tenant_id=tenant)
     except Exception:
-        pass
+        _log.debug("suppressed exception", exc_info=True)
     ar.mark_run(name, snap.get("status") or "ok")
     ar.mark_manual_run(name)
     return snap
@@ -172,7 +175,7 @@ async def recent_events(limit: int = Query(20, ge=1, le=100)) -> dict[str, Any]:
         if callable(events):
             return {"events": events(limit=limit)}
     except Exception:
-        pass
+        _log.debug("suppressed exception", exc_info=True)
     return {"events": []}
 
 

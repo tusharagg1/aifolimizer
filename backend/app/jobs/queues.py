@@ -16,7 +16,7 @@ import logging
 from typing import Optional
 
 from redis import Redis
-from rq import Queue, Retry  # noqa: F401  (Retry re-exported for callers)
+from rq import Queue
 
 from app.core.config import settings
 

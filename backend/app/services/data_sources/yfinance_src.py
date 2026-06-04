@@ -7,6 +7,7 @@ free source — fast, broad coverage, but rate-limited / sometimes stale.
 
 from __future__ import annotations
 
+import logging
 import time
 
 import yfinance as yf
@@ -41,7 +42,7 @@ class YFinanceSource(DataSource):
                 cur = str(info.get("currency") or "").upper()
                 currency = cur if cur in ("USD", "CAD") else None
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
             return Quote(
                 symbol=symbol,
                 price=price,

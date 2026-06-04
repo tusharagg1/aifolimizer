@@ -184,7 +184,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
                 if len(daily_totals) >= 2:
                     full_5d_daily_vol = float(daily_totals.iloc[:-1].mean())
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
         rel_session_vol = (
             round(session_vol / full_5d_daily_vol, 2)
             if session_vol and full_5d_daily_vol and full_5d_daily_vol > 0
@@ -203,7 +203,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
                     if today_open and prev_close:
                         gap_pct = round((today_open - prev_close) / prev_close * 100, 3)
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
         # Composite intraday score 0-1
         # VWAP-position (above = bullish): 25%

@@ -6,6 +6,7 @@ for multiple periods. No API key required — yfinance only.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -63,7 +64,7 @@ def _fetch_prices(symbols: list[str], period: str) -> dict[str, pd.Series]:
                 elif len(symbols) == 1:
                     result[sym] = close.squeeze().dropna()
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
         return result
     except Exception:
         return {}

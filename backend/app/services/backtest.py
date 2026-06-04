@@ -629,7 +629,7 @@ def backtest_portfolio(
     try:
         save_run_card(card)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
     return {
         "lookback_days": lookback_days,

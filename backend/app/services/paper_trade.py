@@ -28,7 +28,7 @@ from pathlib import Path
 from app.services import data_router
 
 _log = logging.getLogger(__name__)
-_LEGACY_TENANT_HASH = hashlib.sha1(b"legacy").hexdigest()[:16]
+_LEGACY_TENANT_HASH = hashlib.sha1(b"legacy", usedforsecurity=False).hexdigest()[:16]
 
 _CTX = Path(__file__).resolve().parents[2] / ".claude" / "context"
 _REC_FILE = _CTX / "recommendations.jsonl"
@@ -70,7 +70,7 @@ def _seen_today(rec_id: str) -> bool:
                         if row.get("date") == today and row.get("id"):
                             _TODAY_IDS.add(row["id"])
             except OSError:
-                pass
+                _log.debug("suppressed exception", exc_info=True)
     return rec_id in _TODAY_IDS
 
 

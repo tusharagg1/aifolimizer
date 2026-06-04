@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -74,12 +75,12 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         try:
             os.fsync(f.fileno())
         except OSError:
-            pass
+            logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     os.replace(tmp, path)
     try:
         os.chmod(path, 0o600)
     except OSError:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
 
 def load() -> PersonalContext | None:

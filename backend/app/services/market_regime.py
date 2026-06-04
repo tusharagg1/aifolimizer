@@ -345,7 +345,7 @@ async def get_current() -> Regime | None:
                 ts = datetime.fromisoformat(ts_str) if ts_str else None
                 return Regime(ts=ts, **data)
     except Exception:
-        pass
+        log.debug("suppressed exception", exc_info=True)
     try:
         from app.db.pool import get_pool
 

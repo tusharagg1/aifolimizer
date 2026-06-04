@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import logging
 import sys
 from pathlib import Path
 
@@ -34,7 +35,7 @@ try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except (AttributeError, OSError):
-    pass
+    logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
 # Load .env before any service imports that read config at module level.
 # Soft-import so a venv missing python-dotenv falls back to OS-only env vars
@@ -44,7 +45,7 @@ try:
 
     load_dotenv(_BACKEND_DIR / ".env", override=False)
 except ImportError:
-    pass
+    logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
 from app.services import agent_registry as ar  # noqa: E402
 from app.services import wealthsimple  # noqa: E402

@@ -205,7 +205,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                         "s2": round(piv - (ph - pl), 4),
                     }
             except Exception:
-                pass
+                _LOG.debug("suppressed exception", exc_info=True)
 
         # Current volume vs 20-day average
         cur_vol = df["Volume"].squeeze().iloc[-1] if "Volume" in df.columns else None
@@ -215,7 +215,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             try:
                 volume_score = round(float(cur_vol) / vol_sma_val, 2)
             except Exception:
-                pass
+                _LOG.debug("suppressed exception", exc_info=True)
 
         # ATR(14) — average true range for volatility/stop sizing
         atr_series = (
@@ -280,7 +280,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                         rs_21d_change_pct = round((rs_now - rs_21ago) / rs_21ago * 100, 3)
                         rs_rating = rs_21d_change_pct > 0
             except Exception:
-                pass
+                _LOG.debug("suppressed exception", exc_info=True)
 
         # 12-1 month momentum (price now / price 252-21 bars ago, skipping last 21)
         # Jegadeesh-Titman: strongest standalone factor outside value
@@ -297,7 +297,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                 if p_6mo_ago != 0:
                     mom_12_1_pct = round((p_now_excl_recent - p_6mo_ago) / p_6mo_ago * 100, 2)
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
         # MAX / lottery-stock reversal (Bali, Cakici & Whitelaw 2011):
         # stocks with an extreme single-day gain in the recent past underperform
@@ -316,7 +316,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
                 std_pct = float(vol_window.std()) * 100
                 lottery_flag = bool(max_1d >= 8.0 and std_pct > 0 and max_1d >= 3.0 * std_pct)
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
         # OBV pos (already computed above) — wire into score
         obv_pos = 1.0 if obv_trend == "rising" else 0.0 if obv_trend == "falling" else 0.5

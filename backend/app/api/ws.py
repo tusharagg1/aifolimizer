@@ -297,9 +297,9 @@ async def debug_pnl(
         "notes": [
             "If `unrealized_pnl_cad` looks wrong, WS API is returning a different metric. Compare with WS app totals.",
             "If `usd_cash_balance` > 0, equity_nlv still contains USD cash "
-            "(only CAD cash subtracted) — minor inflation of book cost.",
+            + "(only CAD cash subtracted) — minor inflation of book cost.",
             "If `pnl_cad` per-account has mixed signs from positions you no "
-            "longer hold, WS history baseline differs from your mental model.",
+            + "longer hold, WS history baseline differs from your mental model.",
         ],
     }
 
@@ -533,9 +533,9 @@ async def alerts_endpoint(session_id: str = Query(...)):
                         }
                     )
             except Exception:
-                pass
+                _LOG.debug("suppressed exception", exc_info=True)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
     severity_rank = {"high": 0, "warning": 1, "info": 2}
     return sorted(alerts, key=lambda a: severity_rank.get(a["severity"], 9))
@@ -773,7 +773,7 @@ async def llm_status_endpoint(session_id: str = Query(...)):
 def _session_tenant_hash(session_id: str) -> str:
     import hashlib
 
-    return hashlib.sha1(session_id.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(session_id.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 @router.get("/signals")
@@ -801,7 +801,7 @@ async def get_integrated_signals(
             if blob:
                 return json.loads(blob)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
     # Postgres fallback
     try:
@@ -1301,4 +1301,4 @@ async def portfolio_stream(
                 pass  # normal — no ping received, just send next frame
 
     except WebSocketDisconnect:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)

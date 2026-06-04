@@ -44,7 +44,6 @@ _HIST_FILE = _CTX / "signal_history.jsonl"
 
 _DIRECTIONAL_ACTIONS = frozenset({"BUY", "ADD", "SELL", "TRIM"})
 _LONG_ACTIONS = frozenset({"BUY", "ADD"})
-_SHORT_ACTIONS = frozenset({"SELL", "TRIM"})
 
 _DEFAULT_HORIZONS = (1, 3, 5, 10, 21, 42, 63)
 

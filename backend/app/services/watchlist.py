@@ -48,9 +48,6 @@ def _migrate_legacy() -> None:
         _LOG.warning(f"[watchlist] migration failed: {e}")
 
 
-_REC_CACHE: dict[str, tuple[list, float]] = {}
-_REC_CACHE_TTL = 1800  # 30 minutes (legacy bulk cache, kept for fallback)
-
 # Per-symbol rec cache — adding 1 symbol only re-scores that symbol.
 _PER_SYM_CACHE: dict[str, tuple[dict, float]] = {}
 _PER_SYM_TTL = 1800

@@ -40,7 +40,7 @@ def _load_current() -> tuple[float, float]:
                 float(payload.get("sell_below_thr", DEFAULT_SELL_BELOW)),
             )
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
     return DEFAULT_BUY_THR, DEFAULT_SELL_BELOW
 
 

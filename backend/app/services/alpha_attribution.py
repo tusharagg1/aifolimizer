@@ -17,6 +17,7 @@ Wealthsimple Managed returns embedded from publicly-reported figures
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from datetime import date
@@ -222,7 +223,7 @@ def _fetch_benchmarks(lookback_days: int) -> dict[str, pd.Series]:
                 df = df.set_index("dt").sort_index()
                 out[sym] = df["close"].astype(float)
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     return out
 
 

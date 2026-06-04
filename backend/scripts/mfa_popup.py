@@ -46,6 +46,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import time
@@ -160,7 +161,7 @@ def main() -> int:
     try:
         NOTIFY_FILE.unlink(missing_ok=True)
     except OSError:
-        pass
+        logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
     _msg("info", "WS session refreshed. Skills can run for 8h.")
     return 0
 

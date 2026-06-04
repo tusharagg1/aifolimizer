@@ -93,7 +93,7 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
         try:
             os.fsync(f.fileno())
         except OSError:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
     os.replace(tmp, path)
     try:
         os.chmod(path, 0o600)
@@ -149,7 +149,7 @@ def _clear_persisted_session() -> None:
     try:
         _PERSIST_FILE.unlink(missing_ok=True)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
 
 def restore_session() -> Optional[str]:

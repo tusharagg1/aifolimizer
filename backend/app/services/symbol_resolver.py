@@ -77,7 +77,8 @@ def resolve(symbol: str) -> dict:
     try:
         info = yf.Ticker(req).info or {}
     except Exception as e:
-        _LOG.warning(f"[resolver] {req}: {type(e).__name__}: {e}")
+        safe_req = req.replace("\n", " ").replace("\r", " ")
+        _LOG.warning(f"[resolver] {safe_req}: {type(e).__name__}: {e}")
         return _unverified(req, "network_error")
 
     name = info.get("longName") or info.get("shortName")

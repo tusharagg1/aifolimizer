@@ -46,9 +46,9 @@ def _ticker_meta(symbol: str) -> dict:
                 meta["currency"] = yf_cur
             meta["sector"] = info.get("sector") or info.get("category")
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
     _TICKER_CACHE[symbol] = (meta, now)
     return meta
 
@@ -67,7 +67,7 @@ def _get_cad_per_usd() -> float:
             _FX_CACHE = (now, float(rate))
             return float(rate)
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
     # Fallback: FRED DEXCAUS (CAD per USD, daily, slightly lagged)
     try:
@@ -87,7 +87,7 @@ def _get_cad_per_usd() -> float:
             except Exception:
                 continue
     except Exception:
-        pass
+        _LOG.debug("suppressed exception", exc_info=True)
 
     return _FX_CACHE[1] if _FX_CACHE else 1.38  # use last known rate before pure fallback
 

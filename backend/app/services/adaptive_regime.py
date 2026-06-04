@@ -25,7 +25,7 @@ from typing import Any
 
 from app.security import get_logger
 
-_LOG = get_logger("aifolimizer.services.adaptive_regime")
+get_logger("aifolimizer.services.adaptive_regime")
 
 _OUT_DIR = Path(__file__).resolve().parents[2] / ".cache"
 _OUT_FILE = _OUT_DIR / "regime_multipliers.json"

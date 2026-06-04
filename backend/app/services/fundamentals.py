@@ -79,7 +79,7 @@ def _fetch_one(symbol: str) -> dict:
                     else:
                         earnings_date = str(val)
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
         return {
             "name": info.get("longName") or info.get("shortName"),
@@ -330,7 +330,7 @@ def get_insider_activity(symbol: str) -> dict:
                     elif ratio <= 0.3:
                         result["net_insider_signal"] = "BEARISH"
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
         # ── Institutional holders ─────────────────────────────────────────
         try:
@@ -350,7 +350,7 @@ def get_insider_activity(symbol: str) -> dict:
                     )
                 result["top_holders"] = top
         except Exception:
-            pass
+            _LOG.debug("suppressed exception", exc_info=True)
 
     except Exception as e:
         result["error"] = str(e)
