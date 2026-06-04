@@ -4,6 +4,29 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-04 - Onboarding: one-command setup + doctor + POSIX automation
+
+Goal: a second technical user clones and runs it without tribal knowledge. Closed the "setup needs a developer" gap. No app-logic change — packaging + docs + portability.
+
+### New
+- **`setup.sh` + `setup.ps1`** (repo root) — idempotent one-command bootstrap: create venv, install deps, seed `backend/.env`, generate `.mcp.json` with this-machine absolute paths, register MCP with Claude (if CLI present), run doctor. `.mcp.json` emitted via venv-python `json.dump` so Windows backslash paths escape correctly with zero hand-editing. setup.sh resolves venv python at `bin/python` (POSIX) **or** `Scripts/python.exe` (Git-Bash on native Windows).
+- **`scripts/run-claude-skill.sh`** — POSIX twin of `run-claude-skill.ps1` (claude → free-LLM fallback → Telegram; same exit codes 0/1/2).
+- **`scripts/posix/`** — ready-to-edit launchd plist + systemd `.service`/`.timer` + README (`__REPO__`/`__HOME__` placeholders, `sed`-install one-liners).
+- **`.gitattributes`** — force LF on `*.sh`/`*.service`/`*.timer`/`*.plist` (CRLF breaks shebang + systemd on POSIX); CRLF on `*.ps1`. Exec bit (`100755`) set on both `.sh`.
+
+### Changed
+- **`backend/scripts/health_check.py`** — doctor +2 checks: `env_file` (backend/.env present, WS_EMAIL not placeholder) and `mcp_registered` (`claude mcp list` contains aifolimizer). Fixed crash: `claude mcp list` emits non-cp1252 bytes → forced `encoding="utf-8", errors="replace"`, default `""`.
+- **`README.md`** — one-command fast-path at top of Quick start (scripts were undiscoverable otherwise); layout + docs refs.
+- **`docs/SETUP.md`**, **`scripts/AUTOMATION.md`** — pointed at the shipped scripts; removed stale "no POSIX twin yet" claim.
+
+### Verified
+- Full fresh-tree e2e (copied working tree, fake-`claude` shim so real MCP config untouched): `setup.sh` exit 0 → venv (Scripts/ branch) + full pip install clean + `.env` + `.mcp.json` (escaped paths) + doctor 8/8 PASS. Real global MCP registration confirmed intact (`✓ Connected`). `setup.ps1` parse-checked (not executed — would mutate live config). `bash -n` + ruff clean.
+
+### Dropped (not worth it)
+- **Tiering 102 tools behind `AIFOLIMIZER_ADVANCED` flag** — cosmetic gain; touches import-critical `mcp_server.py` (102 `@mcp.tool()` decorators), depends on a FastMCP `remove_tool` API that may not exist in the bundled server, and fights the `check_doc_counts.py` CI guard. Risk of MCP-dead-for-everyone outweighs "fewer tools shown."
+
+---
+
 ## 2026-06-04 - Audit batch 2 (11 builds: rigor + skills + global wiring)
 
 6 new MCP tools (DCF, backtest CI, sentinel, 3× hypothesis registry). Doc counts synced 84→98 tools, 22→25 skills (concurrent data-integration work added the rest).

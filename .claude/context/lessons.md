@@ -12,6 +12,18 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 
 - **Locks need double-check.** Using `asyncio.Lock` to dedupe concurrent fetches: re-check cache inside lock - another waiter may have populated while waiting. *(Source: `_get_portfolio` lock pattern.)*
 
+## Cross-platform / packaging
+
+- **`subprocess` text decode crashes on Windows non-ASCII output.** `subprocess.run(..., text=True)` decodes with the locale codec (cp1252 on Windows). Tools that emit emoji/box-drawing (e.g. `claude mcp list`) raise `UnicodeDecodeError` in the reader thread → `.stdout` becomes `None` → downstream `in`/iter `TypeError`. Always pass `encoding="utf-8", errors="replace"` and default `... or ""`. *(Source: `health_check.py` `_check_mcp_registered` crashed reading `claude mcp list`.)*
+
+- **venv python path differs by platform.** POSIX = `.venv/bin/python`; Git-Bash on native Windows = `.venv/Scripts/python.exe`. A bash script hardcoding `bin/python` fails on Git-Bash. Resolve by checking both. *(Source: `setup.sh` first draft assumed `bin/`.)*
+
+- **Shell scripts must be LF, or the shebang breaks on POSIX.** Git's autocrlf rewrites `*.sh` to CRLF → `#!/usr/bin/env bash\r` → "bad interpreter". systemd/launchd unit files same. Ship a `.gitattributes` with `*.sh text eol=lf` (+ `.service`/`.timer`/`.plist`). Set exec bit via `git update-index --chmod=+x` so POSIX clones get `100755`. *(Source: setup scripts authored on Windows.)*
+
+- **`git clone` only carries committed files — uncommitted files vanish from a "fresh clone" test.** To e2e new uncommitted work, copy the working tree (`tar --exclude=.venv --exclude=.git`), not `git clone`. *(Source: first onboarding e2e cloned HEAD, setup.sh wasn't there → exit 127.)*
+
+- **A fake-CLI shim on PATH only shields `bash command -v`, not Python `shutil.which`, on Windows.** Extensionless shim scripts are invisible to `shutil.which` (needs PATHEXT match), so Python subprocesses still hit the real binary. When testing a script that mutates global state, verify which lookup mechanism each consumer uses before trusting the shim. *(Source: onboarding e2e — setup.sh's `claude mcp add` hit the fake (safe), but health_check's `claude mcp list` hit the real CLI.)*
+
 ## Networking / external APIs
 
 - **Gov/enterprise APIs behind Akamai reset plain-Python TLS (JA3 fingerprint block).** Symptom: `httpx`/`requests` get `WinError 10054 connection forcibly closed` or SSL handshake timeout, but system `curl` returns 200. Fix: fetch via `curl_cffi` with `impersonate="chrome"` (mimics browser TLS). Lazy-import + degrade gracefully so absence doesn't break server. *(Source: StatCan WDS `www150.statcan.gc.ca` — httpx reset every time, curl_cffi 200. BoC Valet via same httpx worked fine → host-side WAF, not client.)*
