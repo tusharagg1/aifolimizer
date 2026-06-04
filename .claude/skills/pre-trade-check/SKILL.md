@@ -60,6 +60,7 @@ If user can't answer #5 with a specific reason that isn't "saw it on social medi
 | Gate | Rule |
 |---|---|
 | RSI overbought | `rsi_14 > 70` - entry late, expect pullback |
+| Lottery/MAX spike | `lottery_flag == true` - abnormal single-day pop in last 21d (`max_1d_return_21d_pct`). Bali-Cakici-Whitelaw: high-MAX names underperform ~1%/mo. For BUY/ADD, treat as chase risk - wait for the spike to mean-revert before entry. |
 | Below SMA50 | Price < SMA50 - counter-trend entry |
 | Earnings within 5 days | Per `get_fundamentals.next_earnings` - binary event risk |
 | Negative news headlines | >50% of recent headlines negative tone |

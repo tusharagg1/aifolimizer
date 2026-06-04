@@ -299,6 +299,25 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
         except Exception:
             pass
 
+        # MAX / lottery-stock reversal (Bali, Cakici & Whitelaw 2011):
+        # stocks with an extreme single-day gain in the recent past underperform
+        # (~-1.03%/mo, -1.18% monthly 4-factor alpha). Anti-froth chase guard —
+        # complements the crowding guard. Self-normalize by the name's own daily
+        # vol so the flag works for both low-vol ETFs and high-vol single names.
+        max_1d_return_21d_pct: float | None = None
+        lottery_flag: bool | None = None
+        try:
+            daily_ret = close.pct_change().dropna()
+            if len(daily_ret) >= 21:
+                recent = daily_ret.iloc[-21:]
+                max_1d = float(recent.max()) * 100
+                max_1d_return_21d_pct = round(max_1d, 2)
+                vol_window = daily_ret.iloc[-63:] if len(daily_ret) >= 63 else daily_ret
+                std_pct = float(vol_window.std()) * 100
+                lottery_flag = bool(max_1d >= 8.0 and std_pct > 0 and max_1d >= 3.0 * std_pct)
+        except Exception:
+            pass
+
         # OBV pos (already computed above) — wire into score
         obv_pos = 1.0 if obv_trend == "rising" else 0.0 if obv_trend == "falling" else 0.5
 
@@ -404,6 +423,11 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             signal_conflicts.append("Price rising but OBV falling — distribution under price strength")
         if minervini_score >= 5 and rs_21d_change_pct is not None and rs_21d_change_pct < -2:
             signal_conflicts.append("Strong Minervini setup but RS vs SPY deteriorating — relative weakness")
+        if lottery_flag:
+            signal_conflicts.append(
+                f"Lottery/MAX flag — abnormal {max_1d_return_21d_pct}% single-day spike in last 21d; "
+                "Bali-Cakici-Whitelaw: high-MAX names underperform ~1%/mo. Chase risk, avoid/trim."
+            )
 
         return {
             "sma_20": _safe(sma20),
@@ -443,6 +467,8 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             "rs_21d_change_pct": rs_21d_change_pct,
             "rs_rating": rs_rating,
             "mom_12_1_pct": mom_12_1_pct,
+            "max_1d_return_21d_pct": max_1d_return_21d_pct,
+            "lottery_flag": lottery_flag,
             "technical_score": technical_score,
             "signal_agreement": signal_agreement,
             "signal_conviction": signal_conviction,

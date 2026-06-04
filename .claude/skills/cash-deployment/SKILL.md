@@ -19,7 +19,7 @@ description: Plan how to deploy uninvested cash across existing portfolio holdin
 6. Call `mcp__aifolimizer__get_technicals` on existing holdings - sort by Minervini stage 2 + RSI not overbought + trend uptrend
 7. Call `mcp__aifolimizer__get_positioning_signals` on existing holdings - crowding score per name. EXCLUDE consensus-crowded names from add candidates
 8. For the top 3 candidates after filtering, call `mcp__aifolimizer__get_ticker_decision_history` (one call per candidate, parallel) - check for prior stop-outs or failed entries on these specific tickers
-9. Cross-reference: ideal add = (not concentration-flagged) AND (stage 2 uptrend) AND (RSI 40-65) AND (analyst upside >10%) AND (fundamentals not deteriorating) AND (crowding_score < 70) AND (no recent stop-out without new thesis override)
+9. Cross-reference: ideal add = (not concentration-flagged) AND (stage 2 uptrend) AND (RSI 40-65) AND (analyst upside >10%) AND (fundamentals not deteriorating) AND (crowding_score < 70) AND (lottery_flag != true) AND (no recent stop-out without new thesis override)
 
 ## Investor profile
 
@@ -52,6 +52,7 @@ Setup Score rubric (1 point each):
 - Not flagged for concentration
 - Crowding score < 70 (not consensus-crowded)
 - Volume score ≥ 1.0 (above-average volume confirmation)
+- No lottery/MAX flag (`lottery_flag != true`) - abnormal single-day spike = chase risk (Bali-Cakici-Whitelaw)
 
 ### 4. Deployment plan (risk-first)
 For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7=HIGH, 5-6=MED, 3-4=LOW>`. This is the single source of truth for levels (same engine as pre-trade-check) — supersedes raw `pivot_levels`:
