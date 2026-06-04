@@ -100,6 +100,7 @@ def evaluate(
     portfolio: PortfolioResponse,
     *,
     price_drop_pct: float = 5.0,
+    high_drop_pct: float = 15.0,
     rsi_oversold: float = 30.0,
     rsi_overbought: float = 75.0,
     earnings_within_days: int = 3,
@@ -107,14 +108,19 @@ def evaluate(
     sector_max_pct: float = 35.0,
     top_n_for_technicals: int = 15,
 ) -> list[dict[str, Any]]:
-    """Run all rules. Return triggered alerts (pre-dedup, pre-push)."""
+    """Run all rules. Return triggered alerts (pre-dedup, pre-push).
+
+    high_drop_pct: a single-day drop at/beyond this magnitude is tagged
+    "high" (pushed under min_severity=high); milder drops are "medium"
+    (logged only). Raise it to make Telegram pushes rarer.
+    """
     triggered: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # 1. Intraday price drops
     for pos in portfolio.positions:
         if pos.day_change_pct <= -abs(price_drop_pct):
-            sev = "high" if pos.day_change_pct <= -10 else "medium"
+            sev = "high" if pos.day_change_pct <= -abs(high_drop_pct) else "medium"
             body = (
                 f"{pos.symbol} ({pos.name}) intraday "
                 f"{pos.day_change_pct:.2f}% — weight {pos.weight:.1f}%, "
@@ -219,15 +225,7 @@ def evaluate(
     return triggered
 
 
-_PRIORITY_MAP = {"high": "high", "medium": "default", "low": "low"}
-_TAG_MAP = {
-    "price_drop_intraday": "chart_with_downwards_trend",
-    "rsi_oversold": "arrow_down",
-    "rsi_overbought": "arrow_up",
-    "earnings_imminent": "calendar",
-    "concentration_single": "warning",
-    "concentration_sector": "warning",
-}
+_SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2}
 
 
 def dispatch(
@@ -236,12 +234,20 @@ def dispatch(
     write_history: bool = True,
     telegram_bot_token: str | None = None,
     telegram_chat_id: str | None = None,
+    min_severity: str = "low",
 ) -> dict[str, int]:
-    """Dedup, append to history, push via Telegram. Returns counts."""
+    """Dedup, append to history, push via Telegram. Returns counts.
+
+    min_severity gates the Telegram push only (history still logs every
+    triggered alert). "high" = push only critical/major moves; lower
+    severities are recorded but not pushed, so the channel stays quiet.
+    """
+    min_rank = _SEVERITY_RANK.get(min_severity, 0)
     state = _load_state()
     today = date.today()
     pushed = 0
     skipped = 0
+    held = 0
     new_state = dict(state)
 
     keep_cutoff = (today - timedelta(days=7)).isoformat()
@@ -255,6 +261,9 @@ def dispatch(
         new_state[key] = today.isoformat()
         if write_history:
             _append_history(alert)
+        if _SEVERITY_RANK.get(alert.get("severity", "medium"), 1) < min_rank:
+            held += 1
+            continue
         if telegram_bot_token and telegram_chat_id:
             _push_telegram(
                 telegram_bot_token,
@@ -271,6 +280,7 @@ def dispatch(
         "triggered": len(triggered),
         "pushed": pushed,
         "deduped": skipped,
+        "below_severity": held,
     }
 
 

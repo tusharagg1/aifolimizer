@@ -41,13 +41,13 @@ $action = New-ScheduledTaskAction `
   -Argument $argList `
   -WorkingDirectory $BackendDir
 
-# Mon-Fri every 30 min, 9:30 ET to 4:00 ET.
-# Note: this triggers in LOCAL system time. Adjust StartTime if not on ET.
+# Every 30 min, indefinitely. Omitting -RepetitionDuration repeats forever
+# (the old -RepetitionDuration 6h30m made the task fire one day then stop, and
+# setting .DaysOfWeek on a -Once trigger is a no-op — that combo never recurred).
+# Off-hours/weekend runs are cheap: no new price data => alerts dedup to no-op.
 $trigger = New-ScheduledTaskTrigger `
   -Once -At 9:30am `
-  -RepetitionInterval (New-TimeSpan -Minutes 30) `
-  -RepetitionDuration (New-TimeSpan -Hours 6 -Minutes 30)
-$trigger.DaysOfWeek = "Monday,Tuesday,Wednesday,Thursday,Friday"
+  -RepetitionInterval (New-TimeSpan -Minutes 30)
 
 $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
@@ -55,14 +55,14 @@ $settings = New-ScheduledTaskSettingsSet `
   -RestartCount 2 `
   -RestartInterval (New-TimeSpan -Minutes 5) `
   -MultipleInstances IgnoreNew `
-  -ExecutionTimeLimit (New-TimeSpan -Minutes 3)
+  -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
 
 Register-ScheduledTask `
   -TaskName $TaskName `
   -Action $action `
   -Trigger $trigger `
   -Settings $settings `
-  -Description "aifolimizer portfolio alerts — runs every 30 min Mon-Fri 9:30-16:00 local time" `
+  -Description "aifolimizer portfolio alerts - runs every 30 min, indefinitely (off-hours dedup to no-op)" `
   -Force
 
 Write-Host "Registered task: $TaskName"
