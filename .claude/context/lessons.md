@@ -16,6 +16,8 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 
 - **Gov/enterprise APIs behind Akamai reset plain-Python TLS (JA3 fingerprint block).** Symptom: `httpx`/`requests` get `WinError 10054 connection forcibly closed` or SSL handshake timeout, but system `curl` returns 200. Fix: fetch via `curl_cffi` with `impersonate="chrome"` (mimics browser TLS). Lazy-import + degrade gracefully so absence doesn't break the server. *(Source: StatCan WDS `www150.statcan.gc.ca` — httpx reset every time, curl_cffi 200. BoC Valet via same httpx worked fine → host-side WAF, not the client.)*
 
+- **SEC: `www.sec.gov` 403s urllib but allows httpx; `data.sec.gov` allows both.** Same UA, different result by client + host. `www.sec.gov/files/company_tickers.json` (CIK map) rejected `urllib.request` with `403 Forbidden`; `httpx` with the identical `User-Agent` returned 200. `data.sec.gov/api/xbrl/...` (companyfacts) tolerates urllib. Rule: hit SEC via httpx, not urllib. *(Source: `fundamentals._load_cik_map` silently failed → every CIK-dependent tool (EDGAR filings, DCF, sec_financials) got empty map.)*
+
 ## yfinance
 
 - **Batch when possible.** `yf.download([syms], group_by="ticker", threads=True)` one HTTP regardless of symbol count. Serial loops easy bottleneck.

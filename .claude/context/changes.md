@@ -30,6 +30,40 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-04 - Wire new free-data tools into 9 skills
+
+Surfaced the 11 session-added tools inside the skills that consume them (research skills stay PII-free — public data only). No new tools; instruction-only edits to `.claude/skills/*/SKILL.md`.
+
+- **macro-impact**: + `get_boc_snapshot`, `get_statcan_snapshot` (official CA, prefer over FRED mirror), `get_factor_snapshot` (factor leadership feeds sector call). Gotchas added.
+- **risk-assessment**: + `get_factor_exposure` (top 3-5 holdings) + `get_factor_snapshot` → new output item "Factor concentration" (shared loadings = hidden factor bet). US-factor/low-R² caveat.
+- **stock-analysis**: + `get_insider_sentiment` (feeds insider item), `get_finnhub_news` (sentiment cross-check), `get_recent_filings` (8-K event risk), `get_factor_exposure` (lens selection). US-only caveats.
+- **adversarial-research**: Layer 1 8→12 calls (+insider/news/filings/search_interest); Consensus agent now consumes search-surge + insider tells; diagram + parallel-count rule updated.
+- **daily-briefing**: + `get_boc_snapshot` (cheap, curve_signal) always; `get_crypto_fear_greed`+`get_crypto_macro` only if crypto held (token-budget respected). Risk-radar lines added.
+- **sector-rotation**: + `get_factor_snapshot` (value/growth/quality leadership → sector tilt).
+- **earnings-analyzer**: + `get_recent_filings(8-K)` pre-earnings events + `get_finnhub_news` positioning-into-print.
+- **earnings-postmortem**: + `get_recent_filings(8-K,10-Q,10-K)` — primary-source filing + EDGAR link.
+- **momentum-scanner**: + `get_factor_snapshot` (Mom regime gate) + `get_search_interest` (retail-demand confirm); parallel step range updated.
+
+---
+
+## 2026-06-04 - 3 more free integrations (factor/crypto-macro/filings) + SEC CIK fix
+
+4 new MCP tools (total 98→102). All public data, no key, no PII. Congressional-trades skipped (free sources need keys / PDF-scraping; 45-day disclosure lag = arbed; novelty > edge for retail).
+
+### New services (`backend/app/services/`)
+- **`fama_french.py`** → `get_factor_snapshot` (latest + trailing 21d/252d FF5+Mom returns) and `get_factor_exposure(ticker, lookback_days)` — OLS regress ticker excess returns on Mkt-RF/SMB/HML/RMW/CMA/Mom → factor betas + annualized alpha + R² (numpy lstsq, no statsmodels). yfinance prices + Ken French Data Library zips (24h cache). Verified: AAPL market β1.22, profitability +0.55, alpha 3.45%/yr, R²0.34. Upgrades risk-assessment beyond single beta. US factors → non-US directional only.
+- **`defillama.py`** → `get_crypto_macro` (no key). Total DeFi TVL + top chains, aggregate stablecoin mcap + top issuers ($B). 30m cache. Verified live (TVL $73.9B, stablecoins $316.6B, top chain Ethereum $38.5B).
+- **`edgar_filings.py`** → `get_recent_filings(ticker, forms, limit)` (no key). Material SEC filings (8-K/10-K/10-Q/6-K/20-F/S-1/proxy/13D-G) with dates + doc URLs; event-detection feed. Reuses `fundamentals._load_cik_map`. US-listed only. 6h cache. Verified live (AAPL + SHOP).
+
+### Fix (pre-existing bug, blocked EDGAR + DCF + sec_financials)
+- `fundamentals._load_cik_map`: `www.sec.gov/files/company_tickers.json` 403'd urllib (Akamai WAF rejects urllib fingerprint; `data.sec.gov` used by `_fetch_facts` is permissive). Switched that one fetch to `httpx` (same UA → 200). Added `import httpx`. numpy added to requirements (explicit; used in fama_french).
+
+### Deps + wiring
+- `requirements.txt`: `numpy>=1.26.0`. `mcp_server.py`: 3 lazy modules + 4 `@mcp.tool()` wrappers (after get_search_interest).
+- Verified: 102 tools register, all 3 services exercised live.
+
+---
+
 ## 2026-06-04 - 5 free data integrations (no/low-cost, fill macro+sentiment gaps)
 
 7 new MCP tools (total 84→98). All public data — no PII, no `pii_filter`. Each = own service module mirroring `geopolitical.py` (dict cache + TTL, httpx, graceful degrade).
@@ -579,3 +613,8 @@ Always-on BUY/SELL/HOLD/WATCH without manual Claude commands. Rule-based engine,
 - `portfolio_analytics.py` - ETF X-ray, concentration warnings, tax-loss candidates.
 - 8 institutional analysis skills at `~/.claude/skills/`.
 - Next.js 14 dashboard - login (MFA), portfolio table, allocation chart, skill directory.
+## 2026-06-04 — MAX/lottery-stock reversal guard
+- `technicals.py`: added `max_1d_return_21d_pct` + `lottery_flag` (Bali-Cakici-Whitelaw 2011). Flag = max single-day gain in last 21d >= 8% AND >= 3x trailing-63d daily vol (self-normalized). Surfaces as signal_conflict (chase warning).
+- `pre-trade-check`: lottery flag = warning gate for BUY/ADD (wait for mean-revert).
+- `cash-deployment`: lottery_flag != true added to Setup Score + ideal-add cross-ref.
+- Source: review of academic-anomaly screenshots. 5 of 6 anomalies already shipped (52wk-high, PEAD, 12m momentum); pairs-trading + turn-of-month skipped (no short / tx-cost in retail TFSA). Verified: ruff clean, fires on synthetic 15% spike, no false positive on AAPL/NVDA/XEQT.
