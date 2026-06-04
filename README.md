@@ -2,7 +2,9 @@
 
 # aifolimizer
 
-***Your real portfolio, wired into Claude — then ask it anything.***
+<sub>(**AI** Port**foli**o Opti**mizer**)</sub>
+
+***Markets analysis in Claude — any ticker, or your whole Wealthsimple portfolio.***
 
 [![CI](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/tusharagg1/aifolimizer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -14,28 +16,50 @@
 
 </div>
 
-Local MCP portfolio analysis driven by Claude Desktop or Claude Code, with optional Wealthsimple integration for full portfolio awareness. Exposes 102 MCP tools and 25 analysis skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies — all backed by 12 swappable market-data adapters behind a shared interface, and running on an existing Claude Pro subscription.
+aifolimizer turns Claude into a markets analyst you drive in plain English — fundamentals, technicals, earnings, macro, options, and quant signals on any ticker, no brokerage account required. Connect Wealthsimple (optional) and the same tools go portfolio-aware: allocation, concentration, tax-loss, and rebalancing on your real holdings.
 
-> **Disclaimer.** Outcomes are LLM-generated. Verify before acting. Not financial advice.
+It runs on your Claude Pro plan, on your own machine — only tickers and percentages ever leave it. 102 MCP tools, 25 skills, 15 market-data adapters. Claude does the analysis; the integration, privacy filter, forward-test harness, and adapter layer are built around it.
+
+### Example prompts
+
+```text
+/stock-analysis NVDA        fundamentals + technicals + news — no account needed
+/adversarial-research VFV   parallel bull / bear / consensus passes, scored into one thesis
+/daily-briefing             (Wealthsimple) portfolio value, concentration flags, this week's earnings, ranked actions
+should I add to NVDA?        (Wealthsimple) weighs your holding and a crowding score before answering
+```
+
+*Illustrative — live answers use current market data and, where connected, your real holdings.*
+
+> **Disclaimer.** Analysis is LLM-generated and can be wrong. Verify before acting. Not financial advice.
 
 ---
 
+## Why not just ask Claude directly?
+
+Claude on its own has no live prices, can't see your holdings, and can't verify a P/E or RSI it quotes. aifolimizer closes that gap:
+
+- **Real numbers, computed — not guessed.** Prices, fundamentals, technicals, and option Greeks come from live feeds and real math, so Claude reasons over facts.
+- **Your actual portfolio.** Concentration, Canadian tax (TFSA / RRSP / FHSA), crowding, and rebalancing run on your live Wealthsimple holdings — not a snapshot you paste into a chat.
+- **Kept honest.** Tracked skills log every call and get marked to market — a real win/loss record, with deflated-Sharpe and calibration gates.
+- **Private by default.** Only tickers and percentages leave the machine — never balances, account numbers, or names.
+
 ## Who it's for
 
-- **Self-directed investors** running ticker-level research - fundamentals, technicals, earnings, macro, adversarial bull/bear theses. Broker-agnostic; no portfolio connection required.
-- **Wealthsimple users** wanting the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, sector rotation, daily briefings wired to live holdings. Other brokers slot into the same `Brokerage` abstraction.
-- **Quant developers** needing a working forward-test reference: walk-forward OOS validation, deflated-Sharpe overfitting gates, signal-decay curves, regime-conditional weight tuning.
-- **MCP integrators**: if you're building MCP servers, the tool layout, fallback adapter chain, and PII filter approach may be worth a look (102 tools, 12 adapters, 25 skills).
+- **Self-directed investors** — ticker-level research (fundamentals, technicals, earnings, macro, bull/bear theses). Broker-agnostic; no portfolio connection needed.
+- **Wealthsimple users** — the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, daily briefings on live holdings.
+- **Quant developers** — a working forward-test reference: walk-forward OOS validation, deflated-Sharpe gates, signal-decay curves, regime-conditional weight tuning.
+- **MCP integrators** — a real-world tool layout, fallback adapter chain, and PII-filter pattern (102 tools, 15 adapters, 25 skills).
 
 ## Features
 
-- **Live brokerage portfolio.** Wealthsimple integration via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) (MFA-aware, all account types - TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, account types, and cash balances flow from the actual account; cross-account aggregation and tax-aware logic run server-side.
-- **15 data adapters** (yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage, plus the Wealthsimple broker adapter) share a base class at [`data_sources/base.py`](backend/app/services/data_sources/base.py). The `data_router` chains them with circuit-breaker fallback. Adding Polygon, Refinitiv, or another paid feed is a one-file adapter.
-- **102 MCP tools** covering live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), macro from FRED, crowding and positioning, crypto, insider activity, options chains with Greeks, sentiment from Reddit and StockTwits, and geopolitical signals from GDELT. Verified with Claude Desktop and Claude Code; untested with Cursor or other MCP clients but should work.
-- **25 analysis skills** covering allocation health, risk, fundamentals, technicals, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on natural-language intent or invoke directly as slash commands.
-- **Forward-tested where it's tracked.** Two of 25 skills (`pre-trade-check`, `position-review`) write every recommendation to `recommendations.jsonl` with entry, stop, and target. A nightly scheduler marks open recommendations to market; rolling 7 / 30 / 90-day win rates surface via `get_live_track_record`. Alpha vs XEQT / SPY / TSX / QQQ comes from `get_alpha_attribution`. The other 23 skills are read-only analysis surfaces and aren't tracked. Live numbers - wins and losses - in [TRACK_RECORD.md](TRACK_RECORD.md).
-- **Statistical safeguards.** Walk-forward OOS validation ([`skill_backtest.py`](backend/app/services/skill_backtest.py)), deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration ([`calibration.py`](backend/app/services/calibration.py)), empirical signal-decay curves at 1/3/5/10/21/42/63 days ([`signal_history.py`](backend/app/services/signal_history.py)), regime-conditional gating, and a nightly weight tuner ([`market_regime.py`](backend/app/services/market_regime.py), [`weights_tuner.py`](backend/app/services/weights_tuner.py)).
-- **Runs locally.** Most state lives in JSONL files under `~/.aifolimizer/` and `backend/.claude/context/`. Postgres (TimescaleDB) and Redis are available via `docker compose up -d` for richer history and cross-process caching.
+- **Live brokerage portfolio.** Wealthsimple via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python) — MFA-aware, every account type (TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, and cash flow from the real account; cross-account aggregation and tax-aware logic run server-side.
+- **102 MCP tools** — live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), FRED macro, crowding, crypto, insider activity, options chains with Greeks, Reddit + StockTwits sentiment, GDELT geopolitics. Verified on Claude Desktop and Claude Code.
+- **25 analysis skills** — allocation health, risk, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on intent, or invoke as slash commands.
+- **15 data adapters** behind one base class ([`data_sources/base.py`](backend/app/services/data_sources/base.py)) — yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage + the Wealthsimple broker. `data_router` chains them with circuit-breaker fallback; adding Polygon or any paid feed is one file.
+- **Forward-tested where tracked.** Two skills (`pre-trade-check`, `position-review`) log every call with entry/stop/target; a nightly job marks them to market for 7/30/90-day win rates and alpha vs XEQT/SPY/TSX/QQQ. The other 23 are read-only. Wins and losses both: [TRACK_RECORD.md](TRACK_RECORD.md).
+- **Statistical safeguards.** Walk-forward OOS validation, deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration, signal-decay curves (1–63 days), regime-conditional gating, nightly weight tuner.
+- **Runs locally.** State in JSONL under `~/.aifolimizer/` and `backend/.claude/context/`; Postgres + Redis optional via `docker compose up -d`.
 
 ### Inference & fallback
 

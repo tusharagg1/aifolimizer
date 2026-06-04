@@ -1,8 +1,8 @@
 # Setup
 
-From a fresh `git clone` to Claude answering *"get my profile"* with your real data. Plan for about ten minutes if you only want stock research, twenty if you're wiring up the live Wealthsimple portfolio and Docker.
+This guide takes you from a clean checkout to your first analysis in Claude — roughly 10 minutes for stock research, or 20 if you also connect the live Wealthsimple portfolio and Docker.
 
-This guide assumes you're comfortable with a terminal and Python. If you'd rather have every term spelled out, the condensed version in the [README](../README.md#quick-start) is shorter, and most commands here are safe to copy verbatim.
+Assumes you're comfortable with a terminal and Python. Most commands copy verbatim; the [README quick start](../README.md#quick-start) is the shorter path.
 
 > **Shortcut.** If you just want it working, `./setup.sh` (macOS/Linux/WSL/Git-Bash) or `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) does the venv, deps, `backend/.env`, `.mcp.json`, MCP registration, and a health check in one idempotent pass. Then fill `backend/.env`, run `mcp_login.py`, start `run.py`. Read on for the same steps explained, or when something needs hand-tuning. Re-run the diagnostics any time with `python backend/scripts/health_check.py`.
 
