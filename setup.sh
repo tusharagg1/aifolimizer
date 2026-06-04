@@ -20,11 +20,19 @@ command -v "$PY_BIN" >/dev/null 2>&1 || { echo "ERROR: '$PY_BIN' not found. Inst
 "$PY_BIN" -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 12) else 1)' \
   || { echo "ERROR: Python 3.12+ required (found $($PY_BIN -V 2>&1)). Set PYTHON= to a 3.12+ interpreter."; exit 1; }
 
-VENV_PY="$REPO/backend/.venv/bin/python"
+# venv layout differs: POSIX -> bin/python ; Git-Bash on native Windows -> Scripts/python.exe
+_resolve_venv_py() {
+  if   [ -x "$REPO/backend/.venv/bin/python" ];        then echo "$REPO/backend/.venv/bin/python"
+  elif [ -x "$REPO/backend/.venv/Scripts/python.exe" ]; then echo "$REPO/backend/.venv/Scripts/python.exe"
+  else echo ""; fi
+}
 
 echo "==> 1/5 virtualenv"
-if [ ! -x "$VENV_PY" ]; then
+VENV_PY="$(_resolve_venv_py)"
+if [ -z "$VENV_PY" ]; then
   "$PY_BIN" -m venv backend/.venv
+  VENV_PY="$(_resolve_venv_py)"
+  [ -n "$VENV_PY" ] || { echo "ERROR: venv created but no python found under backend/.venv"; exit 1; }
   echo "    created backend/.venv"
 else
   echo "    backend/.venv exists — keeping"
@@ -68,9 +76,10 @@ echo "==> 5/5 doctor"
 
 cat <<EOF
 
-Setup done. Next:
+Setup done. Next (run.py needs cwd=backend for the uvicorn app import):
   1. Edit backend/.env  (WS_EMAIL / WS_PASSWORD — optional, only for portfolio skills)
-  2. cd backend && .venv/bin/python mcp_login.py   # first Wealthsimple login (MFA)
-  3. .venv/bin/python run.py                        # start backend on :8000
-  4. Restart Claude, then ask "get my profile" or run /daily-briefing
+  2. cd backend
+  3. "$VENV_PY" mcp_login.py   # first Wealthsimple login (MFA)
+  4. "$VENV_PY" run.py         # start backend on :8000
+  5. Restart Claude, then ask "get my profile" or run /daily-briefing
 EOF

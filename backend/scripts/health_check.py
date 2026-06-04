@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -107,12 +109,53 @@ def _check_settings_hooks() -> None:
         _add("settings_hooks", _WARN, "no settings.json found")
 
 
+def _check_env_file() -> None:
+    f = Path(__file__).resolve().parents[1] / ".env"
+    if not f.exists():
+        _add("env_file", _WARN, "backend/.env missing — copy from .env.example")
+        return
+    email = ""
+    for line in f.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("WS_EMAIL="):
+            email = line.split("=", 1)[1].strip()
+            break
+    if not email or email == "your@email.com":
+        _add("env_file", _WARN, "WS_EMAIL not set — portfolio skills need it")
+    else:
+        _add("env_file", _OK, "backend/.env present, WS_EMAIL set")
+
+
+def _check_mcp_registered() -> None:
+    claude = shutil.which("claude")
+    if not claude:
+        _add("mcp_registered", _WARN, "claude CLI not on PATH — cannot verify")
+        return
+    try:
+        out = subprocess.run(
+            [claude, "mcp", "list"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+        ).stdout or ""
+    except Exception as exc:
+        _add("mcp_registered", _WARN, f"`claude mcp list` failed: {exc}")
+        return
+    if "aifolimizer" in out:
+        _add("mcp_registered", _OK, "aifolimizer registered with Claude")
+    else:
+        _add("mcp_registered", _WARN, "not registered — run setup.sh / setup.ps1")
+
+
 def main() -> int:
     _check_python()
     _check_mcp_server()
     _check_services()
     _check_ws_session()
     _check_settings_hooks()
+    _check_env_file()
+    _check_mcp_registered()
 
     width = max(len(n) for n, _, _ in _results)
     print("aifolimizer health check")

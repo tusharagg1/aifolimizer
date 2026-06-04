@@ -1,0 +1,9 @@
+[Unit]
+Description=aifolimizer daily-briefing skill
+
+[Service]
+Type=oneshot
+# Replace __REPO__ before installing. See scripts/posix/README.md.
+ExecStart=/bin/bash __REPO__/scripts/run-claude-skill.sh daily-briefing
+StandardOutput=append:%h/.aifolimizer/skill-runs.log
+StandardError=append:%h/.aifolimizer/skill-runs.log

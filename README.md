@@ -89,6 +89,15 @@ Multi-broker support behind a `Brokerage` interface, OAuth/SSO multi-user identi
 
 **Prerequisites:** Python 3.12+, Docker Desktop (optional, for Postgres + Redis), Claude Code CLI or Claude Desktop (Pro), Wealthsimple account (optional - required only for portfolio-aware skills).
 
+**Fastest path — one command.** Creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
+
+```bash
+./setup.sh                                            # macOS / Linux / WSL / Git-Bash
+powershell -ExecutionPolicy Bypass -File setup.ps1    # native Windows
+```
+
+Then edit `backend/.env` (WS creds), run `mcp_login.py`, and start `run.py` (steps 5-6 below). The manual walkthrough below is the same thing, spelled out — use it if you'd rather do each step yourself or `setup` fails.
+
 ```bash
 # 1. Postgres password file (required before docker compose up)
 mkdir -p .secrets && openssl rand -hex 24 > .secrets/pg_password.txt && chmod 600 .secrets/pg_password.txt
@@ -219,7 +228,10 @@ aifolimizer/
 │   ├── context/         # architecture.md, changes.md, lessons.md, STATE.md
 │   └── agents/
 ├── docs/                # FAQ + sample skill outputs
-├── scripts/             # AUTOMATION runbook + PowerShell launchers
+├── scripts/             # AUTOMATION runbook + PowerShell launchers + run-claude-skill.sh
+│   └── posix/           # launchd / systemd unit files (macOS / Linux)
+├── setup.sh, setup.ps1  # one-command bootstrap (venv, deps, .env, .mcp.json, doctor)
+├── .gitattributes       # LF for *.sh / unit files (POSIX shebang safety)
 ├── docker-compose.yml   # Postgres (TimescaleDB) + Redis
 ├── .github/             # CI workflows + dependabot
 ├── CLAUDE.md, AGENTS.md # Project rules / agent context
@@ -254,6 +266,7 @@ Data persisted in `.data/` (gitignored). Secrets in `.secrets/pg_password.txt`.
 ## Documentation
 
 - [scripts/AUTOMATION.md](scripts/AUTOMATION.md) - scheduled-skill runbook, MFA re-auth, NSSM service, Telegram, troubleshooting (Windows + POSIX appendix)
+- [scripts/posix/README.md](scripts/posix/README.md) - ready-to-edit launchd / systemd / cron units for macOS + Linux
 - [docs/FAQ.md](docs/FAQ.md) - common setup, privacy, and usage questions
 - [docs/examples/](docs/examples/) - synthetic skill outputs + redacted prompt sample
 - [SECURITY.md](SECURITY.md) - threat model, disclosure policy, hardening checklist
@@ -272,6 +285,7 @@ Issues and PRs welcome. Counts of MCP tools (102) and skills (25) cited in CLAUD
 - **Wealthsimple MFA timeout.** Refresh token expired or WS forced re-auth. Re-run `python mcp_login.py` from `backend/`.
 - **Telegram `getUpdates` returns empty.** Telegram exposes `chat.id` only after the bot has received at least one message. Open the bot, send any text, then re-fetch.
 - **`claude mcp list` is slow (~5s).** Eager imports in `mcp_server.py` (yfinance, pandas, ta). Harmless - only paid on first invocation per session.
+- **Setup not working / unsure what's wired.** Run the doctor: `python backend/scripts/health_check.py` (or it runs at the end of `setup.sh` / `setup.ps1`). PASS/WARN/FAIL on Python version, MCP import + tool count, core services, WS session freshness, `backend/.env`, and MCP registration.
 
 More in [docs/FAQ.md](docs/FAQ.md).
 

@@ -4,6 +4,8 @@ From a fresh `git clone` to Claude answering *"get my profile"* with your real d
 
 This guide assumes you're comfortable with a terminal and Python. If you'd rather have every term spelled out, the condensed version in the [README](../README.md#quick-start) is shorter, and most commands here are safe to copy verbatim.
 
+> **Shortcut.** If you just want it working, `./setup.sh` (macOS/Linux/WSL/Git-Bash) or `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) does the venv, deps, `backend/.env`, `.mcp.json`, MCP registration, and a health check in one idempotent pass. Then fill `backend/.env`, run `mcp_login.py`, start `run.py`. Read on for the same steps explained, or when something needs hand-tuning. Re-run the diagnostics any time with `python backend/scripts/health_check.py`.
+
 ---
 
 ## How the pieces fit

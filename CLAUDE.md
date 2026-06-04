@@ -27,6 +27,8 @@ No frontend - analysis runs in Claude Code / Claude Desktop. FastAPI is exposed 
 
 ## How to Start
 
+Fresh clone: `./setup.sh` (POSIX/Git-Bash) or `powershell -File setup.ps1` (Windows) — venv, deps, `backend/.env`, `.mcp.json`, MCP registration, doctor. Idempotent. Then `python backend/scripts/health_check.py` to diagnose.
+
 ```bash
 # Backend (FastAPI + shared session store)
 cd backend && .venv/Scripts/activate && uvicorn main:app --reload --port 8000

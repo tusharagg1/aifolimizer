@@ -108,8 +108,11 @@ type the MFA code. Optional future upgrade: reply to Telegram with the code
 ## POSIX equivalents (macOS / Linux)
 
 WS session file path is identical: `~/.aifolimizer/ws_session.json` (mode 0600).
-The PowerShell wrapper `run-claude-skill.ps1` has no POSIX twin yet - minimal
-bash equivalent below.
+The PowerShell wrapper `run-claude-skill.ps1` now ships a POSIX twin at
+[`run-claude-skill.sh`](run-claude-skill.sh) (same claude → free-LLM → Telegram
+flow, exit codes 0/1/2). Ready-to-edit launchd / systemd unit files plus a
+`sed`-install guide live in [`posix/`](posix/README.md). The reference snippets
+below show the same thing inline.
 
 ### macOS - launchd
 
