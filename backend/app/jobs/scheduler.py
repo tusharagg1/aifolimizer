@@ -201,7 +201,7 @@ async def _fetch_portfolio_for(sid: str):
     except Exception as e:
         _LOG.warning(
             "scheduler: _get_portfolio failed for sid=%s: %s",
-            sid[:8],
+            sid[:8].replace("\n", " ").replace("\r", " "),
             e,
         )
         return None
@@ -210,7 +210,7 @@ async def _fetch_portfolio_for(sid: str):
 def _tenant_hash(sid: str) -> str:
     import hashlib
 
-    return hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 def _build_evidence_map(
@@ -499,9 +499,9 @@ async def _run_for_session(sid: str) -> dict:
             "evidence_symbols": len(evidence_map),
             "changes": change_stats,
         }
-    except Exception as e:
+    except Exception:
         _LOG.exception("scheduler: per-session run failed")
-        return {"tenant": sid[:8], "status": "error", "error": str(e)}
+        return {"tenant": sid[:8], "status": "error", "error": "internal error"}
 
 
 async def _tick() -> dict:
@@ -606,6 +606,28 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             (result or {}).get("total", "?"),
         )
 
+        # Self-logging: nightly NAV snapshot so alpha attribution self-populates
+        # its equity curve instead of requiring a manual MCP call each day.
+        try:
+            from app.services import alpha_attribution as _aa
+            from app.api.ws import _get_portfolio as _gp_nav
+
+            for sid in _active_session_ids(limit=1):
+                session = wealthsimple.get_session(sid)
+                if not session:
+                    continue
+                try:
+                    pf_nav = await _gp_nav(sid, session, "", max_age_s=300)
+                    nav = float(getattr(pf_nav.summary, "total_value", 0.0) or 0.0)
+                    if nav > 0:
+                        await asyncio.to_thread(_aa.snapshot_equity, nav)
+                        _LOG.info("scheduler: equity snapshot %.2f CAD", nav)
+                except Exception as e:
+                    _LOG.warning("equity snapshot failed: %s", e)
+                break
+        except Exception as e:
+            _LOG.warning("nightly equity snapshot loop failed: %s", e)
+
         # Phase 13: nightly discovery scan (S&P500 + TSX60 + watchlist).
         try:
             from app.services import discovery
@@ -676,7 +698,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                     ],
                     key=lambda x: -x["weight"],
                 )
-                thash = hashlib.sha1(sid.encode("utf-8")).hexdigest()[:16]
+                thash = hashlib.sha1(sid.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
                 llm_result = await skill_llm_runner.run_nightly_llm_skills(
                     thash,
                     top,
