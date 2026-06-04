@@ -452,6 +452,69 @@ def _series_trend(series: list[dict]) -> str:
     return "stable"
 
 
+def _fetch_facts(symbol: str) -> dict | None:
+    """Fetch the SEC XBRL companyfacts blob for a US ticker. None on failure.
+
+    Cached 24 h under the raw symbol so get_sec_financials and the DCF
+    cash-flow extractor share one network round-trip.
+    """
+    symbol = symbol.upper()
+    if "." in symbol:
+        return None
+    key = f"__facts__{symbol}"
+    entry = _SEC_CACHE.get(key)
+    if entry and time.time() - entry[1] < _SEC_TTL:
+        return entry[0]
+    cik = _load_cik_map().get(symbol)
+    if not cik:
+        return None
+    try:
+        url = _SEC_FACTS_URL.format(cik=cik)
+        req = urllib.request.Request(url, headers=_SEC_HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            facts = json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:
+        _LOG.warning(f"[sec] {symbol}: {exc}")
+        return None
+    _SEC_CACHE[key] = (facts, time.time())
+    return facts
+
+
+def get_sec_cashflow(symbol: str) -> dict:
+    """SEC EDGAR XBRL: annual operating cash flow, capex, and free cash flow.
+
+    free_cash_flow = operating_cash_flow - |capex|. Returns up to 4 fiscal
+    years plus FCF CAGR. Empty dict for non-US tickers or on fetch failure.
+    Feeds the deterministic DCF model.
+    """
+    facts = _fetch_facts(symbol)
+    if not facts:
+        return {}
+    ocf = _extract_annual_series(
+        facts, "NetCashProvidedByUsedInOperatingActivities"
+    ) or _extract_annual_series(
+        facts, "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"
+    )
+    capex = _extract_annual_series(
+        facts, "PaymentsToAcquirePropertyPlantAndEquipment"
+    )
+    capex_by_year = {e["year"]: abs(e.get("value") or 0) for e in capex}
+    fcf = []
+    for e in ocf:
+        yr = e["year"]
+        o = e.get("value") or 0
+        c = capex_by_year.get(yr, 0)
+        fcf.append({"year": yr, "value": o - c})
+    return {
+        "symbol": symbol.upper(),
+        "source": "SEC EDGAR XBRL",
+        "operating_cash_flow_annual": ocf,
+        "capex_annual": capex,
+        "free_cash_flow_annual": fcf,
+        "fcf_cagr": _series_cagr(fcf),
+    }
+
+
 def get_sec_financials(symbol: str) -> dict:
     """SEC EDGAR XBRL: annual revenue, net income, EPS for last 4 fiscal years.
 
@@ -466,17 +529,8 @@ def get_sec_financials(symbol: str) -> dict:
     if entry and time.time() - entry[1] < _SEC_TTL:
         return entry[0]
 
-    cik = _load_cik_map().get(symbol)
-    if not cik:
-        return {}
-
-    try:
-        url = _SEC_FACTS_URL.format(cik=cik)
-        req = urllib.request.Request(url, headers=_SEC_HEADERS)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            facts = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        _LOG.warning(f"[sec] {symbol}: {exc}")
+    facts = _fetch_facts(symbol)
+    if not facts:
         return {}
 
     revenue = (

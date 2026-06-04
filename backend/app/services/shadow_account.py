@@ -199,6 +199,104 @@ def _cluster_trades(roundtrips: list[dict], max_k: int = 4) -> list[dict]:
     return rules
 
 
+def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
+    """Diagnose cognitive trading biases from realized roundtrips.
+
+    Reuses the FIFO-paired data — no extra fetch. Each bias carries its
+    evidence and a flagged bool so a skill can act only on confirmed skew.
+    """
+    if len(roundtrips) < 4:
+        return {"note": f"need ≥4 roundtrips for bias detection; have {len(roundtrips)}"}
+
+    wins = [r for r in roundtrips if r["profitable"]]
+    losses = [r for r in roundtrips if not r["profitable"]]
+    enough = len(roundtrips) >= 6
+    out: dict[str, Any] = {}
+
+    # Disposition effect (Odean 1998): sell winners early, ride losers.
+    if wins and losses:
+        win_hold = float(np.median([r["holding_days"] for r in wins]))
+        loss_hold = float(np.median([r["holding_days"] for r in losses]))
+        ratio = loss_hold / win_hold if win_hold > 0 else None
+        flagged = bool(enough and loss_hold > win_hold * 1.3)
+        out["disposition_effect"] = {
+            "flagged": flagged,
+            "median_hold_winners_days": round(win_hold, 1),
+            "median_hold_losers_days": round(loss_hold, 1),
+            "loser_to_winner_hold_ratio": round(ratio, 2) if ratio else None,
+            "interpretation": (
+                "Holding losers longer than winners — disposition effect "
+                "(cutting winners early, riding losers). Drags returns."
+                if flagged
+                else "No strong disposition skew."
+            ),
+        }
+
+    # Gain/loss asymmetry: average win size vs average loss size.
+    if wins and losses:
+        avg_gain = float(np.mean([r["return_pct"] for r in wins]))
+        avg_loss = float(np.mean([abs(r["return_pct"]) for r in losses]))
+        payoff = avg_gain / avg_loss if avg_loss > 0 else None
+        flagged = bool(payoff is not None and payoff < 1.0)
+        out["gain_loss_asymmetry"] = {
+            "flagged": flagged,
+            "avg_gain_pct": round(avg_gain, 2),
+            "avg_loss_pct": round(avg_loss, 2),
+            "payoff_ratio": round(payoff, 2) if payoff else None,
+            "interpretation": (
+                "Average loss exceeds average gain — letting losers run. "
+                "Needs >50% win-rate just to break even."
+                if flagged
+                else "Average gain exceeds average loss — favourable payoff."
+            ),
+        }
+
+    # Overtrading: cadence and hold length.
+    dates = sorted(_parse_date(r["entry_date"]) for r in roundtrips)
+    span_days = max(1, (dates[-1] - dates[0]).days)
+    per_month = len(roundtrips) / (span_days / 30.0)
+    median_hold = float(np.median([r["holding_days"] for r in roundtrips]))
+    flagged = bool(per_month > 8 or median_hold < 3)
+    out["overtrading"] = {
+        "flagged": flagged,
+        "roundtrips_per_month": round(per_month, 1),
+        "median_holding_days": round(median_hold, 1),
+        "interpretation": (
+            "High churn — frequent short-hold roundtrips. Costs and taxes "
+            "erode edge; tighten entry criteria."
+            if flagged
+            else "Trade cadence reasonable."
+        ),
+    }
+
+    # Anchoring: entries clustering at round-number prices.
+    entries = [r["entry_price"] for r in roundtrips if r.get("entry_price")]
+    if entries:
+        def _near_round(p: float) -> bool:
+            for base in (round(p), round(p / 5) * 5):
+                if base > 0 and abs(p - base) / p <= 0.01:
+                    return True
+            return False
+
+        frac = sum(1 for p in entries if _near_round(p)) / len(entries)
+        flagged = bool(enough and frac > 0.5)
+        out["anchoring"] = {
+            "flagged": flagged,
+            "entries_near_round_numbers_pct": round(frac * 100, 1),
+            "interpretation": (
+                "Over half of entries cluster at round-number prices — "
+                "anchoring to psychological levels over signal."
+                if flagged
+                else "Entries not unduly clustered at round numbers."
+            ),
+        }
+
+    out["biases_flagged"] = [
+        k for k, v in out.items() if isinstance(v, dict) and v.get("flagged")
+    ]
+    return out
+
+
 def analyze_shadow_account(transactions: list[dict]) -> dict[str, Any]:
     """Full shadow account pipeline. Returns roundtrips + extracted rules + summary."""
     if not transactions:
@@ -240,6 +338,7 @@ def analyze_shadow_account(transactions: list[dict]) -> dict[str, Any]:
             "symbols_traded": sorted(set(r["symbol"] for r in roundtrips)),
         },
         "extracted_rules": rules,
+        "behavioral_biases": _detect_biases(roundtrips),
         "roundtrips": roundtrips[:100],
     }
     if cluster_note:
