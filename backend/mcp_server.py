@@ -1018,6 +1018,60 @@ async def get_earnings_calendar(
 
 
 @mcp.tool()
+async def get_dividend_calendar(
+    account_id: str = "",
+    symbols: list[str] = [],
+) -> list[dict]:
+    """
+    Upcoming ex-dividend + pay dates for holdings (and any extra `symbols`),
+    sorted by ex-dividend date ascending. Only names with a known forward
+    ex-dividend date are returned.
+
+    Per entry: symbol, ex_dividend_date, dividend_pay_date, days_until_ex,
+    is_upcoming (ex-div within 14 days), dividend_yield, held (True/False).
+
+    Use for: don't-sell-before-ex-div timing, dividend-capture windows, and
+    placing income names in the right account for the tax year. Public market
+    data (yfinance calendar) — no PII. Reuses the get_fundamentals fetch, so
+    no extra HTTP when fundamentals are already warm.
+    """
+    portfolio = await _load_portfolio(account_id)
+    held = [p.symbol for p in portfolio.positions]
+    held_set = set(held)
+    extra = _validate_symbols([s.strip().upper() for s in symbols if s and s.strip()])
+    all_syms = list(dict.fromkeys(held + extra))
+    fund_data = await asyncio.to_thread(fundamentals_svc.get_fundamentals, all_syms)
+
+    from datetime import date, timedelta
+
+    today = date.today()
+    cutoff = today + timedelta(days=14)
+    results = []
+    for sym, data in fund_data.items():
+        ex = data.get("ex_dividend_date")
+        if not ex:
+            continue
+        try:
+            ex_date = date.fromisoformat(ex[:10])
+        except Exception:
+            continue
+        if ex_date < today:
+            continue
+        results.append(
+            {
+                "symbol": sym,
+                "ex_dividend_date": ex[:10],
+                "dividend_pay_date": (data.get("dividend_pay_date") or "")[:10] or None,
+                "days_until_ex": (ex_date - today).days,
+                "is_upcoming": today <= ex_date <= cutoff,
+                "dividend_yield": data.get("dividend_yield"),
+                "held": sym in held_set,
+            }
+        )
+    return sorted(results, key=lambda r: r["ex_dividend_date"])
+
+
+@mcp.tool()
 async def get_watchlist() -> list[dict]:
     """
     User-defined watchlist — symbols being tracked but not held.
@@ -2637,5 +2691,38 @@ async def get_track_record_suite() -> dict:
     }
 
 
+_INSTANCE_LOCK = None  # held for process lifetime; module global prevents GC-release
+
+
+def _warn_if_second_instance() -> None:
+    """Tripwire for the duplicate-registration footgun.
+
+    aifolimizer over stdio is one process per MCP client. Two clients (a stray
+    .claude.json entry alongside project .mcp.json) spawn two servers that fight
+    over one rotating WS token — surfacing as stalls + spurious MFA prompts that
+    look like a backend bug. The first instance takes this advisory lock
+    silently; any later instance fails the non-blocking acquire and logs loudly
+    so the real cause (a second registration) is visible immediately. Non-fatal:
+    we still serve, since the filelock around token rotation keeps both safe.
+    """
+    global _INSTANCE_LOCK
+    from filelock import FileLock, Timeout as FileLockTimeout
+
+    lock_path = Path.home() / ".aifolimizer" / "mcp_server.instance.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(lock_path))
+    try:
+        lock.acquire(timeout=0)
+        _INSTANCE_LOCK = lock
+    except FileLockTimeout:
+        print(
+            "[MCP] WARNING: another aifolimizer MCP server is already running. "
+            "Duplicate registration (check ~/.claude.json vs project .mcp.json) "
+            "causes WS token contention -> stalls + spurious MFA. Keep one source.",
+            flush=True,
+        )
+
+
 if __name__ == "__main__":
+    _warn_if_second_instance()
     mcp.run()

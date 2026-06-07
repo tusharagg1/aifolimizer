@@ -39,6 +39,7 @@ BlackRock Portfolio Builder report with these sections:
 - Use actual ticker symbols and weights from returned data
 - Never reference account IDs, names, or PII (MCP returns filtered data only)
 - Direct and specific - no hedging
+- Keep-what-works: before recommending a trim/sell, check whether the position is best LEFT ALONE (large embedded gain in a Non-Reg account, safe growing dividend, core index ETF doing its job). Overtrading erodes long-term returns - the bar to touch a working position is high. For the full leave-alone discipline + whole-book decision table, defer to the `portfolio-review` skill.
 
 ## Gotchas
 

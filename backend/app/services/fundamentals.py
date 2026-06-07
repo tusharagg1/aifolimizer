@@ -58,26 +58,47 @@ def _dividend_growth_streak(ticker: yf.Ticker) -> int:
         return 0
 
 
+def _coerce_date_str(val) -> str | None:
+    """Normalize a yfinance calendar value (date / Timestamp / list / Series)
+    to a YYYY-MM-DD string. Returns None when unparseable."""
+    if val is None:
+        return None
+    if isinstance(val, (list, tuple)):
+        val = val[0] if val else None
+    if val is None:
+        return None
+    if hasattr(val, "iloc"):
+        try:
+            val = val.iloc[0]
+        except Exception:
+            return None
+    if hasattr(val, "strftime"):
+        return val.strftime("%Y-%m-%d")
+    return str(val)[:10]
+
+
 def _fetch_one(symbol: str) -> dict:
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info or {}
 
         earnings_date = None
+        ex_dividend_date = None
+        dividend_pay_date = None
         try:
             cal = ticker.calendar
-            if cal is not None and not cal.empty:
-                row = cal.T.iloc[0] if hasattr(cal, "T") else cal.iloc[0]
-                val = row.get("Earnings Date") if isinstance(row, dict) else None
-                if val is None and "Earnings Date" in cal.index:
-                    val = cal.loc["Earnings Date"]
-                if val is not None:
-                    if hasattr(val, "iloc"):
-                        val = val.iloc[0]
-                    if hasattr(val, "strftime"):
-                        earnings_date = val.strftime("%Y-%m-%d")
-                    else:
-                        earnings_date = str(val)
+            if isinstance(cal, dict):
+                earnings_date = _coerce_date_str(cal.get("Earnings Date"))
+                ex_dividend_date = _coerce_date_str(cal.get("Ex-Dividend Date"))
+                dividend_pay_date = _coerce_date_str(cal.get("Dividend Date"))
+            elif cal is not None and not getattr(cal, "empty", True):
+                idx = getattr(cal, "index", [])
+                if "Earnings Date" in idx:
+                    earnings_date = _coerce_date_str(cal.loc["Earnings Date"])
+                if "Ex-Dividend Date" in idx:
+                    ex_dividend_date = _coerce_date_str(cal.loc["Ex-Dividend Date"])
+                if "Dividend Date" in idx:
+                    dividend_pay_date = _coerce_date_str(cal.loc["Dividend Date"])
         except Exception:
             _LOG.debug("suppressed exception", exc_info=True)
 
@@ -96,6 +117,8 @@ def _fetch_one(symbol: str) -> dict:
             "dividend_growth_streak": _dividend_growth_streak(ticker),
             "market_cap": info.get("marketCap"),
             "earnings_date": earnings_date,
+            "ex_dividend_date": ex_dividend_date,
+            "dividend_pay_date": dividend_pay_date,
             "analyst_target_price": info.get("targetMeanPrice"),
             "analyst_recommendation": info.get("recommendationKey"),
             "institutional_ownership": info.get("heldPercentInstitutions"),

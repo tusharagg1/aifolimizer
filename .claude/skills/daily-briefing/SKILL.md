@@ -58,7 +58,7 @@ If catalyst flagged, prefix section 1 headline with `⚠️ CATALYST: <event> @ 
 
 ## Output structure
 
-Single-page brief, ≤ 400 words, this exact order:
+Single-page brief, ≤ 450 words, this exact order:
 
 ### 1. Headline (one sentence)
 Format: `[Portfolio value CAD] · [Day Δ %] · [Regime label] · [N alerts last 24h]`
@@ -85,7 +85,25 @@ Suggested action is one of: `review`, `trim`, `hedge`, `hold`, `add (small)`.
 - Yield curve / VIX / Fear-Greed extremes if macro snapshot flags; inverted `curve_signal` from `get_boc_snapshot` is a Canadian recession flag
 - Crypto sleeve (only if held): `get_crypto_fear_greed` extreme (≤20 fear / ≥80 greed) + falling DefiLlama TVL = risk-off in crypto
 
-### 5. Intraday addendum (only if US market open or pre-market)
+### 5. Anti-FOMO traps (only surface real ones — else one line)
+Behavioral guardrail. Built from data ALREADY fetched (crowding + day-change + earnings) — no new tool calls. List ≤ 3, each as `TRAP · ticker · horizon · why · the disciplined move`.
+
+**Horizon scope (READ FIRST — the logic inverts):** the traps below are calibrated for **swing / position / long-term** entries. For **intraday momentum** trades the crowding + narrative-spike logic is REVERSED — riding the crowd is the edge, not the trap. Tag each trap with the horizon it bites. Never flag an intraday momentum scalp with a long-horizon crowding trap.
+
+Swing / position / long-term traps:
+- **Chase-the-consensus**: `crowding_label == consensus` (score ≥ 70) on a name with a positive day → late-entry, negative expected alpha over weeks-months. Move: defer / size down, not add.
+- **Narrative spike**: `headline_velocity_ratio > 1.5` (news surge) + crowding consensus → story-driven, not fundamental. Move: wait for velocity to cool before sizing.
+- **Green-day add urge**: holding already > 8% weight up > 5% on the day → adding on strength concentrates risk at a local high. Move: hold, revisit on pullback to support.
+- **Pre-print gamble**: earnings within 3 days + urge to add a position-trade → binary bet, not a thesis. Move: no new size until after the print.
+
+Intraday traps (the discipline is exit-rules, NOT crowd-avoidance):
+- **No-stop scalp**: intraday entry without a hard stop + time-stop. Move: define both before entry or no trade.
+- **Late chase**: entering after price already ran > 2 ATR / RSI(2) extreme — the move is spent. Move: wait for VWAP reclaim or next setup.
+- **Overstay**: intraday thesis but holding past your time-stop into close → it's now an unplanned swing. Move: flatten or consciously convert with a swing stop.
+
+If none apply, write: `No active FOMO traps — positioning disciplined.`
+
+### 6. Intraday addendum (only if US market open or pre-market)
 From `get_technicals_intraday` on focus-list + top 5 by weight, surface:
 - Names with `intraday_score >= 0.7` AND `volume_spike >= 1.5` → "active setup"
 - Names with `opening_range_break == "below"` AND held weight > 3% → "intraday weakness on size"
@@ -93,7 +111,7 @@ From `get_technicals_intraday` on focus-list + top 5 by weight, surface:
 Format per line: `TICKER · intraday_score · VWAP $X.XX (Δ Y.Y%) · OR break: <dir> · note`
 If no intraday signals worth surfacing, write: `No notable intraday setups`.
 
-### 6. Skipped today
+### 7. Skipped today
 One line listing tools/checks that returned empty or stale data. Example: `Skipped: crypto (no holdings), tax-loss (no underwater positions), intraday (market closed)`.
 
 ## After output - write STATE.md
@@ -107,7 +125,7 @@ After completing the brief, update `.claude/context/STATE.md`:
 ## Rules
 
 - Direct. No hedging, no "you may want to consider".
-- If tool errors or returns empty, list in section 5 - do NOT fabricate data.
+- If tool errors or returns empty, list in section 7 - do NOT fabricate data.
 - Currency: CAD aggregate unless user in specific account.
 - Crowding rule (per CLAUDE.md): if `crowding_label == consensus` AND ticker in focus list, default action skews toward `trim` or `hold`, NOT `add`.
 - One-shot - do not chain into another skill unless user asks.
