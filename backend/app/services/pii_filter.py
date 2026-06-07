@@ -28,22 +28,33 @@ def filter_user_context(context: dict) -> dict:
     Strips PII from UserContext before injecting into prompts.
     Pseudonymizes account types; keeps only financial figures.
     """
+    # Internal `invested_value`/`total_invested` hold net liquidation value
+    # (cash + securities), not securities alone. Relabel on the way out so
+    # the contract is unambiguous and self-consistent:
+    #   net_liquidation_value == cash_balance + securities_value
+    # Adding cash on top of "invested" was double-counting NLV.
     safe_accounts = []
     for acc in context.get("accounts", []):
         acc_type = acc.get("type", "")
+        nlv = acc.get("invested_value", 0)
+        cash = acc.get("cash_balance", 0)
         safe_accounts.append(
             {
                 "label": _ACCOUNT_TYPE_LABELS.get(acc_type, "Investment Account"),
                 "currency": acc.get("currency", "CAD"),
-                "cash_balance": acc.get("cash_balance", 0),
-                "invested_value": acc.get("invested_value", 0),
+                "cash_balance": cash,
+                "securities_value": round(nlv - cash, 2),
+                "net_liquidation_value": nlv,
             }
         )
 
+    total_nlv = context.get("total_invested", 0)
+    total_cash = context.get("total_cash", 0)
     return {
         "accounts": safe_accounts,
-        "total_cash": context.get("total_cash", 0),
-        "total_invested": context.get("total_invested", 0),
+        "total_cash": total_cash,
+        "total_securities": round(total_nlv - total_cash, 2),
+        "total_nlv": total_nlv,
         "account_types": [_ACCOUNT_TYPE_LABELS.get(t, "Investment Account") for t in context.get("account_types", [])],
     }
 

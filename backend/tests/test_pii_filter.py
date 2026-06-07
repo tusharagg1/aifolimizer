@@ -153,9 +153,15 @@ def test_filter_user_context_pseudonymizes_account_types():
     assert "Tax-Free Savings Account" in labels
     assert "Non-Registered Investment Account" in labels
 
-    # Financial figures preserved
+    # Financial figures preserved, NLV relabeled and self-consistent
     assert safe["total_cash"] == 6000
-    assert safe["total_invested"] == 62000
+    assert safe["total_nlv"] == 62000
+    assert safe["total_securities"] == 56000
+    assert safe["total_nlv"] == safe["total_cash"] + safe["total_securities"]
+    tfsa = next(a for a in safe["accounts"] if a["label"] == "Tax-Free Savings Account")
+    assert tfsa["net_liquidation_value"] == 50000
+    assert tfsa["securities_value"] == 45000
+    assert tfsa["net_liquidation_value"] == tfsa["cash_balance"] + tfsa["securities_value"]
 
 
 def test_filter_user_context_unknown_account_type_falls_back():

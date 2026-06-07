@@ -286,11 +286,6 @@ def get_session(session_id: str) -> Optional[dict]:
     return session
 
 
-def _noop_persist(_sess: Any, _uname: Optional[str] = None) -> None:
-    """Retained for callers that explicitly want no persistence."""
-    pass
-
-
 _NON_INVESTMENT_TYPES = {"PORTFOLIO_LINE_OF_CREDIT", "LINE_OF_CREDIT", "MORTGAGE", "LOAN", "CREDIT_CARD"}
 
 
@@ -491,6 +486,37 @@ def _reload_session_from_disk() -> tuple[Optional[WSAPISession], Optional[str]]:
         return None, None
 
 
+def _run_ws(email: str, fn):
+    """Execute fn(ws) using the freshest on-disk session, persisting any
+    refresh-token rotation. Intentionally lock-free.
+
+    The read paths previously passed _noop_persist, so a mid-call access-token
+    refresh rotated the single-use refresh token server-side but the rotation
+    was discarded — killing the shared on-disk token on the next expiry. Two
+    fixes apply here: (1) reload the latest token from disk before each call so
+    we never run on a copy a peer just rotated, and (2) persist via
+    _persist_session so our own rotations are saved.
+
+    We do NOT hold _PERSIST_LOCK around the HTTP fetch. Wrapping every read in
+    the cross-process lock serialized all WS calls across all Claude sessions —
+    one slow call wedged every other behind a 45s timeout (head-of-line convoy
+    -> the tool "sticks"). Rotation conflicts only occur during the ~1s refresh
+    when the access token has expired (~every 30 min), not on normal fetches
+    with a valid token, and the disk writer uses atomic rename so the reload is
+    torn-read safe without a lock. The rare simultaneous-refresh race fails a
+    single call with WSApiException and self-heals on the next reload — far
+    cheaper than a guaranteed convoy. Session establishment (_finalize_session)
+    still serializes under the lock; that path is infrequent.
+    """
+    disk_session, disk_email = _reload_session_from_disk()
+    if disk_session is None:
+        raise ValueError("No persisted Wealthsimple session — run mcp_login.py to re-authenticate")
+    ws = WealthsimpleAPI.from_token(
+        disk_session, persist_session_fct=_persist_session, username=disk_email or email
+    )
+    return fn(ws)
+
+
 def _finalize_session_locked(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
     global _last_email
     _last_email = email
@@ -643,7 +669,6 @@ def get_positions(session_id: str, account_id: str) -> list[dict]:
     if not session or session.get("state") != "authed":
         raise ValueError("Session expired — please log in again")
 
-    ws_session: WSAPISession = session["session"]
     email = session["email"]
     accounts_raw: list[dict] = session.get("accounts_raw", [])
 
@@ -651,8 +676,7 @@ def get_positions(session_id: str, account_id: str) -> list[dict]:
     if not target_id:
         raise ValueError(f"Account '{account_id}' not found")
 
-    ws = WealthsimpleAPI.from_token(ws_session, persist_session_fct=_noop_persist, username=email)
-    all_positions = _fetch_identity_positions(ws)
+    all_positions = _run_ws(email, _fetch_identity_positions)
     filtered = [p for p in all_positions if _position_account_id(p) == target_id]
     _debug(f"[WS] get_positions: {len(all_positions)} total, {len(filtered)} filtered")
     return [_to_position_dict(p) for p in filtered if isinstance(p, dict)]
@@ -815,15 +839,13 @@ def get_all_positions(session_id: str) -> list[dict]:
     if not session or session.get("state") != "authed":
         raise ValueError("Session expired — please log in again")
 
-    ws_session: WSAPISession = session["session"]
     email = session["email"]
     accounts_raw: list[dict] = session.get("accounts_raw", [])
 
     # IDs of accounts we want to include (skip credit / loan accounts)
     investment_ids = {str(acc.get("id") or "") for acc in accounts_raw if _is_investment_account(acc) and acc.get("id")}
 
-    ws = WealthsimpleAPI.from_token(ws_session, persist_session_fct=_noop_persist, username=email)
-    raw_positions = _fetch_identity_positions(ws)
+    raw_positions = _run_ws(email, _fetch_identity_positions)
 
     if investment_ids:
         raw_positions = [
