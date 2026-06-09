@@ -6,7 +6,7 @@ Assumes you're comfortable with a terminal and Python. Most commands copy verbat
 
 > **Shortcut.** If you just want it working, `./setup.sh` (macOS/Linux/WSL/Git-Bash) or `powershell -ExecutionPolicy Bypass -File setup.ps1` (Windows) does the venv, deps, `backend/.env`, `.mcp.json`, MCP registration, and a health check in one idempotent pass. Then fill `backend/.env`, run `mcp_login.py`, start `run.py`. Read on for the same steps explained, or when something needs hand-tuning. Re-run the diagnostics any time with `python backend/scripts/health_check.py`.
 
-> **Even faster, no clone — Claude Code plugin.** With [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH: `claude plugin marketplace add tusharagg1/aifolimizer` then `claude plugin install aifolimizer@aifolimizer`. Ships all 25 skills; the MCP server runs via `uv run` (first launch builds the dep env in ~1-2 min — restart Claude once if tools don't appear). Market-data tools work immediately; Wealthsimple portfolio is opt-in via `mcp_login.py`. Caveat: plugin-cache state resets on plugin updates and the nightly scheduler isn't wired — use the clone path below if you want persistent paper-trade history or always-on alerts.
+> **Even faster, no clone — Claude Code plugin.** With [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on PATH: `claude plugin marketplace add tusharagg1/aifolimizer` then `claude plugin install aifolimizer@aifolimizer`. Ships all 27 skills; the MCP server runs via `uv run` (first launch builds the dep env in ~1-2 min — restart Claude once if tools don't appear). Market-data tools work immediately; Wealthsimple portfolio is opt-in via `mcp_login.py`. Caveat: plugin-cache state resets on plugin updates and the nightly scheduler isn't wired — use the clone path below if you want persistent paper-trade history or always-on alerts.
 
 ---
 
@@ -18,7 +18,7 @@ Three processes talk to each other, all on localhost:
    You, in Claude  ───────────►  Claude Code / Desktop (your Pro sub)
                                         │  speaks MCP
                                         ▼
-                              backend/mcp_server.py     ← the 102 tools live here
+                              backend/mcp_server.py     ← the 103 tools live here
                                         │  calls Python services
                                         ▼
         Wealthsimple · yfinance · FRED · CoinGecko · …   (free, mostly keyless)
@@ -229,7 +229,7 @@ Setting a fallback-LLM key opts you into sending %-of-NAV prompts to that provid
 ```
 aifolimizer/
 ├── backend/
-│   ├── mcp_server.py      the 102 MCP tools Claude calls
+│   ├── mcp_server.py      the 103 MCP tools Claude calls
 │   ├── run.py             FastAPI entry (REST + shared session store)
 │   ├── mcp_login.py       one-time interactive WS login
 │   ├── .env               your credentials (gitignored) — note: backend/, not root
@@ -240,7 +240,7 @@ aifolimizer/
 │       ├── db/ cache/     Postgres repositories · Redis client
 │       └── models/        Pydantic schemas
 ├── .claude/
-│   ├── skills/            25 analysis skills (the /slash-commands)
+│   ├── skills/            27 analysis skills (the /slash-commands)
 │   ├── context/           architecture.md · changes.md · lessons.md
 │   └── settings.json      your Claude perms/hooks (gitignored; .example is the template)
 ├── docs/                  this guide, FAQ, sample outputs

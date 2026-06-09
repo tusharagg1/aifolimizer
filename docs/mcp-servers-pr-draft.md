@@ -17,7 +17,7 @@ Find the **Community Servers** section (search for `## 🌎 Community Servers` o
 Add this line in the correct alphabetical position (likely between "ai-..." and "aws-..." or wherever lowercase "a" entries sit):
 
 ```markdown
-- **[aifolimizer](https://github.com/tusharagg1/aifolimizer)** - Portfolio analysis for retail investors. 84 MCP tools, 22 analysis skills (allocation health, risk, adversarial bull/bear, earnings, macro, sector rotation, tax-loss harvesting), walk-forward OOS validation, deflated-Sharpe gating, runs locally in Claude Code/Desktop with no API key. Optional Wealthsimple integration; ticker-level skills work on any broker.
+- **[aifolimizer](https://github.com/tusharagg1/aifolimizer)** - Portfolio analysis for retail investors. 103 MCP tools, 27 analysis skills (allocation health, risk, adversarial bull/bear, earnings, macro, sector rotation, tax-loss harvesting), walk-forward OOS validation, deflated-Sharpe gating, runs locally in Claude Code/Desktop with no API key. Optional Wealthsimple integration; ticker-level skills work on any broker.
 ```
 
 Confirm the punctuation/format matches surrounding entries before committing - some MCP-servers repos use slightly different bullet style.
@@ -42,7 +42,7 @@ Adds [aifolimizer](https://github.com/tusharagg1/aifolimizer) to the Community S
 
 ## What it does
 
-Local MCP server for retail-investor portfolio analysis. 84 tools spanning live prices, fundamentals, technicals, macro (FRED), crowding/positioning, crypto, options, news/sentiment. 22 analysis skills (allocation health, risk, adversarial research, earnings, sector rotation, tax-loss harvesting, more). Forward-tests trade-oriented skills via a recommendations log marked to market nightly.
+Local MCP server for retail-investor portfolio analysis. 103 tools spanning live prices, fundamentals, technicals, macro (FRED), crowding/positioning, crypto, options, news/sentiment. 27 analysis skills (allocation health, risk, adversarial research, earnings, sector rotation, tax-loss harvesting, more). Forward-tests trade-oriented skills via a recommendations log marked to market nightly.
 
 Optional Wealthsimple broker integration via the unofficial \`ws-api\` library; ticker-level skills (stock-analysis, adversarial-research, macro-impact, etc.) work standalone with no broker connection.
 

@@ -161,6 +161,13 @@ def _line_for(text: str, start: int) -> tuple[int, str]:
 
 
 def main() -> int:
+    # Windows consoles default to cp1252; failure lines quote source text that
+    # can contain em-dashes/arrows. Force UTF-8 so local runs don't crash on
+    # the very drift they are meant to report.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
     actual = {
         "tools": count_mcp_tools(),
         "skills": count_skills(),
