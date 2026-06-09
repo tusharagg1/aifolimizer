@@ -158,40 +158,42 @@ def compute(
 
 
 async def _fetch_pairs(horizon_days: int) -> list[tuple[float, int]]:
-    """Read (win_prob_at_signal_time, realized_outcome) from signal_history.
+    """Read (predicted win_prob, realized binary outcome) from the signal_history JSONL.
 
-    Outcome is 1 if realized_return_<horizon>d > 0 else 0.
+    Source of truth is the same JSONL the horizon scorer writes
+    (`signal_history.score_horizons`): each directional row carries
+    `features.win_prob` (the model's predicted P(win) at decision time) and,
+    once the H-day window has elapsed, `outcomes["h{H}"]["win"]` (already
+    direction-corrected — SELL/TRIM returns are sign-flipped upstream).
+
+    Pairs only exist at horizons whose window has closed for some signals;
+    shorter horizons populate first. Returns [] (→ "no_data" verdict) when no
+    overlapping (win_prob, outcome) rows exist yet — honest, not an error.
+
+    NOTE: this intentionally does NOT read Postgres. The realized-return
+    columns on the Postgres `signal_history` table are never populated by this
+    codebase (the scorer writes JSONL), so the old Postgres path was always
+    empty. The JSONL is the live source the rest of the pipeline uses.
     """
     try:
-        from app.db.pool import get_pool
+        from app.services import signal_history as sh
 
-        pool = get_pool()
-        if pool is None:
-            return []
-        col = f"realized_return_{horizon_days}d"
-        if col not in {
-            "realized_return_1d",
-            "realized_return_5d",
-            "realized_return_21d",
-            "realized_return_63d",
-        }:
-            return []
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                f"""
-                SELECT win_prob, {col} AS ret
-                FROM signal_history
-                WHERE win_prob IS NOT NULL
-                  AND {col} IS NOT NULL
-                ORDER BY ts DESC
-                LIMIT 5000
-                """,
-            )
+        key = f"h{horizon_days}"
         out: list[tuple[float, int]] = []
-        for r in rows:
-            p = float(r["win_prob"] or 0)
-            o = 1 if float(r["ret"] or 0) > 0 else 0
-            out.append((p, o))
+        for row in sh._load_history():
+            if (row.get("action") or "").upper() not in sh._DIRECTIONAL_ACTIONS:
+                continue
+            wp = (row.get("features") or {}).get("win_prob")
+            oc = (row.get("outcomes") or {}).get(key)
+            if wp is None or not oc:
+                continue
+            win = oc.get("win")
+            if win is None:
+                ret = oc.get("ret_pct")
+                if ret is None:
+                    continue
+                win = ret > 0
+            out.append((float(wp), 1 if win else 0))
         return out
     except Exception as e:
         log.warning("calibration fetch failed: %s", e)

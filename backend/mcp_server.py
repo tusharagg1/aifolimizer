@@ -2491,17 +2491,21 @@ async def get_calibration_report(horizon_days: int = 21) -> dict:
     itself; trust the signal less for sizing.
     """
     try:
-        from app.db import init_pool, close_pool
-        from app.services.calibration import latest_report
+        from app.services.calibration import calibration_verdict
 
-        await init_pool()
-        r = await latest_report(horizon_days=horizon_days)
-        return {"report": r} if r else {"report": None, "reason": "no report yet"}
-    finally:
-        try:
-            await close_pool()
-        except Exception:
-            pass
+        r = await calibration_verdict(horizon_days=horizon_days)
+        if not r or r.get("verdict") == "no_data":
+            return {
+                "report": r,
+                "reason": (
+                    f"no scored (win_prob, outcome) pairs at h{horizon_days} yet — "
+                    "shorter horizons populate first; a 21-trading-day window needs "
+                    "~30 calendar days of signal age"
+                ),
+            }
+        return {"report": r, "source": "signal_history.jsonl"}
+    except Exception as e:
+        return {"report": None, "reason": f"calibration failed: {e}"}
 
 
 @mcp.tool()
