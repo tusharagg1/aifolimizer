@@ -66,7 +66,7 @@ def _sector_etf_for(sector: str | None) -> str | None:
 
 _ACTION_ORDER = {"SELL": 0, "TRIM": 1, "BUY": 2, "WATCH": 3, "HOLD": 4, "NO_EDGE": 5}
 
-_REGIME_BUY_HOSTILE = frozenset({"bear_high_fear", "bear_low_fear"})
+_REGIME_BUY_HOSTILE = frozenset({"bear_high_fear", "bear_low_fear", "unknown"})
 _REGIME_SELL_HOSTILE = frozenset({"bull_low_fear"})
 
 _ETF_ASSET_CLASSES = {"etf", "index", "mutual_fund"}
@@ -369,7 +369,7 @@ def _score_position(
             reasons.append(f"Revenue +{revenue_growth * 100:.0f}% YoY — top-line growth")
 
     # ── Macro sub-score ────────────────────────────────────────────────────────
-    market_regime = macro.get("market_regime") or "bull_low_fear"
+    market_regime = macro.get("market_regime") or "unknown"
     if market_regime == "bear_high_fear":
         macro_score -= 1.0
         reasons.append("Bear market + elevated fear — defensive positioning favored")
@@ -570,18 +570,19 @@ def _score_position(
     else:
         entry_timing = "acceptable"
 
-    # ── Kelly Criterion — position sizing ─────────────────────────────────────
-    # f* = (b·p − q) / b  →  half-Kelly for safety, capped at 20%
-    if analyst_rec in ("buy", "strong_buy"):
-        win_prob = 0.62
-    elif analyst_rec in ("sell", "underperform"):
-        win_prob = 0.35
-    else:
-        # Interpolate from score: score=5 → 45%, score=10 → 65%
-        win_prob = min(0.65, max(0.35, 0.35 + (score / 10) * 0.30))
+    # ── Position sizing — Kelly GATED on calibration ──────────────────────────
+    # win_prob is an indicative heuristic interpolated symmetrically from score.
+    # The old analyst_rec→win_prob map (buy=0.62 / sell=0.35) was INVERTED vs
+    # realized outcomes (analyst-buy names realized ~18% win, sell ~94%) and is
+    # removed. Kelly sizing is SUPPRESSED until confidence labels calibrate
+    # against realized returns — an uncalibrated win_prob must never drive bet
+    # size. kelly_pct stays None (EV/max-loss cascade off it) until then.
+    # Interpolate from score: score=5 → 45%, score=10 → 65%.
+    win_prob = min(0.65, max(0.35, 0.35 + (score / 10) * 0.30))
 
     kelly_pct: float | None = None
-    if risk_reward and risk_reward > 0:
+    _sizing_calibrated = _evidence_context().get("calibrated", False)
+    if _sizing_calibrated and risk_reward and risk_reward > 0:
         b = risk_reward
         p = win_prob
         q = 1.0 - p
@@ -671,6 +672,13 @@ def _score_position(
                 entry_timing = "wait_pullback"  # don't enter right before binary event
 
     _ev = _evidence_context()
+    # Conviction decouple: HIGH tracked bullish/analyst convergence → mapped to the
+    # negative-EV long leg (HIGH realized 23.6% win vs MED 74.1%). Until calibration
+    # proves the HIGH>MED>LOW ordering, cap long-side conviction at medium so an
+    # un-earned HIGH label cannot drive sizing/trust on the losing BUY bucket.
+    # Self-reverts once _evidence_context reports calibrated=True.
+    if action in ("BUY", "ADD") and confidence == "high" and not _ev.get("calibrated"):
+        confidence = "medium"
     evidence_tier, evidence_note = _evidence_tier(action, confidence, _ev["forward_n"], _ev["calibrated"], ev_dollars)
 
     return {
@@ -740,16 +748,22 @@ def _score_position(
 # in-sample backtests + live convergence from masquerading as realized edge.
 _MIN_FORWARD_PROVEN = 100
 _MIN_FORWARD_THESIS = 30
+_CALIBRATION_HORIZON = 21
 _EVIDENCE_TTL = 300
 _EVIDENCE_CACHE: tuple[dict, float] | None = None
 
 
 def _evidence_context() -> dict:
-    """Forward (out-of-sample) sample size, cached 5 min. Forward closed
-    signals are the only OOS evidence we have; in-sample backtests and live
-    sub-signal convergence do not count as proof. Calibration status is wired
-    in a later phase (calibration.calibration_verdict is async + DB-backed);
-    until then `calibrated` stays False so nothing is labeled proven_edge."""
+    """Forward (out-of-sample) sample size + empirical calibration status,
+    cached 5 min. Forward closed signals are the only OOS evidence we have;
+    in-sample backtests and live sub-signal convergence do not count as proof.
+
+    `calibrated` is now derived from realized outcomes via
+    signal_history.calibrate_confidence (sync, jsonl-backed): it flips True
+    ONLY when the HIGH>MEDIUM>LOW win-rate ordering holds with a >=10pp spread
+    at the eval horizon. Insufficient data or an inverted ordering keeps it
+    False, so nothing is labeled proven_edge until the labels actually earn it.
+    Self-activates as signals age into the eval horizon."""
     global _EVIDENCE_CACHE
     if _EVIDENCE_CACHE and time.time() - _EVIDENCE_CACHE[1] < _EVIDENCE_TTL:
         return _EVIDENCE_CACHE[0]
@@ -762,7 +776,13 @@ def _evidence_context() -> dict:
         )
     except Exception:
         forward_n = 0
-    ctx = {"forward_n": forward_n, "calibrated": False}
+    calibrated = False
+    try:
+        cal = signal_history.calibrate_confidence(horizon=_CALIBRATION_HORIZON)
+        calibrated = cal.get("verdict") == "calibrated"
+    except Exception:
+        calibrated = False
+    ctx = {"forward_n": forward_n, "calibrated": calibrated}
     _EVIDENCE_CACHE = (ctx, time.time())
     return ctx
 
@@ -828,8 +848,9 @@ def _decide_action(
        + score < 3.5 + 3-signal convergence. Otherwise TRIM/WATCH/NO_EDGE.
        ETFs skip the fundamentals requirement.
 
-    4. BUY gate: score >= 7.5 + 3-signal convergence + zero conflicts +
-       regime not hostile. Otherwise downgrade.
+    4. BUY gate (tightened — live BUY leg was negative EV): score >= 8.0 +
+       3-signal convergence + zero conflicts + fundamentals >= 0 (ETFs exempt)
+       + signal_quality >= 3 + regime not hostile. Otherwise WATCH/HOLD/NO_EDGE.
 
     5. Default HOLD for everything in between.
     """
@@ -862,14 +883,25 @@ def _decide_action(
             return "WATCH", "Bearish but insufficient deterioration for SELL"
         return "HOLD", None
 
-    # Bullish path
+    # Bullish path — BUY gate tightened (live BUY leg was negative expectancy:
+    # 197 sigs, 17.8% win, -5.3% alpha vs XEQT). Raise score bar 7.5→8.0, add a
+    # fundamentals floor (ETFs exempt) and a signal-quality floor; demote
+    # marginal longs to WATCH so they route away from the losing BUY bucket.
     if dominant_dir == 1:
-        if score >= 7.5 and confirming >= 3 and conflicting == 0 and market_regime not in _REGIME_BUY_HOSTILE:
-            return "BUY", "3+ sub-signals converge bullish, regime compatible"
-        if score >= 7.5 and market_regime in _REGIME_BUY_HOSTILE:
+        buy_ok = (
+            score >= 8.0
+            and confirming >= 3
+            and conflicting == 0
+            and (is_etf or fund_score >= 0)
+            and signal_quality >= 3
+            and market_regime not in _REGIME_BUY_HOSTILE
+        )
+        if buy_ok:
+            return "BUY", "Score≥8 + 3-signal convergence + fundamentals≥0 + quality≥3 + regime ok"
+        if score >= 8.0 and market_regime in _REGIME_BUY_HOSTILE:
             return "WATCH", f"Bullish setup but {market_regime} regime — defer until trend confirms"
-        if score >= 6.5 and confirming >= 2:
-            return "WATCH", "Promising — needs 3-signal confirmation before BUY"
+        if score >= 7.0 and confirming >= 2:
+            return "WATCH", "Promising — needs score≥8 + fundamentals + quality + 3-signal confirm"
         if score >= 5.5:
             return "HOLD", None
         return "NO_EDGE", "Bullish score too weak to act"
