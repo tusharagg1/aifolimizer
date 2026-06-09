@@ -97,7 +97,13 @@ def run_ws_jobs() -> None:
         from app.services import positioning
 
         positions = wealthsimple.get_all_positions(session_id)
-        symbols = list(dict.fromkeys(p.get("symbol") for p in positions if p.get("symbol")))[:15]
+        symbols = list(
+            dict.fromkeys(
+                (p.get("security") or {}).get("symbol")
+                for p in positions
+                if (p.get("security") or {}).get("symbol")
+            )
+        )[:15]
         if symbols:
             res = positioning.snapshot_to_history(symbols)
             _log(f"snapshot_positioning_history: {len(symbols)} symbols, {res}")
