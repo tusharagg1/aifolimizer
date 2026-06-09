@@ -130,3 +130,18 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 - **Root cause**: ws_api calls `requests.request` with no timeout. The disk fix (30s patch) was correct but the *running* MCP server predated it — and Claude Code keeps the MCP server alive across chat sessions, so "every new session" reconnected to the same stale process with permanently-blocked worker threads. Worse, all WS calls ran on the shared `asyncio.to_thread` default executor, so a stall starved even zero-network tools (get_personal_context).
 - **Fix**: dedicated `_WS_EXECUTOR` (4 workers) + `_ws_call()` with `asyncio.wait_for` ceiling. WS stall → bounded RuntimeError, isolated from other tools.
 - **Rule**: any indefinite blocking I/O behind an MCP tool needs BOTH a transport timeout AND an async-layer `wait_for` backstop, and must not share the default to_thread pool with unrelated tools. Editing a .py does NOT reload a live MCP server — must reconnect/restart it.
+
+## Duplicate MCP registration = the real cause of WS stalls/MFA
+- BEFORE blaming token/refresh logic: check for >1 mcp_server.py process and for the server defined in BOTH .mcp.json and ~/.claude.json[projects][path][mcpServers]. Two registrations = two processes = token contention.
+- A valid (unexpired) JWT + an MFA prompt is the signature of contention, not a dead session.
+
+## WS token death = dropped rotation, not process duplication
+- Before blaming "duplicate MCP instances": check process PARENT PIDs. .venv\Scripts\python.exe is a launcher stub that spawns base interpreter as a child and waits -> 2 python procs per server that die together. That is ONE logical server, not a contending duplicate. Kill the child; if the parent dies too with no respawn, it was the stub pair.
+- The real token killer was persist_session_fct=_noop_persist on read paths: ws-api auto-refresh rotates the single-use refresh token but the noop persist discarded it. Any WS call that can trigger an internal refresh MUST persist the rotation, or the shared on-disk token dies.
+- Genuine multi-session contention exists at the CHAT level (N Claude sessions, 1 token), fixed by serializing all WS calls through _PERSIST_LOCK + disk reload, not by killing processes.
+
+## Never let an uncalibrated probability drive position sizing
+- The `analyst_rec→win_prob` map (buy=0.62, sell=0.35) was ANTI-correlated with reality: analyst-buy names realized ~18% win, sell ~94%. Feeding it to Kelly levers into losers.
+- Rule: gate Kelly on an empirical calibration verdict (HIGH>MED>LOW with ≥10pp spread); default `kelly_pct=None` until earned. A heuristic prob is for display, not sizing.
+- Rule: when a confidence label exists, validate it against realized win-rate per bucket before trusting it. HIGH here was INVERTED (23.6% vs MED 74.1%) because it tracked bullish convergence = the losing BUY leg. Cap/decouple until calibration proves the ordering.
+- Rule: trust-tier labels must gate on the SIGN of realized expectancy, not just sample size — a large negative-EV sample is evidence of a LOSING policy, not a milestone. Always verify the live forward store (353 sigs) over a stale committed report (103).

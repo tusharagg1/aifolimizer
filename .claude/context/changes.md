@@ -688,3 +688,45 @@ Deleted `tests/test_ws_timeout_patch.py` per user request (timeout patch itself 
 Verified: ruff clean, 336 tests pass, security suite 17/17, all 102 MCP tools import, concurrent get_profile+get_personal_context 3.79s (no starvation).
 OPEN: per-holding return % is CAD-frame (~40.3%, = WS API unrealizedReturns) vs WS *app* native-USD return (UNH 36.8%). Native return needs cost basis at native FX — NOT in the position API (only CAD bookValue at historical FX). Pending user decision.
 ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it alive across chat sessions) so these fixes load — the live hang is a stale pre-patch process.
+
+## 2026-06-04 — WS MFA/stall root cause: duplicate MCP registration
+- aifolimizer registered in BOTH project .mcp.json AND ~/.claude.json local scope (3 project paths) -> two mcp_server.py processes per session -> contention over one rotating WS token -> stalls + spurious MFA (token was NOT expired).
+- Filelock (prior fix) only serialized token rotation; never removed the 2nd process, so symptom recurred.
+- Fix: stripped aifolimizer from ~/.claude.json (backup .claude.json.bak-*); .mcp.json is sole source. Added non-blocking instance FileLock tripwire in mcp_server.py __main__ that warns to stderr on 2nd instance.
+
+## 2026-06-04 — Shared rotating-token fix (A+B): _run_ws on read paths
+- Root cause of recurring WSApiException/MFA: get_positions + get_all_positions built WealthsimpleAPI with _noop_persist, so ws-api mid-call access-token refresh ROTATED the single-use refresh token server-side but never persisted it -> disk token went dead (kills even a single session on next access-expiry). Concurrent Claude sessions compounded it: each refreshed independently and invalidated the others.
+- Fix: new _run_ws(email, fn) runs every read-path WS call under _PERSIST_LOCK, reloads freshest token from disk first, builds client with _persist_session so rotations are saved. Serializes WS calls cross-process; lock reentrant so balances thread-pool unaffected. Removed dead _noop_persist (module-level; mcp_login.py keeps its own local copy).
+- NOT a duplicate-process bug: the "two instances" every prior session chased = venv launcher-stub (.venv python.exe) + base C:\Python314 interpreter = one logical server. Verified by killing child -> parent died, no respawn.
+- Latent: venv is Python 3.14.5; CLAUDE.md pins <3.14 (ta incompat). Rebuild venv on 3.12/3.13.
+- Verified: py_compile, ruff F-codes clean, 9 WS/session tests pass.
+
+## 2026-06-04 — CORRECTION to Fix B: _run_ws is lock-free, not locked
+- Prior note said B wraps every WS call in _PERSIST_LOCK. That caused a head-of-line CONVOY: with multiple Claude sessions, one slow/held lock wedged every read call behind the 45s timeout -> tool "stuck". Isolated test proved the WS path itself is fine (restore 4.5s, valid session); the hang was pure lock contention my own change introduced.
+- Revised: _run_ws is lock-free. Reload freshest token from disk (atomic-rename writer => torn-read safe, no lock needed) + persist rotations via _persist_session. Rotation conflicts only occur during the ~1s refresh on access-token expiry (~30min), not on valid-token fetches; the rare simultaneous-refresh race fails one call and self-heals on next reload. Session establishment (_finalize_session) still serializes under the lock (infrequent).
+- Verified: compile, ruff F clean, 9 tests pass, _run_ws completes 0.4s while a live peer holds the lock (convoy gone).
+- NOTE: running mcp_server processes hold OLD code in memory until restarted; reload window/chat to pick up the lock-free version.
+
+## 2026-06-04 — Fix get_profile NLV double-count (pii_filter output relabel)
+- Bug: `filter_user_context` exposed per-account `invested_value` and top-level `total_invested`, but the internal field holds **NLV (cash + securities)**, not securities. Consumers (and humans) computing `NLV = total_invested + total_cash` double-counted cash (e.g. $23.5k NLV mis-read as $29.7k).
+- Root cause: internal `Account.invested_value` = `financials.currentCombined.netLiquidationValue`; all 6 internal consumers (ws.py, run_alerts, send_daily_briefing, skill_runner, mcp_server) correctly treat it as NLV. Only the public output labels were misleading.
+- Fix: relabel at the pii_filter boundary only (internal field + consumers untouched). Per account now: `cash_balance`, `securities_value` (=nlv-cash), `net_liquidation_value`. Top-level: `total_cash`, `total_securities`, `total_nlv`. Identity `total_nlv == total_cash + total_securities` now holds.
+- Tests: test_pii_filter.py updated to assert new keys + identity; 5 passed.
+- NOTE: running MCP server must restart to serve new shape (module already loaded).
+- OPEN (separate bug, not fixed): get_portfolio per-position `market_value` is native USD while `book_cost`/tax-loss are CAD → wrong `weight` + bogus summary `total_return_pct`. Needs FX normalization in enrichment path.
+
+## 2026-06-07 — ops cleanup: kill restart popups, fix launcher, disable Sentry
+- Removed 4 stale scheduled tasks: `aifolimizer-backend` (run.py @logon), `aifolimizer-worker` (worker.py @logon — REDIS_URL unset → sys.exit(1) every boot), `aifolimizer-daily-briefing` (root dup of `\aifolimizer\daily-briefing`), `\aifolimizer\backend-watchdog` (probed :8000). The two @logon tasks were the "restart popups."
+- Kept Telegram automation: `aifolimizer-alerts` + `\aifolimizer\{daily-briefing,top-trades-today,position-review}`.
+- Hid skill-task consoles (`-WindowStyle Hidden`); switched alerts to `pythonw.exe` (no console). `register-skill-task.ps1` updated so future regs are hidden.
+- Rewrote `scripts/aifolimizer-launch.ps1`: was probing dead FastAPI :8000 + /ws/restore. Now probes session via `wealthsimple.restore_session()` directly and drives interactive `mcp_login.py` for MFA. No backend daemon needed (MCP-only model).
+- Disabled `SENTRY_DSN` in backend/.env (commented; errors → local logs). Stops cloud error flood + dead digest job. SENTRY_AUTH_TOKEN/ORG/PROJECT left (read-only digest path, inert without worker).
+- Killed stale concurrent mcp_server.py instances + removed stale instance.lock. Confirmed MCP path is lock-free disk-reload (no per-call WS validate) — forced-MFA was refresh-token expiry, already mitigated by prior write-lock fix.
+
+## 2026-06-08 — signal-policy postmortem + fixes: kill the negative-EV BUY leg
+- Postmortem of 353 scored forward signals (live track record, NOT the stale 103 in TRACK_RECORD.md): overall 44.2% win / -0.58% avg. Loss is ENTIRELY the BUY leg (197 sigs, 17.8% win, -5.3% alpha vs XEQT). TRIM/SELL have real edge (77-94% win, +5-7% alpha). HIGH conviction INVERTED vs MED (23.6% vs 74.1%). Decay curve: edge ultra-short, h1 49% → h5 34%.
+- Root cause: `win_prob` heuristic anti-correlated with outcomes — analyst-buy→0.62 (realized 18% win), sell→0.35 (realized 94%).
+- Fixes (recommendations.py): (1) removed inverted analyst_rec→win_prob map (symmetric score-based only); (2) Kelly SUPPRESSED until calibrated (kelly_pct=None → EV/max-loss cascade off); (3) BUY gate 7.5→8.0 + fundamentals≥0 floor (ETF-exempt) + signal_quality≥3 floor, marginal longs→WATCH; (4) conviction capped at MED for BUY/ADD until calibration proves HIGH>MED>LOW; (5) wired `_evidence_context.calibrated` to `signal_history.calibrate_confidence` (was hardcoded False) — self-activates as h21 fills.
+- trust_report.py: new SEED-NEGATIVE-EV / DEVELOPING-NEGATIVE-EV tiers — sign of realized return gates the label; negative EV can no longer read as a milestone. Regenerated TRACK_RECORD.md (now SEED-NEGATIVE-EV, 353 sigs).
+- Deferred (staged in `.claude/context/signal-policy-fix-plan.md`, need review): horizon re-match to decay, benchmark-relative gate, AI-critic pre-emit gate, top-trades-today demote, portfolio risk-gate→engine wiring.
+- Verified: ast+import OK, BUY-gate smoke 5/5, `score_signal_horizons` scored 208 new rows. NOTE: running MCP server holds pre-edit code — restart to load.
