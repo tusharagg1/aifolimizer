@@ -27,6 +27,7 @@ not for numbers that a tool already provides.
 9. Call `mcp__aifolimizer__get_finnhub_news` with `ticker=ticker` - news bull/bear tally + net_sentiment; cross-check the `get_news_headlines` narrative for divergence
 10. Call `mcp__aifolimizer__get_recent_filings` with `ticker=ticker` - recent material SEC filings; flag any 8-K filed in the last 5 days as event risk before issuing a call. US-listed only
 11. Call `mcp__aifolimizer__get_factor_exposure` with `ticker=ticker` - dominant style factor (value/momentum/quality/size); use to pick which INVESTOR LENS applies
+11b. (US tickers only, when Buffett lens applies) Call `mcp__aifolimizer__get_dcf_valuation` with `symbol=ticker` for the FCF history (owner-earnings anchor) and `mcp__aifolimizer__get_sec_financials` with `symbols=[ticker]` for the 3-4yr revenue/income/EPS trend (capital-allocation read). Skip for .TO names - EDGAR has no Canadian filings
 12. Use MCP data as primary source. WebSearch only for: recent earnings call quotes, analyst upgrade/downgrade news, or gaps in MCP response
 
 ## Investor profile
@@ -66,7 +67,11 @@ Apply the 2 most relevant lenses for this stock type. Skip inapplicable ones - s
 
 **Graham (Deep Value):** P/E < 15? Debt/equity < 1? Positive net current assets? 3/3 pass = "Graham would buy at this price." 1-2/3 = note which criteria miss. 0/3 = "Too expensive for value mandate."
 
-**Buffett (Quality Moat):** Moat rating wide/narrow (from fundamental section)? Profit margins stable or expanding over 3yr? ROIC proxy = `profit_margin × revenue / market_cap`-style qualitative read. If wide moat + stable margins: "Buffett-quality compounder - hold forever at right price." Weak moat: "Pass - no durable advantage."
+**Buffett (Quality Moat + Owner Earnings + Management):** Three-part read.
+- *Moat:* rating wide/narrow (from fundamental section)? Profit margins stable or expanding over 3yr? ROIC proxy = `profit_margin × revenue / market_cap`-style qualitative read.
+- *Owner earnings:* Buffett's real cash to owner ≈ operating cash flow − maintenance capex; proxy with FCF from `get_dcf_valuation` `fcf_history` (US only). State FCF yield = `latest FCF / market_cap` as %. If FCF runs persistently below net income, flag "accounting earnings overstate cash - lower quality." If FCF ≥ net income and growing: "earnings are real cash."
+- *Management quality (capital allocation):* Is `payout_ratio` sustainable (<60% mature co, <80% REIT/utility)? Share count discipline - in `get_sec_financials`, EPS growing faster than net income = buybacks (good when cheap); EPS lagging net income = dilution (flag). Net insider buying from `get_insider_sentiment` = alignment. Rate: rational allocator / mixed / value-destroyer.
+- *Verdict:* wide moat + owner earnings ≥ reported + rational allocator → "Buffett-quality compounder - hold forever at right price." Any leg fails → name the failing leg, downgrade to "Pass - [reason]."
 
 **Lynch (GARP):** Compute PEG = `pe_ratio / (eps_growth_yoy × 100)`. PEG < 1.0 = undervalued grower, 1.0-2.0 = fairly priced growth, > 2.0 = growth already priced in. State PEG explicitly. If `eps_growth_yoy` null, state "PEG unavailable."
 
@@ -110,3 +115,5 @@ Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM)
 - `get_insider_sentiment` / `get_recent_filings` are US-only (Finnhub/EDGAR) — for .TO tickers they return `no_api_key`/`no_cik`; state "US-only data unavailable for TSX name", don't fabricate.
 - `get_finnhub_news` sentiment is a crude keyword tally, not NLP — use as a tie-breaker, not a primary signal. `get_factor_exposure` low R² (<0.2) = factor model doesn't fit; skip the lens-selection use.
 - `technical_score` weights are fixed (40/25/20/10/5). Treat as screening signal, not a precise model output.
+- Owner-earnings FCF yield + share-count read are US-only (`get_dcf_valuation` / `get_sec_financials` via EDGAR). For .TO names these return empty - fall back to `payout_ratio` + the cash-flow narrative in fundamental item 2; state "FCF/share-count detail unavailable for TSX name", do NOT fabricate FCF.
+- `get_dcf_valuation` returns a note when latest FCF is negative - in that case skip the FCF-yield claim and say "owner earnings negative this period; cyclical or reinvestment-heavy - check capex."
