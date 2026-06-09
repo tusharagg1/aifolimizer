@@ -99,9 +99,25 @@ def generate_report() -> dict:
 
 
 def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
-    """Honest trust tier driven by forward (out-of-sample) sample size, not by
-    backtest gloss. Closed forward signals are the only OOS evidence we have."""
+    """Honest trust tier driven by forward (out-of-sample) sample size AND
+    realized net expectancy. Closed forward signals are the only OOS evidence
+    we have. A large sample with negative expectancy is evidence of a LOSING
+    policy, not of edge — it must never read as a positive milestone, so the
+    sign of realized return gates the label regardless of how many signals
+    closed."""
     forward_n = max((w.get("count", 0) for w in live_windows.values()), default=0)
+    widest = max(
+        live_windows.values(), key=lambda w: w.get("count", 0), default={}
+    )
+    avg_ret = widest.get("avg_return_pct")
+    win_rate = widest.get("win_rate_pct")
+    neg_ev = avg_ret is not None and avg_ret <= 0
+    ev_str = (
+        f"avg realized return {avg_ret:+.2f}% (win rate {win_rate}%)"
+        if avg_ret is not None
+        else "realized expectancy unknown"
+    )
+
     if forward_n < 30:
         return (
             "EXPERIMENTAL",
@@ -110,17 +126,34 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
             "unproven. Backtests below are in-sample proxies, NOT evidence of edge.",
         )
     if forward_n < 100:
+        if neg_ev:
+            return (
+                "DEVELOPING-NEGATIVE-EV",
+                forward_n,
+                f"⚠️ NEGATIVE EXPECTANCY — {ev_str} over {forward_n} closed forward "
+                "signals (30–99). The live signal policy is currently losing; this "
+                "is not emerging edge. Treat every recommendation as experimental.",
+            )
         return (
             "DEVELOPING",
             forward_n,
-            f"{forward_n} closed forward signals (30–99). Trend forming but below "
-            "the ~100-signal bar for trusting confidence labels.",
+            f"{forward_n} closed forward signals (30–99), {ev_str}. Trend forming "
+            "but below the ~100-signal bar for trusting confidence labels.",
+        )
+    if neg_ev:
+        return (
+            "SEED-NEGATIVE-EV",
+            forward_n,
+            f"⚠️ NEGATIVE EXPECTANCY — {forward_n} closed forward signals (≥100) but "
+            f"{ev_str}. Sample size is met; net-of-cost edge is NOT. This is positive "
+            "evidence that the live signal policy LOSES money. Every recommendation "
+            "remains experimental until expectancy turns positive AND calibrates.",
         )
     return (
         "SEED-ESTABLISHED",
         forward_n,
-        f"{forward_n} closed forward signals (≥100). Minimum sample met — judge by "
-        "calibration and net-of-cost expectancy, not raw win rate.",
+        f"{forward_n} closed forward signals (≥100), {ev_str}. Sample met AND "
+        "expectancy positive — judge by calibration and net-of-cost expectancy.",
     )
 
 
