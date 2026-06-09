@@ -23,6 +23,7 @@ REJECT + reasons — never a ticket on reject.
 
 **Stage 0 — Mandate (REQUIRED):**
 - `mcp__aifolimizer__get_profile` — capital, account types (never hardcode)
+- `mcp__aifolimizer__get_ticker_decision_history` (`ticker=TICKER, max_decisions=5`) + `mcp__aifolimizer__get_ticker_reflection` (`symbol=TICKER, n=3`) + `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — load prior decisions BEFORE the desk forms a view. If a prior decision exists and this run flips it, the PM must state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
 - Confirm ticker, direction (BUY/ADD/TRIM/SELL), horizon, rough size. If the
   user can't state a thesis, stop here (REJECT: no thesis).
 

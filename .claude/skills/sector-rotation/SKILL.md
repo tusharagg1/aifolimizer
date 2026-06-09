@@ -5,6 +5,14 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 
 # Sector Rotation Detector (Renaissance + quantitative style)
 
+## Decision Memory Protocol (load first, log after)
+
+**Before** forming any view, load prior decisions so verdicts stay consistent across sessions:
+- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — portfolio-level win/loss patterns
+- For any name you issue a per-ticker BUY/SELL/TRIM/HOLD/ADD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
+
+**After** output, log every actionable verdict: for each BUY/SELL/TRIM/ADD/HOLD issued, call `mcp__aifolimizer__log_recommendation` (`skill="sector-rotation", ticker, action, conviction, rationale, target_pct, stop_pct`). Skipping breaks the cross-session feedback loop and causes drift.
+
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - account types and capital. Rotation trades in TFSA tax-free; non-reg triggers capital gains

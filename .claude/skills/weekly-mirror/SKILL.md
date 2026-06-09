@@ -24,6 +24,12 @@ Wait for user confirmation before continuing. If user says yes or forced, procee
 - After any 7-day streak of losses
 - Before any decision to increase position sizes
 
+## Stage 0 — Decision Memory (load FIRST)
+
+Before the review, load prior decisions so the mirror reflects the logged record, not memory:
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- For any name you single out, load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
+
 ## How to run
 
 **Step 1 - Pull state (parallel):**

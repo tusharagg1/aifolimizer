@@ -4,6 +4,12 @@ Append-only. Short rule + source incident per entry. Read at session startup.
 
 ---
 
+## Skills / decision memory
+
+- **Verdict-emitting skills MUST load prior decisions first and log their verdict after.** Each session re-deriving from scratch caused cross-session contradictions (QS/OKLO/NNE/BMNR/SOFI flipped between two same-day runs). Pattern: at start call `get_ticker_decision_history` + `get_ticker_reflection` (per-ticker) or `get_cross_ticker_lessons` (portfolio-level) and reconcile — don't silently flip; at end call `log_recommendation` (and `log_trade_decision` for a full BUY/SELL with levels). Gold-standard template: `adversarial-research` Stage 0 + Layer 5. *(Source: 2026-06-09 committee workflow contradicted prior break-even-vs-recycle verdicts; root cause = only 3/27 skills loaded prior decisions. Fixed: load+log wired into all verdict skills.)*
+
+- **HIGH conviction label is anti-predictive on logged recs — never size up on it.** Over 411 scored recs HIGH won 22% (avg −6.8%) vs MED 63% (avg +4.2%); BUY won 18.5%, SELL/TRIM 70–100%. The engine already caps long-side conviction at MED (`recommendations.py` conviction-decouple) and bounds `win_prob` to a tagged heuristic — keep it until `calibrate_confidence_labels` proves HIGH>MED>LOW with ≥10pp spread. Note: `calibrate_confidence_labels`/`get_calibration_report` read `signal_history.win_prob` pairs (separate store), currently unpopulated → formal report stays `no_data`; rely on `score_recommendations` by_conviction until that pipeline is fed. *(Source: 2026-06-09 score_recommendations.)*
+
 ## Python
 
 - **Local-variable scoping is whole-function.** If `name = ...` appears anywhere in function body, every earlier reference treated as local → `UnboundLocalError`. Scan whole function for assignments before referencing name. *(Source: `recommendations.py:407` referenced `em` before line 419 assigned it - crashed `_score_position` every position, emptied recs panel.)*

@@ -19,6 +19,13 @@ toward large employer-stock weights; the burden is on KEEPING it, not selling.
 OUTSIDE WS — the system is blind to them. So this skill MUST ask the user for
 the plan data it cannot fetch.
 
+## Decision Memory Protocol (load first, log after)
+
+**Before** the analysis, load prior decisions on this employer ticker so the verdict stays consistent across sessions:
+- `mcp__aifolimizer__get_ticker_decision_history` (`ticker=TICKER, max_decisions=5`) + `mcp__aifolimizer__get_ticker_reflection` (`symbol=TICKER, n=3`) + `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
+
+**After** output, log the verdict: call `mcp__aifolimizer__log_recommendation` (`skill="employer-stock", ticker, action, conviction, rationale, target_pct, stop_pct`).
+
 ## Stage 0 — Gather what the system can't see (ASK)
 
 Request from the user (don't guess):

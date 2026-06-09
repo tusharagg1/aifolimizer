@@ -10,6 +10,14 @@ description: |
 
 # PEAD Tracker (Post-Earnings Announcement Drift)
 
+## Stage 0 — Decision Memory (load FIRST)
+
+Before analysis, load prior decisions so verdicts stay consistent across sessions:
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- For any name you issue a per-ticker BUY/SELL/TRIM/HOLD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
+
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+
 ## Research basis
 
 Bernard & Thomas (1989): stocks keep moving in direction of earnings surprise after earnings are public.

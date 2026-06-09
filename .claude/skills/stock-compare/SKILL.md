@@ -5,6 +5,15 @@ description: Run a head-to-head comparison between two tickers (A vs B) for a gr
 
 # Stock Compare (Head-to-Head)
 
+## Stage 0 — Decision Memory (load BEFORE forming any verdict)
+
+Before fetching market data, load prior decisions on each ticker (A and B) so the verdict stays consistent across sessions:
+- `mcp__aifolimizer__get_ticker_decision_history` with `ticker=A` then `ticker=B` (`max_decisions=5`) — prior actions, outcomes, reflections
+- `mcp__aifolimizer__get_ticker_reflection` with `symbol=A` / `symbol=B` (`n=3`) — prior recs + realized alpha
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - account types, capital, tax context. Frame placement recommendation at end (TFSA vs RRSP vs Non-Reg)

@@ -17,6 +17,14 @@ Then stop - do not call any MCP tools.
 
 If `last_crowding_regime` is set, use it as prior context when interpreting positioning signals (flag if regime changed).
 
+## Decision Memory Protocol (load first, log after)
+
+**Before** forming any view, load prior decisions so verdicts stay consistent across sessions:
+- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — portfolio-level win/loss patterns
+- For any name you issue a per-ticker BUY/SELL/TRIM/HOLD/ADD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
+
+**After** output, log every actionable verdict: for each BUY/SELL/TRIM/ADD/HOLD issued, call `mcp__aifolimizer__log_recommendation` (`skill="daily-briefing", ticker, action, conviction, rationale, target_pct, stop_pct`). Skipping breaks the cross-session feedback loop and causes drift.
+
 ## How to run
 
 Call in parallel (no inter-dependencies):
