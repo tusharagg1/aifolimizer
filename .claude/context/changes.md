@@ -730,3 +730,9 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 - trust_report.py: new SEED-NEGATIVE-EV / DEVELOPING-NEGATIVE-EV tiers — sign of realized return gates the label; negative EV can no longer read as a milestone. Regenerated TRACK_RECORD.md (now SEED-NEGATIVE-EV, 353 sigs).
 - Deferred (staged in `.claude/context/signal-policy-fix-plan.md`, need review): horizon re-match to decay, benchmark-relative gate, AI-critic pre-emit gate, top-trades-today demote, portfolio risk-gate→engine wiring.
 - Verified: ast+import OK, BUY-gate smoke 5/5, `score_signal_horizons` scored 208 new rows. NOTE: running MCP server holds pre-edit code — restart to load.
+
+## 2026-06-08 — wire portfolio risk-gate into trade-ideas surfacing layer
+- Hole (confirmed obs 2481): `risk_gate` state existed only as a read-only MCP tool; the sync recommendation engine + `get_trade_ideas` never consulted it, so portfolio-level halt/reduce did NOT brake surfaced BUY ideas (scheduler path was already gate-aware via size_multiplier).
+- Low-touch fix (addendum B "surfacing layer" option): `get_trade_ideas` now fetches `risk_gate.get_current(thash)` after ranking. On `halt` → suppress BUY/ADD ideas (retain SELL/TRIM), add `suppressed_by_risk_gate` count + note. On `reduce_size` → annotate. Best-effort try/except — never blocks idea generation if pool/gate down. No engine edit (engine-path wiring B-core still deferred — touches the contended sync scorer).
+- Also addresses #4 (top-trades-today 0/11): risk-off longs no longer surface as "top trades".
+- Verified: project ruff clean, syntax OK; mirrors existing get_risk_gate_state fetch pattern.

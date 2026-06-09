@@ -1156,6 +1156,48 @@ async def get_trade_ideas(
         min_risk_reward=min_risk_reward,
     )
     ranked["universe"] = "holdings+watchlist" if include_watchlist else "holdings"
+
+    # Risk-gate surfacing brake: the sync recommendation engine is gate-unaware
+    # (risk_gate is async/DB-backed), so a portfolio-level halt/reduce must be
+    # applied here at the surfacing layer — otherwise halted BUYs still show as
+    # "top trades". Best-effort: never block idea generation if pool/gate is down.
+    try:
+        thash = _active_tenant_hash()
+        if thash:
+            from app.db import init_pool, close_pool
+            from app.services import risk_gate
+
+            await init_pool()
+            try:
+                state = await risk_gate.get_current(thash)
+            finally:
+                try:
+                    await close_pool()
+                except Exception:
+                    pass
+            if state:
+                ranked["risk_gate"] = {
+                    "status": state.status,
+                    "size_multiplier": state.size_multiplier,
+                    "reasons": state.reasons,
+                }
+                if state.status == "halt":
+                    longs = [i for i in ranked["ideas"] if i.get("action") in ("BUY", "ADD")]
+                    ranked["ideas"] = [
+                        i for i in ranked["ideas"] if i.get("action") not in ("BUY", "ADD")
+                    ]
+                    ranked["suppressed_by_risk_gate"] = len(longs)
+                    ranked["risk_gate"]["note"] = (
+                        "Portfolio risk-gate HALT — new BUY/ADD ideas suppressed; "
+                        "defensive (SELL/TRIM) ideas retained."
+                    )
+                elif state.status == "reduce_size":
+                    ranked["risk_gate"]["note"] = (
+                        f"Portfolio risk-gate REDUCE_SIZE ({state.size_multiplier}x) — "
+                        "size fresh entries down or defer new BUYs."
+                    )
+    except Exception:
+        ranked.setdefault("risk_gate", None)
     return ranked
 
 
