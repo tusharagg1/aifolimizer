@@ -40,7 +40,7 @@ $TaskName = "aifolimizer\$Skill"
 
 if (-not (Test-Path $Wrapper)) { throw "wrapper not found: $Wrapper" }
 
-$argLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Skill {1}' -f $Wrapper, $Skill
+$argLine = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Skill {1}' -f $Wrapper, $Skill
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argLine
 
 $DayTokens = @($Days | ForEach-Object { ($_ -split ',') } | ForEach-Object { $_.Trim().ToUpper() } | Where-Object { $_ })
