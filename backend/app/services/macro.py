@@ -243,10 +243,16 @@ def market_breadth() -> dict[str, Any]:
     except Exception:
         logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
-    # Composite regime signal
+    # Composite regime signal. SPY direction is the dominant input; if its fetch
+    # failed (key absent), do NOT assume bull — that fail-open silently stamped
+    # bull_low_fear on every rec and let BUYs through unguarded. Emit "unknown"
+    # so downstream gates can treat an unconfirmed regime as risk-off.
     vix_regime = out.get("vix_regime", "normal")
-    spy_regime = out.get("spy_regime", "bull")
-    if spy_regime == "bull" and vix_regime in ("normal", "low"):
+    spy_regime = out.get("spy_regime")
+    if spy_regime is None:
+        out["market_regime"] = "unknown"
+        out["regime_signal"] = "Market regime unavailable (SPY/VIX fetch failed) — treat as risk-off for new entries."
+    elif spy_regime == "bull" and vix_regime in ("normal", "low"):
         out["market_regime"] = "bull_low_fear"
         out["regime_signal"] = "Risk-on. Momentum and growth strategies favored."
     elif spy_regime == "bull" and vix_regime == "elevated":
