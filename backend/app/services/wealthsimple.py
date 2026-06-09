@@ -511,9 +511,7 @@ def _run_ws(email: str, fn):
     disk_session, disk_email = _reload_session_from_disk()
     if disk_session is None:
         raise ValueError("No persisted Wealthsimple session — run mcp_login.py to re-authenticate")
-    ws = WealthsimpleAPI.from_token(
-        disk_session, persist_session_fct=_persist_session, username=disk_email or email
-    )
+    ws = WealthsimpleAPI.from_token(disk_session, persist_session_fct=_persist_session, username=disk_email or email)
     return fn(ws)
 
 

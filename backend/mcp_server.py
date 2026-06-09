@@ -1183,13 +1183,10 @@ async def get_trade_ideas(
                 }
                 if state.status == "halt":
                     longs = [i for i in ranked["ideas"] if i.get("action") in ("BUY", "ADD")]
-                    ranked["ideas"] = [
-                        i for i in ranked["ideas"] if i.get("action") not in ("BUY", "ADD")
-                    ]
+                    ranked["ideas"] = [i for i in ranked["ideas"] if i.get("action") not in ("BUY", "ADD")]
                     ranked["suppressed_by_risk_gate"] = len(longs)
                     ranked["risk_gate"]["note"] = (
-                        "Portfolio risk-gate HALT — new BUY/ADD ideas suppressed; "
-                        "defensive (SELL/TRIM) ideas retained."
+                        "Portfolio risk-gate HALT — new BUY/ADD ideas suppressed; defensive (SELL/TRIM) ideas retained."
                     )
                 elif state.status == "reduce_size":
                     ranked["risk_gate"]["note"] = (

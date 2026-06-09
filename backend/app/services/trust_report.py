@@ -106,9 +106,7 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
     sign of realized return gates the label regardless of how many signals
     closed."""
     forward_n = max((w.get("count", 0) for w in live_windows.values()), default=0)
-    widest = max(
-        live_windows.values(), key=lambda w: w.get("count", 0), default={}
-    )
+    widest = max(live_windows.values(), key=lambda w: w.get("count", 0), default={})
     avg_ret = widest.get("avg_return_pct")
     win_rate = widest.get("win_rate_pct")
     neg_ev = avg_ret is not None and avg_ret <= 0

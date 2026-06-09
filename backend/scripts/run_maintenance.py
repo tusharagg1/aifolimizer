@@ -99,9 +99,7 @@ def run_ws_jobs() -> None:
         positions = wealthsimple.get_all_positions(session_id)
         symbols = list(
             dict.fromkeys(
-                (p.get("security") or {}).get("symbol")
-                for p in positions
-                if (p.get("security") or {}).get("symbol")
+                (p.get("security") or {}).get("symbol") for p in positions if (p.get("security") or {}).get("symbol")
             )
         )[:15]
         if symbols:
