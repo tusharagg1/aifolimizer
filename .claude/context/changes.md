@@ -4,6 +4,27 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-09 - Verdict-drift fix: decision-memory wiring + JSONL-sourced calibration
+
+Goal: stop verdicts contradicting prior sessions, and make `get_calibration_report` return real data instead of permanent `no_data`. Root cause of drift: only 3 of 27 skills loaded prior decisions before deciding, so each session re-derived from scratch. Root cause of calibration emptiness: the report read a Postgres column nothing populates.
+
+### Changed
+- **All 23 verdict-emitting skills** (`.claude/skills/*/SKILL.md`) now carry a decision-memory protocol: **load** `get_ticker_decision_history` + `get_ticker_reflection` (per-ticker) or `get_cross_ticker_lessons` (portfolio-level) BEFORE forming a view, with a reconcile-don't-silently-flip rule; **log** every actionable verdict via `log_recommendation` (and `log_trade_decision` where applicable) AFTER. Was 3 load / 14 log → 23/23. Template: `adversarial-research` Stage 0 + Layer 5. Non-investment utilities (profile-setup/health-check/perf-optimizer) excluded.
+- **`backend/app/services/calibration.py`** — `_fetch_pairs` now reads the live JSONL source of truth (`signal_history._load_history`), pairing `features.win_prob` with `outcomes["h{H}"]["win"]`, instead of a Postgres `realized_return_*d` column that the scorer never fills. `compute()` (pure, test-covered) untouched.
+- **`backend/mcp_server.py`** — `get_calibration_report` computes live via `calibration_verdict` instead of reading the never-populated Postgres `calibration_reports` table; honest "windows not elapsed" reason per horizon.
+- **`.claude/context/lessons.md`** — added Skills/decision-memory rules (load-prior+log-after; HIGH conviction is anti-predictive — never size up on it).
+
+### Verified
+- `pytest tests/test_calibration.py` 10/10 pass (compute untouched).
+- `get_calibration_report` now returns real Brier/ECE: h5 n=188 verdict=overconfident (Brier 0.29, ECE 0.227), h10 n=59 underconfident (ECE 0.158), h21 n=0 no_data (legitimate — 21-trading-day window closes ~Jun 18; oldest signals ~May 20). "overconfident" corroborates HIGH-conviction-anti-predictive (HIGH 22% win vs MED 63% over 411 scored recs).
+- `grep` coverage: load tools 3→23 skills, log tools 14→23 skills (same set).
+- Markdown-only skill edits; backend changes import-clean. Running MCP server should be restarted to serve new calibration code.
+
+### Note
+- Decision-of-record for this session's reconciled committee verdicts (16 names) logged via `log_recommendation` so future sessions load them and stop drifting.
+
+---
+
 ## 2026-06-04 - Onboarding: one-command setup + doctor + POSIX automation
 
 Goal: a second technical user clones and runs it without tribal knowledge. Closed the "setup needs a developer" gap. No app-logic change — packaging + docs + portability.
