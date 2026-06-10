@@ -1,6 +1,6 @@
 ---
 name: adversarial-research
-description: Run a parallel bull/bear adversarial research pipeline on a specific ticker. Use when the user asks for "adversarial research", "bull bear analysis", "deep research on [ticker]", "should I buy X?", or wants a rigorous debate-style investment thesis. Fetches live data via aifolimizer MCP then spawns parallel sub-agents.
+description: Run a parallel bull/bear adversarial research pipeline on a specific ticker. Use when the user asks for "adversarial research", "bull bear analysis", "deep research on [ticker]", a bull-bear debate on X, or wants a rigorous debate-style investment thesis. (Bare "should I buy X?" belongs to pre-trade-check.) Then spawns parallel sub-agents over live data.
 ---
 
 # Adversarial Research Pipeline (Stage 0-5)
@@ -49,7 +49,7 @@ Rules for DAG execution:
 
 If cross-ticker lessons contain patterns relevant to this ticker (same sector, same setup), inject them too.
 
-## Stage 1 - Data collection (call all 8 in parallel)
+## Stage 1 - Data collection (call all 12 in parallel)
 
 1. `mcp__aifolimizer__get_portfolio` - confirm ticker is held + cost basis, weight, total return
 2. `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` - P/E, EPS, growth, dividend, analyst target
@@ -184,9 +184,9 @@ Portfolio Manager (main context window) synthesizes all six agent outputs:
 
 | Scenario | Probability | Price Target | Key Driver |
 |----------|------------|--------------|------------|
-| Bull     | 35%        | $X           | [catalyst] |
-| Base     | 40%        | $X           | [trend]    |
-| Bear     | 25%        | $X           | [risk]     |
+| Bull     | [X]%       | $X           | [catalyst] |
+| Base     | [Y]%       | $X           | [trend]    |
+| Bear     | [Z]%       | $X           | [risk]     |
 
 ## Stage 5 - Decision output + log
 
@@ -204,7 +204,7 @@ Format final output:
 
 **Bull case (X%):** [3 bullets]
 **Bear case (X%):** [3 bullets]
-**Base case (40%):** [2 bullets]
+**Base case (Y%):** [2 bullets]
 **Sentiment read:** [StockTwits bull/bear count + community_score; Reddit community_score; divergence note if retail vs institutional positioning differs]
 **Consensus / crowding:** [crowding score + label; marginal-buyer thesis; "edge already priced" or "contrarian opportunity"]
 

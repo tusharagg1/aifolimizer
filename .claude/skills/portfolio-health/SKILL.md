@@ -1,6 +1,6 @@
 ---
 name: portfolio-health
-description: Run a BlackRock-style portfolio health analysis. Use when the user asks about portfolio health, allocation review, rebalancing, or asks "how is my portfolio doing?". Fetches live Wealthsimple data via the aifolimizer MCP server and produces a structured health report.
+description: Run a BlackRock-style portfolio health analysis. Use when the user asks about portfolio health, allocation review, rebalancing, or asks "how is my portfolio doing?". Produces a point-in-time health snapshot (scores + flags), NOT a per-name decision table (use portfolio-review for that).
 ---
 
 # Portfolio Health Analysis (BlackRock style)
@@ -16,10 +16,11 @@ description: Run a BlackRock-style portfolio health analysis. Use when the user 
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - learn user's account types (TFSA, RRSP, etc.)
-2. Call `mcp__aifolimizer__get_portfolio` - fetch enriched holdings
-3. Call `mcp__aifolimizer__get_xray` - true geographic/asset-class exposure (expands ETF holdings)
-4. Call `mcp__aifolimizer__get_concentration_warnings` - flag over-allocations
-5. Run analysis below using returned data
+2. Call `mcp__aifolimizer__get_personal_context` - this report's age-based allocation targets and tax tips need province, marginal_tax_rate_pct, age, and goals, which `get_profile` does not carry. If `present=false`, fall back to generic targets and suggest the user run the `profile-setup` skill.
+3. Call `mcp__aifolimizer__get_portfolio` - fetch enriched holdings
+4. Call `mcp__aifolimizer__get_xray` - true geographic/asset-class exposure (expands ETF holdings)
+5. Call `mcp__aifolimizer__get_concentration_warnings` - flag over-allocations
+6. Run analysis below using returned data
 
 ## Investor profile
 
@@ -37,7 +38,7 @@ BlackRock Portfolio Builder report with these sections:
 1. **Portfolio Health Score** (0-100) with one-paragraph rationale
 2. **Asset allocation** breakdown vs targets for this investor's age and goals
 3. **Top 3 concentration or risk concerns** - name specific tickers/sectors
-4. **3-5 actionable rebalancing recommendations** with tickers and reasoning
+4. **3-5 actionable rebalancing recommendations** with tickers and reasoning. Before issuing any ADD, call `mcp__aifolimizer__get_positioning_signals` on those names and gate on crowding: defer the ADD if `crowding_score >= 70` (consensus-crowded, negative expected alpha), favor it where `crowding_score <= 30` (contrarian edge) and fundamentals support.
 5. **Canadian tax-efficiency tip** based on actual account types from `get_profile`
 6. **Expected return range** (annualized) and **maximum drawdown estimate** for current allocation
 

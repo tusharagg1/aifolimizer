@@ -36,10 +36,11 @@ Before the review, load prior decisions so the mirror reflects the logged record
 1. `mcp__aifolimizer__get_profile` - total NAV per account, cash balances
 2. `mcp__aifolimizer__get_portfolio` - current holdings + day/total returns
 3. `mcp__aifolimizer__score_recommendations` - mark-to-market all open recs from `pre-trade-check` and other skills, mark stops/targets hit
-4. `mcp__aifolimizer__get_live_track_record` with `lookback_days=7`, `lookback_days=30`, `lookback_days=90` (3 separate calls) - win rate + P&L per window
-5. `mcp__aifolimizer__get_alpha_attribution` with `benchmarks=["SPY","XEQT.TO","QQQ"]` - am I beating the index?
+4. `mcp__aifolimizer__get_live_track_record` with `windows_days=[7,30,90]` (single call returns all three windows) - win rate + P&L per window
+5. `mcp__aifolimizer__get_alpha_attribution` with `lookback_days=90` - am I beating the index? (benchmarks are fixed internally: SPY / XEQT / TSX / QQQ - the tool takes no `benchmarks` arg)
 6. `mcp__aifolimizer__snapshot_portfolio_equity` - append today's NAV to history (idempotent per day)
 7. `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=5` - recurring patterns from prior stop-outs
+8. `mcp__aifolimizer__get_personal_context` - account waterfall + contribution room so DCA/verdict actions are tailored. If `present=false`, skip personalization gracefully.
 
 ## Investor profile
 
@@ -118,7 +119,7 @@ Output: "Reduce position sizes by 50% for next 30 days. Take half the trades. Jo
 
 **🔴 SUSPEND DISCRETIONARY**
 Criteria: 30d win rate < 40%, OR R-multiple < 1.0, OR discretionary underperforming boring-core by ≥5% over 90d.
-Output: "Stop discretionary trading for 30 days. Allocate next 4 weeks of contributions to XEQT.TO or VFV.TO DCA only. Revisit after 30d."
+Output: "Stop discretionary trading for 30 days. Allocate next 4 weeks of contributions to your core index ETF (DCA only). Revisit after 30d." If the user has no confirmed core ETF yet (no saved preference / none held), do NOT name one — tell them to run `auto-rebalance` first to pick a core sleeve on merit, then DCA into that.
 
 ### 7. Next actions (≤ 3 bullets)
 - Specific calls to action with $ amounts

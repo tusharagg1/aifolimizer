@@ -1,6 +1,6 @@
 ---
 name: stock-analysis
-description: Run a Goldman Sachs + Citadel combined fundamental and technical analysis on a specific ticker in the user's portfolio. Use when the user asks about a specific stock, wants a deep dive, asks for entry/exit points, or asks "should I hold X?". Fetches portfolio context from the aifolimizer MCP server.
+description: Run a Goldman Sachs + Citadel combined fundamental and technical analysis on a specific ticker — a quick analytical deep-dive. Use when the user asks about a specific stock, wants a deep dive, or asks for entry/exit points. For a full bull/bear multi-agent debate hand off to adversarial-research.
 ---
 
 # Stock Analysis (Goldman Sachs + Citadel)
@@ -100,7 +100,7 @@ Lens selection guide (use as default, override with judgment):
 
 ## After output - log decision
 
-Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis, `skill_used="stock-analysis"`. Feeds forward win-rate / track-record loop.
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (percent from entry — entry captured live at call time), 1-line rationale, `skill="stock-analysis"`. Feeds forward win-rate / track-record loop.
 
 ## Rules
 

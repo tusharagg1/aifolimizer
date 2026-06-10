@@ -40,6 +40,7 @@ If user can't answer #5 with a specific reason that isn't "saw it on social medi
 6. `mcp__aifolimizer__get_news_headlines` with `symbols=[TICKER]`, `limit=10`
 7. `mcp__aifolimizer__get_live_track_record` (no args) - user's own win-rate over last 30d
 8. `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER` - prior decisions on this name
+9. `mcp__aifolimizer__get_personal_context` (no args) - use `derived.province` + `derived.marginal_tax_rate_pct` to ground the non-reg short-term-gain warning in Rules. If `present == false`, state that warning as generic (no rate).
 
 **Step 2 - Run filter gates (in order, stop at first REJECT for fatal gates):**
 
@@ -124,7 +125,7 @@ Call `mcp__aifolimizer__log_recommendation` with:
 - `action=<BUY/SELL>`
 - `conviction="MED"` (this skill is a discipline gate, not a conviction call - "MED" is the codebase's neutral default; `log_recommendation` only accepts HIGH/MED/LOW and raises ValueError on anything else)
 - `rationale=<user's thesis sentence>`
-- `entry_price` = `entry_zone.reference`, `stop_loss` = `stop_loss_price`, `target_price` = `exit_ladder` T2 price (primary target)
+- `target_pct` and `stop_pct` — the schema takes **percentages from entry**, not absolute prices. Compute from the ticket: let `entry = entry_zone.reference`, then `stop_pct = (stop_loss_price - entry) / entry * 100` (negative for a BUY) and `target_pct = (T2_price - entry) / entry * 100` (T2 = primary target from `exit_ladder`). Pass those two numbers. (`log_recommendation` has no `entry_price`/`stop_loss`/`target_price` args — passing them errors or silently drops the levels.)
 
 This builds the forward track record for `weekly-mirror` skill.
 
@@ -142,7 +143,7 @@ This builds the forward track record for `weekly-mirror` skill.
 - If user argues with a REJECT, do NOT flip. Restate the rule and ask them to wait 48h or change their thesis
 - Never recommend a trade. This skill only **rejects** or **passes**. Picking is user's job
 - ATR must be present - if `atr_14` is null, REJECT with "insufficient data for risk-based stop"
-- For SELL/TRIM direction: skip crowding gate, skip stage-4 gate. Apply: FOMO-panic filter (down day > -7% AND reason is "panic"), concentration unwind (good), tax-lot awareness (warn if short-term gain in non-reg)
+- For SELL/TRIM direction: skip crowding gate, skip stage-4 gate. Apply: FOMO-panic filter (down day > -7% AND reason is "panic"), concentration unwind (good), tax-lot awareness (warn if short-term gain in non-reg, quoting `derived.province` + `derived.marginal_tax_rate_pct` from Step 1.9; if `present == false`, give the warning generically without a rate)
 
 ## Gotchas
 

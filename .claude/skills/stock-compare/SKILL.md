@@ -1,6 +1,6 @@
 ---
 name: stock-compare
-description: Run a head-to-head comparison between two tickers (A vs B) for a growth, income, or value investor over a stated horizon. Use when the user asks "X vs Y", "which is better A or B?", "should I pick X or Y?", or wants a side-by-side fundamentals + technicals + valuation matchup. Fetches portfolio context via aifolimizer MCP.
+description: Run a head-to-head comparison between two tickers (A vs B) for a growth, income, or value investor over a stated horizon. Use when the user asks "X vs Y", "which is better A or B?", "should I pick X or Y?", or wants a side-by-side fundamentals + technicals + valuation matchup.
 ---
 
 # Stock Compare (Head-to-Head)
@@ -77,6 +77,7 @@ Rows (minimum):
 - If loser still has setup worth noting, mention as fallback
 
 ### 7. Recommendation (Canadian tax + holdings aware)
+- Before recommending an add/initiate on the winner, call `mcp__aifolimizer__get_positioning_signals` with `symbols=[winner]`. Gate the size on crowding: score >=70 (consensus-crowded) → defer the add or favor the contrarian leg; score <=30 (contrarian) → edge supports sizing up if fundamentals agree.
 - If user already holds one: hold/add/trim decision
 - If user holds neither: which to initiate, sizing as % of portfolio
 - Account placement: TFSA / RRSP / Non-Reg with reasoning
@@ -86,7 +87,7 @@ Rows (minimum):
 
 ## After output - log decision
 
-For winner ticker (and loser if user holds it), call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing the head-to-head edge, `skill_used="stock-compare"`. Feeds forward win-rate / track-record loop.
+For winner ticker (and loser if user holds it), call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (percent from entry; entry captured live at call time), 1-line thesis as `rationale` citing the head-to-head edge, `skill="stock-compare"`. Feeds forward win-rate / track-record loop.
 
 ## Rules
 

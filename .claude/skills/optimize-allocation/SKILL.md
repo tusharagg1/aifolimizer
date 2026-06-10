@@ -36,19 +36,23 @@ the long-term ETF core and never sells.
 
 **Step 1 — Profile + regime (call FIRST):**
 1. `mcp__aifolimizer__get_profile` — account types, capital (never hardcode)
-2. `mcp__aifolimizer__get_market_breadth` — regime; if `bear_high_fear`, flag that
+2. `mcp__aifolimizer__get_personal_context` — ground the Non-Reg-vs-registered tax
+   note in the user's actual province / `marginal_tax_rate_pct` / `account_waterfall`
+   instead of generic text. If `present=false`, keep the note generic and suggest
+   running `profile-setup`.
+3. `mcp__aifolimizer__get_market_breadth` — regime; if `bear_high_fear`, flag that
    max-Sharpe on trailing returns can over-tilt to recent winners
 
 **Step 2 — Optimize:**
-3. `mcp__aifolimizer__optimize_portfolio` with `top_n=20`, `use_analyst_views=true`
+4. `mcp__aifolimizer__optimize_portfolio` with `top_n=20`, `use_analyst_views=true`
    - returns `optimal_weights`, `changes` (add/trim per name), `sharpe_ratio`,
      `expected_annual_return_pct`, `expected_annual_volatility_pct`, `method`
 
 **Step 3 — Sanity gate before presenting:**
-4. `mcp__aifolimizer__get_positioning_signals` on any name the optimizer says
+5. `mcp__aifolimizer__get_positioning_signals` on any name the optimizer says
    INCREASE — if crowding score ≥70, defer the add (negative expected alpha for
    late entries) even if the optimizer favours it.
-5. `mcp__aifolimizer__get_concentration_warnings` — confirm the optimal weights
+6. `mcp__aifolimizer__get_concentration_warnings` — confirm the optimal weights
    don't breach single-name/sector limits the user cares about.
 
 ## Output

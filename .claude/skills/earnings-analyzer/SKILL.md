@@ -22,7 +22,8 @@ Reconciliation rule: if a prior decision exists and your new read flips it, stat
 4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[ticker]` - EPS TTM, analyst target price, analyst recommendation
 5. Call `mcp__aifolimizer__get_recent_filings` with `ticker=ticker, forms=["8-K"]` - pre-earnings 8-K events (guidance preannounce, M&A, exec change) that reshape the setup. US-listed only
 6. Call `mcp__aifolimizer__get_finnhub_news` with `ticker=ticker` - news sentiment tally heading into the print (positioning into the event)
-7. WebSearch for: last 4 quarters EPS beat/miss history, consensus estimates for upcoming quarter, management guidance from last call, options-implied move (require historical data not reliably in yfinance)
+7. Call `mcp__aifolimizer__get_earnings_results` with `symbols=[ticker], quarters=4` - authoritative last-4-quarters EPS estimate/actual/surprise/beat-miss outcome. Do NOT WebSearch this; the MCP serves it.
+8. WebSearch ONLY for what no MCP tool serves: options-implied move for earnings day (CBOE / broker IV), upcoming-quarter consensus EPS/revenue if absent from `get_fundamentals`, and qualitative management guidance from the last call.
 
 ## Output structure
 
@@ -39,7 +40,9 @@ Reconciliation rule: if a prior decision exists and your new read flips it, stat
 
 ## After output - log decision
 
-Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing the play (buy before / trim before / hold through / wait), `skill_used="earnings-analyzer"`. Feeds forward win-rate / track-record loop.
+Call `mcp__aifolimizer__log_recommendation` with `action` (BUY/HOLD/SELL/ADD/TRIM), `conviction` (HIGH/MED/LOW), `target_pct` + `stop_pct` (% from entry — the schema takes percentages, not absolute prices), `rationale` (1-line thesis citing the play: buy before / trim before / hold through / wait), `skill="earnings-analyzer"`. Feeds forward win-rate / track-record loop.
+
+If the play is BUY/ADD, first call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]`: if `crowding_score >= 70` the name is consensus-crowded into the print (late entry = negative expected alpha) — downgrade conviction or defer the add to post-earnings. This is a lighter check than the swing skills since earnings is an event catalyst, but a crowded pre-print add is exactly the chase to avoid.
 
 ## Rules
 
@@ -52,6 +55,6 @@ Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM)
 
 - `get_earnings_calendar` from yfinance can show next-FY date instead of next quarter for newly-listed or low-coverage tickers - sanity-check via WebSearch if days_until > 100.
 - Options-implied move NOT in MCP - must come from WebSearch (CBOE / OptionStrat / broker IV). Never fabricate IV.
-- Historical EPS beat/miss from `get_fundamentals` is current quarter only - last 4 quarters require WebSearch.
+- Last-4-quarters EPS beat/miss comes from `get_earnings_results` (per-quarter estimate/actual/surprise/outcome) - do NOT WebSearch it. `get_fundamentals` carries only the current/next quarter. Only options-implied move and qualitative guidance need WebSearch.
 - "Hold through earnings" is account-dependent: in non-reg account, early sell to lock gain triggers capital gains tax - call this out before recommending.
 - Don't confuse forward EPS estimate with reported EPS - clearly label estimate vs actual.

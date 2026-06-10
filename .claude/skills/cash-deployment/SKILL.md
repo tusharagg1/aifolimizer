@@ -10,6 +10,7 @@ description: Plan how to deploy uninvested cash across existing portfolio holdin
 **Step 0 - Memory (call in parallel with Step 1):**
 - Call `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - surface recent stop-outs or wins. If any top add candidates were recently stopped out, require new data to justify re-entry.
 - Call `mcp__aifolimizer__recall_preferences` with `query="cash deployment add position"` - investor preferences on sizing and account allocation.
+- Call `mcp__aifolimizer__get_personal_context` - province, marginal tax rate, account waterfall, FHSA/FTHB horizon. This grounds the §5 tax-account routing (US-dividend→RRSP, growth→TFSA/FHSA). If `present=false`, flag the tax reasoning as generic and suggest the user run profile-setup.
 
 1. Call `mcp__aifolimizer__get_profile` - per-account cash balances. Cash sits in specific accounts (TFSA, RRSP, Non-Reg) - can't move cash across account types without contribution-room consequences
 2. Confirm with user: which account(s) is cash in? If unstated, use account(s) with largest cash balance from `get_profile`
@@ -43,8 +44,8 @@ description: Plan how to deploy uninvested cash across existing portfolio holdin
 - **Consensus-crowded** (crowding_score ≥ 70) - list tickers, score, "edge already priced - defer add"
 
 ### 3. Eligible add candidates (markdown table)
-Columns: Ticker | Current Weight | Setup Score /7 | Technical Score | Crowding | Entry | Stop | Notes.
-Setup Score rubric (1 point each):
+Columns: Ticker | Current Weight | Setup Score /8 | Technical Score | Crowding | Entry | Stop | Notes.
+Setup Score rubric (1 point each, 8 criteria, max 8):
 - Stage 2 uptrend
 - RSI 40-65 (room to run)
 - Above SMA50
@@ -55,7 +56,7 @@ Setup Score rubric (1 point each):
 - No lottery/MAX flag (`lottery_flag != true`) - abnormal single-day spike = chase risk (Bali-Cakici-Whitelaw)
 
 ### 4. Deployment plan (risk-first)
-For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7=HIGH, 5-6=MED, 3-4=LOW>`. This is the single source of truth for levels (same engine as pre-trade-check) — supersedes raw `pivot_levels`:
+For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7-8=HIGH, 5-6=MED, 3-4=LOW, <3=skip>`. This is the single source of truth for levels (same engine as pre-trade-check) — supersedes raw `pivot_levels`:
 - `entry_zone` — `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `wait_pullback`, do NOT deploy at market** — state the pullback band and route that cash to the next ranked `buy_now` candidate or hold it.
 - `stop_loss_price`, `exit_ladder` (T1/T2/T3 scale-out), `position` block (avg cost / return / stop_below_cost since these are held names).
 
@@ -86,7 +87,7 @@ For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_sco
 ## Rules
 
 - Under 700 words
-- Always render eligible-candidates table (Setup Score /7, Technical Score, Entry, Stop columns required)
+- Always render eligible-candidates table (Setup Score /8, Technical Score, Entry, Stop columns required)
 - Never recommend adding to concentration-flagged position
 - Never recommend stage 3 or stage 4 ticker even if user holds it - say "do not add" explicitly
 - Whole-share counts only (Wealthsimple supports fractional but plan should be real trade ticket)
@@ -103,12 +104,12 @@ For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_sco
 - Settled cash vs unsettled: Wealthsimple T+1 settlement on equity sales. If user just sold, cash may not be available - note in plan
 - USD cash in CAD account triggers FX conversion at WS spread (~1.5%). If cash is USD and buy is .TO, flag FX cost
 - "Aggressive growth" tilt amplifies single-name risk - cap single add at 5% of total portfolio even if cash > 5%
-- Don't double-count: if user has recurring auto-deposit to XEQT, mention that flow before recommending another XEQT lump add
+- Don't double-count: if user has a recurring auto-deposit into a core ETF, mention that flow before recommending another lump add to the same fund
 - Tax-loss-harvested cash: superficial-loss rule blocks rebuying same security for 30 days - verify with tax-loss-review before recommending same ticker back
 - Crowding score is tilt, not veto for existing holdings - never recommend SELLING held name because it became consensus. Only use to defer/reduce ADDS
 - If ALL eligible candidates consensus-crowded, recommend partial deploy (cap 50% of cash) + cash hold for pullback. Do not force full deploy into crowded names
 - `pivot_levels` null for very new/halted symbols - fall back to current price as entry, SMA50 as stop
-- `volume_score` null for some TSX ETFs - skip volume criterion (score out of 6 for those tickers, note it)
+- `volume_score` null for some TSX ETFs - skip volume criterion (score out of 7 for those tickers, note it)
 - `technical_score` is a composite screening signal; always verify against individual sub-criteria before committing capital
 - If `get_ticker_decision_history` shows a recent stop-hit on a candidate, require explicit new bullish evidence (earnings beat, technical breakout, crowding unwound) before recommending re-entry. State why this time is different in the Notes column.
 - Cross-ticker lesson: if get_cross_ticker_lessons shows recent stop-outs in same sector as candidate, flag "sector risk - recent stop pattern" in Notes column

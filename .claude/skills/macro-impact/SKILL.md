@@ -1,6 +1,6 @@
 ---
 name: macro-impact
-description: Run a McKinsey-style macro economic impact briefing on the user's portfolio. Use when the user asks about rate impact, inflation, CAD/USD, recession risk, Fed/BoC policy, or how macro affects their holdings. Fetches portfolio via aifolimizer MCP.
+description: Run a McKinsey-style macro economic impact briefing on the user's portfolio. Use when the user asks about rate impact, inflation, CAD/USD, recession risk, Fed/BoC policy, or how macro affects their holdings.
 ---
 
 # Macro Impact Analysis (McKinsey style)
@@ -24,7 +24,8 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 7. Call `mcp__aifolimizer__get_market_breadth` - VIX, SPY regime (bull/bear vs SMA200), composite market_regime signal
 8. WebSearch only if you need details the above don't cover (geopolitics, breaking news)
 9. Map each macro factor to specific holdings in portfolio
-10. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
+10. Before issuing any ADD in section 9, call `mcp__aifolimizer__get_positioning_signals` (`symbols=[those names]`) — macro tailwinds alone don't justify adding to a crowded name. Defer ADDs with `crowding_score >= 70` (consensus-crowded, negative expected alpha); favor `crowding_score <= 30` (contrarian edge).
+11. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
 
 ## Investor profile
 

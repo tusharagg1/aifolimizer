@@ -31,14 +31,15 @@ Call in parallel (no inter-dependencies):
 
 1. `mcp__aifolimizer__get_profile`
 2. `mcp__aifolimizer__get_portfolio`
-3. `mcp__aifolimizer__get_macro_snapshot` (FRED + market regime)
-4. `mcp__aifolimizer__get_concentration_warnings`
-5. `mcp__aifolimizer__get_triggered_alerts` (since_hours=24)
-6. `mcp__aifolimizer__get_earnings_calendar` (next 14d)
-7. `mcp__aifolimizer__get_positioning_signals` (top 15 holdings)
-8. `mcp__aifolimizer__get_technicals_intraday` (top 5 holdings + any focus-list tickers - only if US market is open or pre-market)
-9. `mcp__aifolimizer__get_boc_snapshot` (cheap, 12h cache) - Canadian rate/FX/curve context; surface `curve_signal` in section 4 if inverted
-10. `mcp__aifolimizer__get_crypto_fear_greed` + `mcp__aifolimizer__get_crypto_macro` - ONLY if portfolio holds crypto; skip both otherwise (list in section 6)
+3. `mcp__aifolimizer__get_personal_context` - use `derived` (marginal_tax_rate_pct, account_waterfall, horizon) to sharpen the focus list and risk flags (e.g. tax-aware trim guidance, account-placement). If `present == false`, keep briefing generic and suggest running `/profile-setup`.
+4. `mcp__aifolimizer__get_macro_snapshot` (FRED + market regime)
+5. `mcp__aifolimizer__get_concentration_warnings`
+6. `mcp__aifolimizer__get_triggered_alerts` (since_hours=24)
+7. `mcp__aifolimizer__get_earnings_calendar` (next 14d)
+8. `mcp__aifolimizer__get_positioning_signals` (top 15 holdings)
+9. `mcp__aifolimizer__get_technicals_intraday` (top 5 holdings + any focus-list tickers - only if US market is open or pre-market)
+10. `mcp__aifolimizer__get_boc_snapshot` (cheap, 12h cache) - Canadian rate/FX/curve context; surface `curve_signal` in section 4 if inverted
+11. `mcp__aifolimizer__get_crypto_fear_greed` + `mcp__aifolimizer__get_crypto_macro` - ONLY if portfolio holds crypto; skip both otherwise (list in section 6)
 
 ## Catalyst day check (FIRST - before anything else)
 
@@ -126,7 +127,7 @@ One line listing tools/checks that returned empty or stale data. Example: `Skipp
 
 After completing the brief, update `.claude/context/STATE.md`:
 - `last_briefing_date`: today's date (YYYY-MM-DD)
-- `last_crowding_regime`: regime label from positioning signals (bullish/neutral/cautious)
+- `last_crowding_regime`: crowding_label from positioning signals (consensus/neutral/contrarian) - same vocabulary as `get_positioning_signals` so the next run's prior-context comparison is valid
 - `active_alerts`: count of triggered alerts from `get_triggered_alerts`
 - `open_recs`: count of open recommendations (from brief context if available)
 

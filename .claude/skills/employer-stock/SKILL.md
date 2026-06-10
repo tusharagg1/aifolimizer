@@ -66,7 +66,7 @@ Weigh, long-term lens:
   consensus-crowded (`crowding ≥ 70`) with no edge, dividend at risk (high payout
   + falling FCF), thesis is "I work here" not "it's the best use of capital".
 - **Opportunity cost**: frame against the user's default long-term vehicle
-  (XEQT/VFV). "Is this single name a better 10-yr hold than a diversified index?"
+  (a diversified index ETF). "Is this single name a better 10-yr hold than a diversified index?"
   If not, the bar to keep concentrated is high.
 
 ## Stage 3 — Execution shape

@@ -8,8 +8,9 @@ description: Canadian tax-loss harvesting review. Use when the user asks about t
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - identify which account holds each position (TFSA/RRSP losses NOT deductible)
-2. Call `mcp__aifolimizer__get_tax_loss_candidates` with threshold_pct=-5.0 (or stricter -10.0 for clearer picks)
-3. For each candidate, check account placement matters for tax
+2. Call `mcp__aifolimizer__get_personal_context` - use `derived.marginal_tax_rate_pct` + province to compute each loss's after-tax value (loss × 50% inclusion × marginal rate), so picks are ranked by real tax savings not gross loss. If `present=false`, mark the dollar value as an estimate and suggest running profile-setup.
+3. Call `mcp__aifolimizer__get_tax_loss_candidates` with threshold_pct=-5.0 (or stricter -10.0 for clearer picks)
+4. For each candidate, check account placement matters for tax
 
 ## Key Canadian rules to enforce
 

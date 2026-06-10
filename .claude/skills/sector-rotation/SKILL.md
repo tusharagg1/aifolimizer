@@ -1,6 +1,6 @@
 ---
 name: sector-rotation
-description: Run a Renaissance-style sector rotation and pattern analysis. Use when the user asks about sector trends, "what sectors should I overweight?", money flows, sector leadership, or institutional positioning. Fetches portfolio via aifolimizer MCP.
+description: Run a Renaissance-style sector rotation and pattern analysis. Use when the user asks about sector trends, "what sectors should I overweight?", money flows, sector leadership, or institutional positioning.
 ---
 
 # Sector Rotation Detector (Renaissance + quantitative style)
@@ -41,7 +41,8 @@ description: Run a Renaissance-style sector rotation and pattern analysis. Use w
 7. **Unusual money flows** - signals of institutional accumulation in quiet sectors
 8. **Institutional footprint** - sectors with rising 13F ownership
 9. **Impact on user's portfolio** - which existing holdings benefit/at risk
-10. **Recommended adjustment** - specific tickers to add/trim
+10. **Crowding gate on add candidates** - before naming anything to add, call `mcp__aifolimizer__get_positioning_signals` (`symbols=[add candidates]`). Defer adds where `crowding_score >= 70` (consensus-crowded → negative expected alpha); favor names `<= 30` (contrarian edge)
+11. **Recommended adjustment** - specific tickers to add/trim
 
 ## Rules
 

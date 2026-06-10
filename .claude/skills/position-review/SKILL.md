@@ -1,6 +1,6 @@
 ---
 name: position-review
-description: Review a holding (or sweep top holdings) and return a HOLD / TRIM / SELL verdict with entry/stop/target. Routes each name to the right analysis - earnings-analyzer if earnings are imminent, earnings-postmortem if it just reported, the adversarial bull/bear pipeline for high-conviction names, lighter stock-analysis otherwise. Use when the user asks "should I hold or sell X", "review my NVDA position", "review my holdings", "position review", or for an automated nightly holdings sweep. Logs each verdict for forward tracking.
+description: Review a holding (or sweep top holdings) and return a HOLD / TRIM / SELL verdict with entry/stop/target. Routes each name to the right analysis - earnings-analyzer if earnings are imminent, earnings-postmortem if it just reported, the adversarial bull/bear pipeline for high-conviction names, lighter stock-analysis otherwise. Use when the user asks "should I hold or sell X", "review my NVDA position", "review my top holdings", "position review", or for an automated nightly top-holdings sweep (the unqualified whole-book "review my holdings" belongs to portfolio-review). Logs each verdict for forward tracking.
 requires_profile: true
 ---
 
@@ -25,9 +25,10 @@ Reconciliation rule: if a prior decision exists and your new read flips it, stat
 Call `get_profile` FIRST. Then gather routing signals (parallel):
 
 1. `mcp__aifolimizer__get_portfolio` - holdings, weights, cost basis, return
-2. `mcp__aifolimizer__get_earnings_calendar` - earnings proximity per name (pass watchlist `symbols=` only if reviewing a non-held name)
-3. `mcp__aifolimizer__get_triggered_alerts` (since_hours=48) - recent price/RSI/concentration flags
-4. `mcp__aifolimizer__get_earnings_results` for names that may have just reported
+2. `mcp__aifolimizer__get_personal_context` - province / marginal_tax_rate_pct / account_waterfall to ground per-name tax + account framing. If `present=false`, note the framing is generic and suggest the profile-setup skill.
+3. `mcp__aifolimizer__get_earnings_calendar` - earnings proximity per name (pass watchlist `symbols=` only if reviewing a non-held name)
+4. `mcp__aifolimizer__get_triggered_alerts` (since_hours=48) - recent price/RSI/concentration flags
+5. `mcp__aifolimizer__get_earnings_results` for names that may have just reported
 
 ## Routing table (apply per ticker, first match wins)
 | Condition | Route to | Why |
@@ -65,7 +66,9 @@ TICKER · weight X% · VERDICT: HOLD / TRIM / SELL · conviction
 Sweep mode: lead with a one-line roster (`HOLD x4 · TRIM x1 · SELL x1`), then the blocks, worst-conviction-holds and all SELL/TRIM first.
 
 ## After output - log decisions
-For each name call `mcp__aifolimizer__log_recommendation` (or `log_trade_decision` if the adversarial route ran) with action, conviction, entry/target/stop, 1-line thesis, `skill_used="position-review"`. This feeds the forward win-rate / track-record loop.
+For each name log the verdict (this feeds the forward win-rate / track-record loop). Pick ONE tool — they take different params:
+- **Default path → `mcp__aifolimizer__log_recommendation`**: `skill="position-review"`, action, conviction, rationale, and levels as `target_pct` + `stop_pct` (PERCENT from entry; entry is captured live at call time — do NOT pass absolute prices).
+- **Adversarial route ran → `mcp__aifolimizer__log_trade_decision`**: `skill_used="position-review"`, action, conviction, `entry_price` / `target_price` / `stop_price` (ABSOLUTE prices), thesis_summary.
 
 ## Rules
 - Verdicts are HOLD / TRIM / SELL only - this skill reviews EXISTING positions; it does not open new ones (that's top-trades-today / cash-deployment).

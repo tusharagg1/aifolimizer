@@ -68,7 +68,7 @@ look "boring", because the cost of acting outweighs the benefit:
 - Large embedded gain in a taxable (Non-Reg) account → selling realizes 50%-
   inclusion cap gains now; holding defers it.
 - Safe, growing dividend (low payout, positive FCF) → income compounding.
-- Core index ETF (XEQT/VFV) doing its job → don't tinker with the base.
+- Core index ETF (the user's chosen broad-market fund) doing its job → don't tinker with the base.
 - Within a few days of ex-dividend → don't sell before ex-div without reason.
 Overtrading is a known long-term return killer. The bar to touch a working
 position is HIGH. State why each kept name is kept.

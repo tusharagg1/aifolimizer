@@ -1,11 +1,6 @@
 ---
 name: momentum-scanner
-description: |
-  Scan portfolio holdings for 12-month price momentum and 52-week high proximity.
-  Use when user asks "which stocks have momentum?", "rank my holdings by performance",
-  "momentum scan", "12-month winners and losers", "52-week high analysis", "which should I trim?",
-  or "show momentum signals". Based on Jegadeesh & Titman (1993): past 12-month winners earn
-  up to 1.49%/month excess return. George & Hwang (2004): stocks near 52-week highs outperform ~1.23%/month.
+description: Scan portfolio holdings for 12-month price momentum and 52-week high proximity. Use when user asks "which stocks have momentum?", "rank my holdings by performance", "momentum scan", "12-month winners and losers", "52-week high analysis", "which momentum laggards should I trim?", or "show momentum signals".
 requires_profile: true
 ---
 
@@ -89,7 +84,7 @@ If total weight in Weak names > 30%: "Drag risk - laggards consuming capital tha
 
 ## After output - log decisions
 
-For each Strong Momentum name flagged ADD and each Laggard flagged TRIM/EXIT, call `mcp__aifolimizer__log_recommendation` with action (ADD/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing composite score + 52wk-high proximity, `skill_used="momentum-scanner"`. Skip pure HOLDs in mid-band. Feeds forward win-rate / track-record loop.
+For each Strong Momentum name flagged ADD and each Laggard flagged TRIM/EXIT, call `mcp__aifolimizer__log_recommendation` with action (ADD/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (% from entry), 1-line thesis citing composite score + 52wk-high proximity, `skill="momentum-scanner"`. Skip pure HOLDs in mid-band. Feeds forward win-rate / track-record loop.
 
 ## Rules
 

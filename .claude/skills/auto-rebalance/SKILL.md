@@ -1,6 +1,6 @@
 ---
 name: auto-rebalance
-description: Monthly rebalance + DCA prompt for the long-term boring-core sleeve (XEQT, VFV, VTI, etc.). Use when the user asks "should I rebalance?", "where should I deploy my paycheck?", "DCA recommendation", "is my allocation drifting?", "auto-invest plan", or on the 1st of each month. Computes target vs actual core allocation, suggests DCA amount per ETF, accounts for tax-account routing.
+description: Monthly rebalance + DCA prompt for the long-term core ETF sleeve only (broad-market index ETFs) — NOT single-stock adds (use cash-deployment) and NOT max-Sharpe reweighting (use optimize-allocation). Use when the user asks "should I rebalance?", "where should I deploy my paycheck?", "DCA recommendation", "is my allocation drifting?", "auto-invest plan", or on the 1st of each month. Computes target vs actual core allocation, suggests DCA amount per ETF, accounts for tax-account routing.
 ---
 
 # Auto-Rebalance (Long-Term Core Maintenance)
@@ -36,19 +36,35 @@ Math behind it: rebalancing by adding new cash to underweighted positions (vs se
 4. `mcp__aifolimizer__get_concentration_warnings` - single-name or sector flags from xray
 5. `mcp__aifolimizer__get_macro_snapshot` - current regime label (informational only; this skill does NOT time the market)
 6. `mcp__aifolimizer__recall_preferences` with `query="rebalance core allocation"` - user's preferred target weights if previously set
+7. `mcp__aifolimizer__get_personal_context` - ground TFSA/RRSP/Non-Reg routing in the actual account waterfall, contribution room, and horizon. If `present=false`, fall back to generic routing rules and suggest the user run profile-setup for personalized tax-account placement.
 
-**Step 2 - Confirm target allocation (REQUIRED first run):**
+**Step 2 - Choose the core sleeve ON MERIT (REQUIRED first run):**
 
-If `recall_preferences` returns no target, ask user:
-- Default target for "Canadian growth-aggressive 32yo with 30+ yr horizon":
-  - **60% XEQT.TO** (all-equity, globally diversified, CAD-hedged-by-default)
-  - **20% VFV.TO** (S&P 500 in CAD)
-  - **10% QQQ** (US tech tilt - accept higher vol for higher growth)
-  - **10% cash buffer** (HISA, T-Bill ETF like CASH.TO, or settled cash for opportunistic)
-- For "balanced" preference: 50% XEQT + 20% XBB.TO (Canadian bonds) + 20% VFV + 10% cash
-- For "income tilt": 40% VDY.TO (Canadian dividend) + 30% XEQT + 20% ZWB.TO (Cdn bank covered call) + 10% cash
+Do NOT default to specific tickers. The core fills *roles*; pick the best ETF for each role by comparing candidates, so every recommendation is earned, not assumed. If `recall_preferences` already holds confirmed targets, skip to Step 3.
 
-After user confirms, save with `mcp__aifolimizer__remember_preference` so future runs skip this step.
+a) Set the role mix from the user's risk/horizon (`get_personal_context`), and confirm it before picking any ticker:
+   - Aggressive + long horizon → ~90-100% equity (one global all-equity fund ± a US / growth tilt) + small cash buffer
+   - Balanced → equity + bond ballast + cash
+   - Income tilt → dividend-equity + (covered-call or bond) + cash
+
+b) For each role, build a candidate set — these are STARTING candidates, NOT the answer and NOT exhaustive; add any others you know of:
+   - Global all-equity: XEQT, VEQT, XGRO, ZEQT, VGRO …
+   - US large-cap: VFV, ZSP, XUS, VOO, VTI …
+   - Bond ballast: ZAG, XBB, VAB …
+   - Cash / T-bill: CASH.TO, CBIL, HISA …
+   - Growth / tech tilt: QQQ, XQQ …
+
+c) Score each candidate on objective criteria, then recommend the winner per role:
+   - MER (WebSearch — lower wins; flag if unavailable)
+   - Index coverage / diversification vs the role
+   - Currency + withholding fit for the target account (CAD-listed vs US-domiciled in RRSP)
+   - Overlap with existing holdings (`get_xray`) — don't stack the same exposure twice
+   - Liquidity / AUM / tracking (volume from `get_technicals`; AUM via WebSearch)
+   If XEQT / VFV win on these, recommend them — but only because they won, never by default. If a cheaper or better-fitting fund wins, recommend that instead.
+
+d) If the user ALREADY holds core ETFs, evaluate keep-vs-switch: only switch when a candidate is clearly better net of switching cost + tax. Don't churn a working core just to chase a few bps of MER.
+
+Output a "Core sleeve" recommendation table: Role | Recommended ETF | MER | why it beat the alternatives | runner-up. Confirm the picks + weights with the user, then save them via `mcp__aifolimizer__remember_preference` so future runs skip this step.
 
 **Step 3 - Compute drift table:**
 
@@ -110,7 +126,7 @@ NEXT REVIEW: <today + 30 days>
 ## Investor profile
 
 - Always pull capital from `get_profile` - never hardcode
-- Default target = "Canadian growth-aggressive 32yo" UNTIL user sets preference
+- No fixed default allocation — run the Step 2 merit-based core selection UNTIL the user sets a preference, then honor the saved targets
 - Currency = CAD aggregate; per-account if cash split
 
 ## Rules

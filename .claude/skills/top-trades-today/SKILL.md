@@ -52,7 +52,7 @@ One line: how many names scored, how many were actionable, and why the rest drop
 
 ## After output - log decisions
 
-For each ranked idea (BUY/ADD/SELL/TRIM), call `mcp__aifolimizer__log_recommendation` with action, conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis (the "why" line), `skill_used="top-trades-today"`. Include crowding flag in thesis. Feeds forward win-rate / track-record loop.
+For each ranked idea (BUY/ADD/SELL/TRIM), call `mcp__aifolimizer__log_recommendation` with action, conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (% from entry; entry captured live at call time), 1-line thesis (the "why" line), `skill="top-trades-today"`. Include crowding flag in thesis. Feeds forward win-rate / track-record loop.
 
 ## Rules
 - Direct. No hedging. If `get_trade_ideas` returns zero ideas, say so plainly: "No actionable setups today - all names HOLD/WATCH or below R:R floor." Do not invent trades.

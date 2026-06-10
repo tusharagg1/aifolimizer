@@ -1,11 +1,6 @@
 ---
 name: pead-tracker
-description: |
-  Track Post-Earnings Announcement Drift (PEAD) across portfolio holdings.
-  Use when user asks "which holdings had recent earnings surprises?", "is PEAD still active for X?",
-  "post-earnings drift", "earnings momentum", "which stocks are still drifting after earnings?",
-  or "show me recent earnings beats". Based on Bernard & Thomas (1989): stocks continue drifting
-  in the direction of the earnings surprise for ~60 trading days after the report is public.
+description: Track Post-Earnings Announcement Drift (PEAD) across ALL portfolio holdings - which held names beat/missed last quarter and are still drifting in the surprise direction. Use for "post-earnings-surprise drift", "is PEAD still active for X?", "which holdings are still drifting after earnings?", "earnings beats still drifting", "earnings-drift overlay across my book". This is a whole-book drift scan - NOT a single-name post-report verdict (use earnings-postmortem) and NOT price-momentum ranking (use momentum-scanner).
 ---
 
 # PEAD Tracker (Post-Earnings Announcement Drift)
@@ -36,6 +31,8 @@ Call steps 3-5 in parallel after step 2 resolves.
 
 ## Drift window logic
 
+Use ONE clock — calendar days — throughout, to avoid mixing trading-day and calendar-day units. The ~60-trading-day Bernard-Thomas window ≈ 85 calendar days; we measure everything against that 85-day calendar window.
+
 For each holding with a recorded earnings report:
 - Compute calendar days since report date (use today's date)
 - **Active window**: 0-85 calendar days since report
@@ -56,14 +53,14 @@ Render markdown table. Columns:
 | Ticker | Report Date | Days Since | Surprise % | Outcome | Drift Window | Expected Edge | Action |
 |--------|------------|-----------|-----------|---------|-------------|--------------|--------|
 
-- **Expected Edge**: use market cap to estimate remaining drift. Large-cap (>$100B): 2.8% over full window, scale by days remaining. Mid ($2B-$100B): 4.3%. Small (<$2B): 5.1%. Pro-rate: `edge_remaining = full_edge × (days_remaining / 60)`
+- **Expected Edge**: use market cap to estimate remaining drift. Large-cap (>$100B): 2.8% over full window. Mid ($2B-$100B): 4.3%. Small (<$2B): 5.1%. Pro-rate on the same 85-day calendar clock: `days_remaining = max(0, 85 - calendar_days_since)`, then `edge_remaining = full_edge × days_remaining / 85`. The `max(0, …)` clamp means an expired name shows 0% remaining edge, never a negative number.
 - **Action**: `ride` (beat, early window), `exit soon` (beat, late window), `trim` (miss, any window), `flat` (meet or expired)
 
 ### 2. Active plays (≤5 bullets)
 
 Only holdings still in drift window. Format per line:
 ```
-TICKER · beat/miss X.X% surprise · Day N of ~60 · ~Y% drift remaining · action
+TICKER · beat/miss X.X% surprise · Day N of ~85 (calendar) · ~Y% drift remaining · action
 ```
 
 ### 3. Expired positions check
@@ -82,7 +79,10 @@ For each `ride` or `trim` action that conflicts with current portfolio weight:
 
 ## After output - log decisions
 
-For each Active play with action `ride` (ADD) or `trim`/`exit soon` (TRIM/EXIT), call `mcp__aifolimizer__log_recommendation` with action (ADD/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW per surprise magnitude + days remaining), entry/target/stop %, 1-line thesis citing surprise % + drift days remaining, `skill_used="pead-tracker"`. Skip `flat` (no edge). Feeds forward win-rate / track-record loop.
+For each Active play with action `ride` (ADD) or `trim`/`exit soon` (TRIM/EXIT):
+
+- If the action is `ride` (ADD), first call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]`. If `crowding_score >= 70` the drift is already consensus-crowded (late entry = negative expected alpha) — downgrade to HOLD or cap the incremental add hard; this is a momentum overlay, not a conviction buy. Favor names with `crowding_score <= 30`.
+- Then call `mcp__aifolimizer__log_recommendation` with `skill="pead-tracker"` (the param is `skill`, not `skill_used` — that belongs to `log_trade_decision`), `ticker`, `action` (ADD/HOLD/TRIM/SELL), `conviction` (HIGH/MED/LOW per surprise magnitude + days remaining), `target_pct` + `stop_pct` (% from entry — the schema takes percentages, not absolute prices), `rationale` (1-line citing surprise % + drift days remaining). Skip `flat` (no edge). Feeds forward win-rate / track-record loop.
 
 ## Rules
 

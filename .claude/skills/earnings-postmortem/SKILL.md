@@ -64,6 +64,7 @@ Below table: one sentence on pattern (improving beats, deteriorating, choppy).
 - Is current price implying guidance is credible?
 
 ### 7. Recommendation (Canadian tax aware)
+- Before emitting any Add/BUY verdict, call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]` - a beat often pulls the crowd into the post-print reaction. If `crowding_score>=70` (consensus-crowded), downgrade conviction or defer the add (negative expected alpha for late entries)
 - If user holds: hold / add / trim / exit with reasoning tied to cost basis
 - If user doesn't hold: initiate / wait / pass
 - Account placement (TFSA / RRSP / Non-Reg) - same framework as stock-analysis
@@ -71,7 +72,7 @@ Below table: one sentence on pattern (improving beats, deteriorating, choppy).
 
 ## After output - log decision
 
-Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis citing thesis-change verdict (confirmed / weakened / broken), `skill_used="earnings-postmortem"`. Feeds forward win-rate / track-record loop.
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM/PASS), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (% from entry - entry is captured live), 1-line rationale citing thesis-change verdict (confirmed / weakened / broken), `skill="earnings-postmortem"`. Feeds forward win-rate / track-record loop.
 
 ## Rules
 

@@ -1,6 +1,6 @@
 ---
 name: risk-assessment
-description: Run a Bridgewater-style risk assessment on the user's portfolio. Use when the user asks about risk, drawdown, concentration, correlation, stress test, or hedging. Fetches live Wealthsimple data via the aifolimizer MCP server.
+description: Bridgewater-style portfolio risk assessment - correlation and factor concentration, VaR / recession stress test, tail-risk scenarios, and hedges. Use when the user asks about risk, drawdown, concentration, correlation, stress test, factor exposure, or hedging.
 ---
 
 # Risk Assessment (Bridgewater style)
@@ -16,13 +16,14 @@ description: Run a Bridgewater-style risk assessment on the user's portfolio. Us
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - account context
-2. Call `mcp__aifolimizer__get_portfolio` - current holdings
-3. Call `mcp__aifolimizer__get_risk_metrics` - vol, Sharpe, Sortino, VaR, expected shortfall
-4. Call `mcp__aifolimizer__get_correlation_matrix` - which positions move together
-5. Call `mcp__aifolimizer__get_concentration_warnings` - over-allocation flags
-6. Call `mcp__aifolimizer__get_factor_exposure` for the top 3-5 holdings by weight - multi-factor betas (market/size/value/profitability/investment/momentum) + annualized alpha. Surfaces hidden FACTOR concentration that name/sector diversification hides (e.g. 4 different names all loaded on momentum = one factor bet)
-7. Call `mcp__aifolimizer__get_factor_snapshot` - current factor regime. A book heavy on a factor that is rolling over is a live risk even if the names look uncorrelated
-8. Use Ray Dalio's all-weather/radical-transparency framework
+2. Call `mcp__aifolimizer__get_personal_context` - province, marginal tax rate, risk tolerance, time horizon, account waterfall. Use the live risk tolerance/horizon instead of the generic buckets below, and ground §11 tax-aware rebalancing. If `present=false`, note the risk framing is generic and suggest profile-setup
+3. Call `mcp__aifolimizer__get_portfolio` - current holdings
+4. Call `mcp__aifolimizer__get_risk_metrics` - vol, Sharpe, Sortino, VaR, expected shortfall
+5. Call `mcp__aifolimizer__get_correlation_matrix` - which positions move together
+6. Call `mcp__aifolimizer__get_concentration_warnings` - over-allocation flags
+7. Call `mcp__aifolimizer__get_factor_exposure` for the top 3-5 holdings by weight - multi-factor betas (market/size/value/profitability/investment/momentum) + annualized alpha. Surfaces hidden FACTOR concentration that name/sector diversification hides (e.g. 4 different names all loaded on momentum = one factor bet)
+8. Call `mcp__aifolimizer__get_factor_snapshot` - current factor regime. A book heavy on a factor that is rolling over is a live risk even if the names look uncorrelated
+9. Use Ray Dalio's all-weather/radical-transparency framework
 
 ## Investor profile
 
@@ -43,7 +44,7 @@ description: Run a Bridgewater-style risk assessment on the user's portfolio. Us
 8. **Factor concentration** - shared factor loadings across holdings (from `get_factor_exposure`); flag if 3+ names share a dominant factor beta
 9. **Top 3 tail-risk scenarios** with probability estimates
 10. **Hedging strategies** to reduce top 2 risks
-11. **Rebalancing suggestions** with specific target allocations
+11. **Rebalancing suggestions** with specific target allocations. Before recommending any ADD / increase, call `mcp__aifolimizer__get_positioning_signals` on those names and gate on crowding: `crowding_score >= 70` = consensus-crowded → defer the add; `<= 30` = contrarian, favor when fundamentals support
 
 ## Rules
 

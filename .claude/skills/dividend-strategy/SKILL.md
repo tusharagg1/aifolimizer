@@ -1,6 +1,6 @@
 ---
 name: dividend-strategy
-description: Run a Harvard Endowment dividend income analysis. Use when the user asks about dividends, passive income, DRIP, yield, payout ratio, or "what should I hold for income?". Fetches portfolio via aifolimizer MCP.
+description: Harvard Endowment-style dividend income analysis - yield, payout-ratio safety, DRIP projection, and tax-account placement for income holdings. Use when the user asks about dividends, passive income, DRIP, yield, payout ratio, dividend safety, or "what should I hold for income?".
 ---
 
 # Dividend Strategy (Harvard Endowment style)
@@ -16,10 +16,12 @@ Reconciliation rule: if a prior decision exists and your new read flips it, stat
 ## How to run
 
 1. Call `mcp__aifolimizer__get_profile` - account types and cash balances. TFSA/RRSP/Non-Reg placement determines dividend tax treatment
-2. Call `mcp__aifolimizer__get_portfolio` - identify dividend-paying holdings
-3. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[]` (top 15 by weight) - extracts dividend_yield, payout_ratio, dividend_growth_streak, eps_ttm for all holdings
-4. Use MCP data as primary source for yield, payout ratio, dividend growth streak
-5. WebSearch only for: specific DRIP calculator projections and new dividend stock recommendations not in current portfolio
+2. Call `mcp__aifolimizer__get_personal_context` - province, marginal tax rate, account waterfall, FHSA. Grounds §6 tax-placement (which payer in which account) and after-tax yield. If `present=false`, flag placement advice as generic and suggest profile-setup
+3. Call `mcp__aifolimizer__get_portfolio` - identify dividend-paying holdings
+4. Call `mcp__aifolimizer__get_fundamentals` with `symbols=[]` (top 15 by weight) - extracts dividend_yield, payout_ratio, dividend_growth_streak, eps_ttm for all holdings
+5. Use MCP data as primary source for yield, payout ratio, dividend growth streak
+6. WebSearch only for: specific DRIP calculator projections and new dividend stock recommendations not in current portfolio
+7. Before recommending any NEW dividend name as an initiate/BUY (§4), call `mcp__aifolimizer__get_positioning_signals` with `symbols=[candidate tickers]`. If `crowding_score >= 70` the name is consensus-crowded (late entry = negative expected alpha) — defer the add or pick a less-crowded payer with comparable yield/safety; favor `crowding_score <= 30` when the dividend is safe
 
 ## Investor profile
 
@@ -43,7 +45,7 @@ Reconciliation rule: if a prior decision exists and your new read flips it, stat
 
 ## After output - log decisions
 
-For each new ticker recommended (initiate) AND any existing holding flagged unsustainable (TRIM/EXIT), call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/TRIM/SELL), conviction (HIGH/MED/LOW), entry/target/stop %, 1-line thesis (yield + safety + tax placement), `skill_used="dividend-strategy"`. Feeds forward win-rate / track-record loop.
+For each new ticker recommended (initiate) AND any existing holding flagged unsustainable (TRIM/EXIT), call `mcp__aifolimizer__log_recommendation` with `skill="dividend-strategy"` (the param is `skill`, not `skill_used` — that belongs to `log_trade_decision`), `ticker`, `action` (BUY/HOLD/TRIM/SELL), `conviction` (HIGH/MED/LOW), `target_pct` + `stop_pct` (% from entry — the schema takes percentages, not absolute prices; entry is logged live at call time), `rationale` 1-line (yield + safety + tax placement). Feeds forward win-rate / track-record loop.
 
 ## Rules
 
