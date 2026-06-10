@@ -13,6 +13,7 @@ import importlib
 import json
 import logging
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -103,6 +104,7 @@ from app.services.pii_filter import (
     filter_user_context,
 )
 from app.services import personal_context as personal_context_svc
+from app.services import cache_layer
 from app.models.personal_context import PersonalContext
 from app.models.portfolio import PortfolioResponse
 from ws_api import WSAPISession
@@ -180,7 +182,11 @@ def _load_cached_session() -> str | None:
             last_err = e
             time.sleep(0.05 * (attempt + 1))
     if payload is None:
-        print(f"[MCP] session file unreadable after retries: {type(last_err).__name__}: {last_err}", flush=True)
+        print(
+            f"[MCP] session file unreadable after retries: {type(last_err).__name__}: {last_err}",
+            file=sys.stderr,
+            flush=True,
+        )
         return None
     try:
         ws_session = WSAPISession.from_json(payload["session_json"])
@@ -189,7 +195,7 @@ def _load_cached_session() -> str | None:
         _state["file_mtime"] = _session_file_mtime()
         return result["session_id"]
     except Exception as e:
-        print(f"[MCP] cached session load failed: {type(e).__name__}: {e}", flush=True)
+        print(f"[MCP] cached session load failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return None
 
 
@@ -268,7 +274,64 @@ async def _ensure_session() -> str:
         return _state["session_id"]
 
 
+# Cross-process portfolio snapshot cache. Every WS-touching tool funnels
+# through _load_portfolio; previously each call made a live Wealthsimple
+# round-trip (get_positions + enrich), so N MCP servers + cron all hammered
+# one contended single-use-token session through Cloudflare — the source of
+# the lag/hang/fail skills hit on every MCP access. Now the enriched result
+# is cached to the shared L2 disk (default 90s) and served instantly; WS is
+# touched at most once per TTL per process. An in-process single-flight lock
+# collapses concurrent misses within a server. On live-fetch failure we serve
+# the last-good snapshot (24h) so a WS stall degrades to slightly-stale data
+# instead of a hung/failed tool.
+_PORTFOLIO_TTL_S = int(os.getenv("PORTFOLIO_CACHE_TTL_S", "90") or 90)
+_PORTFOLIO_LASTGOOD_TTL_S = int(os.getenv("PORTFOLIO_LASTGOOD_TTL_S", str(24 * 3600)) or 24 * 3600)
+_PORTFOLIO_NS = "portfolio_snapshot"
+_PORTFOLIO_LASTGOOD_NS = "portfolio_lastgood"
+_portfolio_lock = asyncio.Lock()
+
+
+def _portfolio_from_cache(ns: str, key: str) -> PortfolioResponse | None:
+    cached = cache_layer.cache_get(ns, key)
+    if not cached:
+        return None
+    try:
+        return PortfolioResponse(**cached)
+    except Exception:
+        return None
+
+
 async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
+    """Fetch portfolio object (pre-PII-filter), served from a short-TTL shared
+    snapshot cache to avoid a live Wealthsimple round-trip on every call.
+    """
+    key = account_id or "_ALL_"
+    cached = _portfolio_from_cache(_PORTFOLIO_NS, key)
+    if cached is not None:
+        return cached
+
+    async with _portfolio_lock:
+        # Double-check: a peer call may have populated the cache while we waited.
+        cached = _portfolio_from_cache(_PORTFOLIO_NS, key)
+        if cached is not None:
+            return cached
+        try:
+            result = await _load_portfolio_live(account_id)
+        except Exception:
+            stale = _portfolio_from_cache(_PORTFOLIO_LASTGOOD_NS, key)
+            if stale is not None:
+                logging.getLogger(__name__).warning(
+                    "[portfolio] live fetch failed — serving last-good snapshot"
+                )
+                return stale
+            raise
+        payload = result.model_dump(mode="json")
+        cache_layer.cache_set(_PORTFOLIO_NS, key, payload, _PORTFOLIO_TTL_S)
+        cache_layer.cache_set(_PORTFOLIO_LASTGOOD_NS, key, payload, _PORTFOLIO_LASTGOOD_TTL_S)
+        return result
+
+
+async def _load_portfolio_live(account_id: str = "") -> PortfolioResponse:
     """Internal: fetch portfolio object (pre-PII-filter) for analytics."""
     session_id = await _ensure_session()
     session = wealthsimple.get_session(session_id)
@@ -2762,6 +2825,7 @@ def _warn_if_second_instance() -> None:
             "[MCP] WARNING: another aifolimizer MCP server is already running. "
             "Duplicate registration (check ~/.claude.json vs project .mcp.json) "
             "causes WS token contention -> stalls + spurious MFA. Keep one source.",
+            file=sys.stderr,
             flush=True,
         )
 

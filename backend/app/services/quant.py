@@ -10,6 +10,8 @@ from statistics import mean, pstdev, stdev
 from typing import Any
 import math
 
+import numpy as np
+
 
 TRADING_DAYS = 252
 
@@ -119,7 +121,35 @@ def correlation(left: list[float], right: list[float]) -> float | None:
 def correlation_matrix(
     symbol_returns: dict[str, list[float]], min_observations: int = 30
 ) -> dict[str, dict[str, float | None]]:
-    matrix: dict[str, dict[str, float | None]] = {}
+    symbols = list(symbol_returns.keys())
+    lengths = {s: len(r) for s, r in symbol_returns.items()}
+
+    # Fast path: when every series shares one length (the live case — one
+    # batched fetch over a common period) compute all pairs in a single
+    # vectorized np.corrcoef instead of O(n²) pure-Python Pearson loops.
+    # Ragged inputs fall back to the pairwise loop to preserve per-pair
+    # truncation semantics. nan (zero-variance column) → None, matching
+    # correlation()'s contract.
+    if symbols and len(set(lengths.values())) == 1:
+        n = next(iter(lengths.values()))
+        if n < min_observations:
+            return {left: {right: (1.0 if left == right else None) for right in symbols} for left in symbols}
+        arr = np.asarray([symbol_returns[s] for s in symbols], dtype=float)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            corr = np.atleast_2d(np.corrcoef(arr))
+        matrix: dict[str, dict[str, float | None]] = {}
+        for i, left in enumerate(symbols):
+            row: dict[str, float | None] = {}
+            for j, right in enumerate(symbols):
+                if left == right:
+                    row[right] = 1.0
+                else:
+                    value = corr[i, j]
+                    row[right] = round(float(value), 3) if np.isfinite(value) else None
+            matrix[left] = row
+        return matrix
+
+    matrix = {}
     for left_symbol, left_returns in symbol_returns.items():
         matrix[left_symbol] = {}
         for right_symbol, right_returns in symbol_returns.items():

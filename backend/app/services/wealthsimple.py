@@ -111,7 +111,11 @@ _PERSIST_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 # one finalizes/rotates the single-use refresh_token at a time.
 _PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
 _PERSIST_LOCK = FileLock(str(_PERSIST_FILE) + ".lock")
-_PERSIST_LOCK_TIMEOUT_S = float(os.environ.get("WS_PERSIST_LOCK_TIMEOUT_S", "45") or 45)
+# Critical section guarded by this lock is now only a sub-millisecond disk read
+# (get_accounts runs lock-free — see _finalize_session), so the acquire timeout
+# is small: a wait beyond a few seconds means a stale/abnormal holder, and we'd
+# rather proceed with the current token than stall. Env-overridable.
+_PERSIST_LOCK_TIMEOUT_S = float(os.environ.get("WS_PERSIST_LOCK_TIMEOUT_S", "5") or 5)
 _DEBUG = os.environ.get("WS_DEBUG", "").lower() in ("1", "true", "yes")
 
 
@@ -210,8 +214,27 @@ def restore_session() -> Optional[str]:
     """
     if not _PERSIST_FILE.exists():
         return None
+    # Read with bounded retries. A concurrent atomic-write rename window, an AV
+    # scanner lock, or a torn read can make a single read fail transiently while
+    # the file is perfectly valid. This file is shared by every MCP server +
+    # FastAPI + all cron scripts, so a delete-on-first-failure (the prior
+    # behaviour) let one unreadable blip unlink the session for the WHOLE fleet,
+    # cascading every process into forced MFA. Retry first; never delete on a
+    # read/parse failure — a real re-login overwrites the file anyway, so
+    # keeping a possibly-transient file is strictly safer than removing it.
+    payload = None
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            payload = json.loads(_PERSIST_FILE.read_text(encoding="utf-8"))
+            break
+        except (json.JSONDecodeError, OSError) as e:
+            last_err = e
+            time.sleep(0.05 * (attempt + 1))
+    if payload is None:
+        _LOG.warning(f"[WS] restore read failed, token kept: {type(last_err).__name__}")
+        return None
     try:
-        payload = json.loads(_PERSIST_FILE.read_text(encoding="utf-8"))
         saved = float(payload.get("saved_utc", 0))
         if time.time() - saved > _TOKEN_TTL_HOURS * 3600:
             _clear_persisted_session()
@@ -219,8 +242,7 @@ def restore_session() -> Optional[str]:
         email = payload["email"]
         session = WSAPISession.from_json(payload["session_json"])
     except Exception as e:
-        _LOG.warning(f"[WS] restore parse failed: {type(e).__name__}")
-        _clear_persisted_session()
+        _LOG.warning(f"[WS] restore parse failed, token kept: {type(e).__name__}")
         return None
     try:
         return _finalize_session(session, email)["session_id"]
@@ -451,28 +473,33 @@ def verify_otp(session_id: str, otp: str) -> dict:
 
 
 def _finalize_session(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
-    """Cross-process serialized wrapper around the real finalize.
+    """Establish a usable WS session from a token, lock-free past the disk read.
 
     Multiple aifolimizer processes (several Claude-Code MCP servers, the FastAPI
     backend, scheduled scripts) share ONE ws_session.json holding a single-use,
-    rotating refresh_token. Concurrent finalize calls used to (a) race the
-    rotation — one process consumes+rotates the refresh_token, the others' copy
-    dies → forced MFA — and (b) burst identical-UA auth traffic at Cloudflare,
-    which throttles by holding sockets open → 30s-per-call stalls → the tool
-    "sticks". A file lock makes at most one process establish/refresh the WS
-    session at a time. After waiting, we re-read the freshly-rotated token from
-    disk so we never finalize on a token a peer just invalidated.
+    rotating refresh_token. We hold the cross-process _PERSIST_LOCK only long
+    enough to read the freshest token from disk — NOT across the WS get_accounts()
+    round-trip.
+
+    Wrapping get_accounts() in the lock (the prior behaviour) made concurrent
+    establishes convoy: one call stalled by Cloudflare throttle held the lock for
+    its full ~30s requests-timeout, and stacked waiters hit the 45s acquire
+    ceiling → establish raised → get_profile returned an error after ~90s. The
+    token read is sub-millisecond, so serialize only that. The validate/refresh
+    runs lock-free, exactly like the _run_ws read path; the rare simultaneous-
+    refresh race fails one call and self-heals on the next reload — far cheaper
+    than a guaranteed convoy. A lock-busy timeout no longer fails the establish:
+    we proceed with the token we already have (the read path's self-healing
+    refresh tolerates a slightly-stale token).
     """
     try:
         with _PERSIST_LOCK.acquire(timeout=_PERSIST_LOCK_TIMEOUT_S):
             disk_session, disk_email = _reload_session_from_disk()
             if disk_session is not None:
                 session, email = disk_session, (disk_email or email)
-            return _finalize_session_locked(session, email, session_id=session_id)
     except FileLockTimeout:
-        raise ValueError(
-            "Wealthsimple session is busy (another aifolimizer process is refreshing the token). Retry in a moment."
-        )
+        _LOG.warning("[WS] persist lock busy on establish; finalizing with current token")
+    return _finalize_session_inner(session, email, session_id=session_id)
 
 
 def _reload_session_from_disk() -> tuple[Optional[WSAPISession], Optional[str]]:
@@ -515,7 +542,9 @@ def _run_ws(email: str, fn):
     return fn(ws)
 
 
-def _finalize_session_locked(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
+def _finalize_session_inner(session: WSAPISession, email: str, session_id: Optional[str] = None) -> dict:
+    # Runs lock-free (see _finalize_session). The get_accounts() probe may trigger
+    # a token refresh; _persist_session writes the rotation atomically.
     global _last_email
     _last_email = email
     sid = session_id or _new_session_id()
