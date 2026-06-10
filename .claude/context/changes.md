@@ -4,6 +4,22 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-10 - Data-source resilience: multi-source news + remove single-source yfinance gaps
+
+Problem: `get_news_headlines` was single-source `yfinance.Ticker().news` — flaky/laggy/often empty, no fallback, in-process-only cache (3-4x Yahoo hits across MCP/cron processes). Two other paths reused the same broken scrape or had no fallback.
+
+Fixes:
+- **news.py** rewritten: asset-aware multi-source chain. US `finnhub→yfinance→eodhd`; CA `yfinance→finnhub→eodhd`; crypto `yfinance→finnhub`; intl `yfinance→eodhd`. First non-empty wins. Shared circuit breaker (`default_breaker`) + drift logging (`source_stats` as `news:<src>`) + cross-process L2 cache. EODHD always LAST (free tier 20/day shared with price quota). No new keys (finnhub/eodhd already configured). Normalized article adds `published_ts` epoch.
+- **data_cache.py**: added `news` table + `get_news`/`put_news`/`delete_news`; wired into `clear_all` + `invalidate_symbol`.
+- **positioning.py** `_news_velocity`: was the SAME flaky `yf.Ticker().news` scrape → now `news.recent_headlines()` (multi-source, timestamped). Yahoo outage no longer zeroes crowding headline-velocity.
+- **technicals.py**: added `_router_history_df()` last-resort fallback when both Massive + yfinance batch fail for a symbol → routes through `data_router.get_history` (twelve_data/tiingo/eodhd/stooq) + shared L2. Gives TSX names a fallback they lacked; preserves the fast batch path for the happy case.
+
+Untouched (no better free source / correct as-is): options chains (yfinance-only, 15m cache), market_data sector tags (yfinance-only, L2 cached), macro (FRED 12h — slow-moving), fundamentals/earnings/insider (long cache correct). Quote/history/fundamentals router already robust.
+
+Verified: ruff clean; 340 passed / 3 skipped; live AAPL→finnhub today's headlines, SHOP.TO/BTC→yfinance, cache hit 0ms; velocity ratio computed from 50 timestamped articles; router-fallback df → rsi/sma/trend computed.
+
+---
+
 ## 2026-06-09 - Verdict-drift fix: decision-memory wiring + JSONL-sourced calibration
 
 Goal: stop verdicts contradicting prior sessions, and make `get_calibration_report` return real data instead of permanent `no_data`. Root cause of drift: only 3 of 27 skills loaded prior decisions before deciding, so each session re-derived from scratch. Root cause of calibration emptiness: the report read a Postgres column nothing populates.
@@ -768,3 +784,18 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 - **Tooling bug fixed:** check_doc_counts.py crashed on Windows (cp1252) printing em-dash/arrow from quoted drift lines, masking 2 architecture.md failures. Added `sys.stdout.reconfigure(encoding="utf-8")` guard.
 - **Deps (6 dependabot PRs, assessed vs actual usage, NOT merged — human/CI decision):** pydantic 2.8→2.13 + codeql 3→4 = merge-now (low). yfinance 0.2→1.4 = low (1.0 "no breaking changes"; auto_adjust always explicit; watch curl_cffi default). redis 5→8 + rq 2.0→2.9 = medium, co-test (RESP3 + new 5s socket_timeout can TimeoutError the RQ blocking worker). ws-api 0.33→0.35 = high-touch (unofficial GraphQL client; read changelog + live login→positions→token-refresh smoke before merge).
 - Verified: ruff clean, check_doc_counts OK, 340 pass / 3 skip (×2).
+
+## 2026-06-10 - perf: L2-cache _ticker_meta static fields
+- market_data._ticker_meta now caches currency+sector to shared L2 (ns=ticker_meta_static, 24h) so cold MCP processes skip the per-holding yf `.info` HTTP. fast_info/price stays on 5min L1. Cold enrich for the book drops ~2.5s->~0.3s (24 names/8 workers). No freshness change to prices or WS-authoritative currency. pytest 340 pass.
+
+## 2026-06-10 - get_profile real-time + last-good fallback
+- mcp_server.get_profile now fetches live every call (real-time) but returns a last-good copy (flagged _stale) on WS error/timeout instead of blocking the full _WS_OP_TIMEOUT_S. Kills the stuck->kill->retry loop. pytest 340 pass, ruff clean.
+
+## 2026-06-10 - bg tasks off WS token (fix random expiry)
+- NEW app/services/portfolio_snapshot.py: single source of truth for portfolio snapshot L2 ns/keys + read(). mcp_server aliases its _PORTFOLIO_NS/_LASTGOOD_NS to it.
+- run_alerts.py: reads snapshot (no restore_session); overlays real-time public quotes (data_router.get_quotes_batch) onto holdings so price alerts stay live; skips cleanly if no snapshot. Dropped wealthsimple/market_data/asyncio/mfa_notify usage.
+- run_maintenance.run_ws_jobs: reads snapshot for NLV + symbols instead of WS.
+- Result: zero bg WS-token rotation => kills the random-MFA race. ruff clean (5 files), snapshot roundtrip + live overlay verified (AAPL fake -1.5% -> live +0.35%), pytest 340 pass.
+
+## 2026-06-10 - eager-warm market_data at MCP startup (kill get_profile import-convoy hang)
+- mcp_server __main__: import app.services.market_data before mcp.run(). Moves the cold yfinance/numpy C-ext load off the concurrent WS enrich path (where it convoyed on the import lock for minutes) to a one-time 3.3s single-threaded boot step. Enrich lazy import now 1ms warm hit. ruff clean, mcp_server imports clean, pytest 340 pass. Effective on next MCP spawn.

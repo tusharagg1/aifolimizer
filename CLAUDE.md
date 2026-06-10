@@ -38,6 +38,12 @@ MCP server (`mcp_server.py`) runs as separate process managed by Claude Code - r
 claude mcp add aifolimizer "<venv_python_path>" "backend/mcp_server.py"
 ```
 
+Quality gates (run before claiming "done"):
+```bash
+pytest                     # testpaths=backend/tests (run from repo root)
+ruff check . ; pyright     # lint + type-check
+```
+
 ## MCP Tools (103 total - table below is a curated subset; see `mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
