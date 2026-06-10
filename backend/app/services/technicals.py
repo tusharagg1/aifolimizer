@@ -12,6 +12,35 @@ _LOG = get_logger("aifolimizer.services.technicals")
 _cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 3600  # 1 hour
 
+
+def _router_history_df(symbol: str) -> pd.DataFrame | None:
+    """Last-resort daily OHLCV via the data_router fallback chain (twelve_data /
+    tiingo / eodhd / stooq). Used only when both Massive and the yfinance batch
+    fail for a symbol, so signals survive a Yahoo outage and TSX names gain a
+    fallback. Router caches bars to the shared L2 SQLite (cross-process)."""
+    try:
+        from app.services import data_router
+
+        bars = data_router.get_history(symbol, period="1y", interval="1d")
+    except Exception as e:
+        _LOG.warning(f"[technicals] router history fallback {symbol}: {e}")
+        return None
+    if not bars:
+        return None
+    df = pd.DataFrame(bars)
+    rename = {
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+        "adj_close": "Adj Close",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    if "date" in df.columns:
+        df.index = pd.to_datetime(df["date"], errors="coerce")
+    return df if "Close" in df.columns else None
+
 _SPY_CACHE: dict[str, tuple[pd.Series, float]] = {}
 _SPY_CACHE_TTL = 3600
 
@@ -599,6 +628,8 @@ def get_technicals(symbols: list[str]) -> dict[str, dict]:
             data = None
         for sym in needs_yfinance:
             df = _slice_symbol(data, sym) if data is not None else None
+            if df is None:
+                df = _router_history_df(sym)  # multi-source fallback
             result = _compute_from_df(df, spy_close=spy_close) if df is not None else {}
             _cache[sym] = (result, time.time())
             out[sym] = result

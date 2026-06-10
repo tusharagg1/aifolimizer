@@ -10,6 +10,7 @@ Schema:
   history(symbol, source, period, interval, payload_json, as_of)
     PK (symbol, source, period, interval)
   fundamentals(symbol, source, payload_json, as_of) PK (symbol, source)
+  news(symbol, source, payload_json, as_of) PK (symbol, source)
   source_stats(source, ts, ok, latency_ms, error) — track-record evidence
 
 TTLs are caller-decided. We just store + return. Router enforces freshness.
@@ -45,6 +46,13 @@ CREATE TABLE IF NOT EXISTS history (
     PRIMARY KEY (symbol, source, period, interval)
 );
 CREATE TABLE IF NOT EXISTS fundamentals (
+    symbol TEXT NOT NULL,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    as_of REAL NOT NULL,
+    PRIMARY KEY (symbol, source)
+);
+CREATE TABLE IF NOT EXISTS news (
     symbol TEXT NOT NULL,
     source TEXT NOT NULL,
     payload_json TEXT NOT NULL,
@@ -161,6 +169,30 @@ def put_fundamentals(symbol: str, source: str, payload: dict) -> None:
         c.commit()
 
 
+def get_news(symbol: str, source: str, max_age_s: float) -> list[dict] | None:
+    with _LOCK:
+        c = _conn_get()
+        row = c.execute(
+            "SELECT payload_json, as_of FROM news WHERE symbol=? AND source=?",
+            (symbol, source),
+        ).fetchone()
+    if not row:
+        return None
+    if (time.time() - float(row[1])) > max_age_s:
+        return None
+    return json.loads(row[0])
+
+
+def put_news(symbol: str, source: str, articles: list[dict]) -> None:
+    with _LOCK:
+        c = _conn_get()
+        c.execute(
+            "INSERT OR REPLACE INTO news(symbol, source, payload_json, as_of) VALUES (?, ?, ?, ?)",
+            (symbol, source, json.dumps(articles), time.time()),
+        )
+        c.commit()
+
+
 def log_source_call(source: str, ok: bool, latency_ms: float | None, error: str | None = None) -> None:
     """Append a call outcome row — used by the public track-record report."""
     with _LOCK:
@@ -205,7 +237,10 @@ def clear_all() -> None:
     """Test helper — wipe cache. Production calls should never use this."""
     with _LOCK:
         c = _conn_get()
-        c.executescript("DELETE FROM quotes; DELETE FROM history; DELETE FROM fundamentals; DELETE FROM source_stats;")
+        c.executescript(
+            "DELETE FROM quotes; DELETE FROM history; DELETE FROM fundamentals; "
+            "DELETE FROM news; DELETE FROM source_stats;"
+        )
         c.commit()
 
 
@@ -268,8 +303,22 @@ def delete_fundamentals(symbol: str, source: str | None = None) -> int:
         return cur.rowcount or 0
 
 
+def delete_news(symbol: str, source: str | None = None) -> int:
+    with _LOCK:
+        c = _conn_get()
+        if source is None:
+            cur = c.execute("DELETE FROM news WHERE symbol=?", (symbol,))
+        else:
+            cur = c.execute(
+                "DELETE FROM news WHERE symbol=? AND source=?",
+                (symbol, source),
+            )
+        c.commit()
+        return cur.rowcount or 0
+
+
 def invalidate_symbol(symbol: str) -> dict[str, int]:
-    """Drop every cached row for a symbol (quote + history + fundamentals).
+    """Drop every cached row for a symbol (quote + history + fundamentals + news).
 
     Use on broker/source disagreement, post-corporate-action, or when a user
     explicitly requests a refresh.
@@ -278,4 +327,5 @@ def invalidate_symbol(symbol: str) -> dict[str, int]:
         "quotes": delete_quote(symbol),
         "history": delete_history(symbol),
         "fundamentals": delete_fundamentals(symbol),
+        "news": delete_news(symbol),
     }

@@ -27,6 +27,7 @@ from pathlib import Path
 import yfinance as yf
 
 from app.services import cache_layer
+from app.services import news as news_svc
 from app.security import get_logger
 
 _LOG = get_logger("aifolimizer.services.positioning")
@@ -95,40 +96,26 @@ def _norm_news_velocity(ratio: float | None) -> float:
 
 
 def _news_velocity(symbol: str) -> tuple[float | None, int, int]:
-    """Returns (ratio_7d_per_day_vs_30d_per_day, count_7d, count_30d)."""
+    """Returns (ratio_7d_per_day_vs_30d_per_day, count_7d, count_30d).
+
+    Sources headlines via the resilient multi-source news chain (finnhub /
+    yfinance / eodhd) rather than a single flaky yfinance scrape, so a Yahoo
+    outage no longer silently zeroes out headline velocity.
+    """
     try:
-        articles = yf.Ticker(symbol).news or []
-        now = datetime.now(timezone.utc)
-        cutoff_7 = now - timedelta(days=7)
-        cutoff_30 = now - timedelta(days=30)
+        articles = news_svc.recent_headlines(symbol)
+        now = datetime.now(timezone.utc).timestamp()
+        cutoff_7 = now - 7 * 86400
+        cutoff_30 = now - 30 * 86400
         c7 = 0
         c30 = 0
         for a in articles:
-            content = a.get("content") if isinstance(a, dict) else None
-            pub_str = ""
-            ts = None
-            if isinstance(content, dict):
-                pub_str = content.get("pubDate", "") or ""
-            else:
-                ts = a.get("providerPublishTime")
-            pub_dt = None
-            if pub_str:
-                try:
-                    pub_dt = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
-                except Exception:
-                    pub_dt = None
-            elif ts is not None:
-                try:
-                    pub_dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-                except Exception:
-                    pub_dt = None
-            if pub_dt is None:
+            ts = a.get("published_ts")
+            if ts is None:
                 continue
-            if pub_dt.tzinfo is None:
-                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
-            if pub_dt >= cutoff_30:
+            if ts >= cutoff_30:
                 c30 += 1
-                if pub_dt >= cutoff_7:
+                if ts >= cutoff_7:
                     c7 += 1
         if c30 == 0:
             return None, c7, c30
