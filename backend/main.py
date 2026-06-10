@@ -64,6 +64,7 @@ def _clear_mfa_flag() -> None:
     try:
         (Path.home() / ".aifolimizer" / ".mfa-notify.last").unlink(missing_ok=True)
     except OSError:
+        # Cursor file absent or unwritable — nothing to reset.
         pass
 
 
@@ -79,6 +80,7 @@ def _fire_system_up() -> None:
         if marker.exists() and time.time() - float(marker.read_text(encoding="utf-8").strip() or 0) < 1800:
             return
     except (OSError, ValueError):
+        # Unreadable/garbage marker — treat as no prior notify and continue.
         pass
     try:
         import httpx

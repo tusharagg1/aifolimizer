@@ -41,6 +41,7 @@ def _router_history_df(symbol: str) -> pd.DataFrame | None:
         df.index = pd.to_datetime(df["date"], errors="coerce")
     return df if "Close" in df.columns else None
 
+
 _SPY_CACHE: dict[str, tuple[pd.Series, float]] = {}
 _SPY_CACHE_TTL = 3600
 

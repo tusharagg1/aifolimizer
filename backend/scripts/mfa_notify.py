@@ -53,6 +53,7 @@ def clear_flag() -> None:
     try:
         NOTIFY_FILE.unlink(missing_ok=True)
     except OSError:
+        # File absent or unwritable — cursor already effectively clear.
         pass
 
 

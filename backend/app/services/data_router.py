@@ -387,6 +387,7 @@ def _held_cross_check(payload: dict, info, max_age_s: float) -> dict:
 
             _wss.warm_async()
         except Exception:
+            # Best-effort prefetch; the data path must never block on warm-up.
             pass
     return augmented
 

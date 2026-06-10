@@ -110,6 +110,7 @@ def _load_weights() -> dict[str, float]:
                 # Already inside an event loop; skip refresh this tick.
                 return _WEIGHTS_CACHE
         except RuntimeError:
+            # No running loop in this thread — fall through and refresh synchronously.
             pass
 
         async def _q() -> dict | None:
@@ -511,7 +512,6 @@ def _score_position(
 
     current_price = tech.get("current_price")
     analyst_target = fund.get("analyst_target_price") if fund else None
-    analyst_rec = (fund.get("analyst_recommendation") or "").lower() if fund else ""
     upside: float | None = None
     if current_price and analyst_target and current_price > 0:
         upside = round((analyst_target - current_price) / current_price * 100, 1)

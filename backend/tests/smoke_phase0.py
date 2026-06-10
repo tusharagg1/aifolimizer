@@ -13,10 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import init_pool, close_pool  # noqa: E402
 from app.cache import init_redis, close_redis  # noqa: E402
-from app.services import skill_evidence  # noqa: E402, F401
+from app.services import skill_evidence  # noqa: E402
 
 
 async def main() -> None:
+    print("skill_evidence import:", skill_evidence is not None)
     p = await init_pool()
     r = await init_redis()
     print("pool:", p is not None, "redis:", r is not None)

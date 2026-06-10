@@ -124,5 +124,6 @@ if __name__ == "__main__":
         try:
             _stream.reconfigure(encoding="utf-8")
         except Exception:
+            # Stream not reconfigurable — emoji may garble but output still flows.
             pass
     sys.exit(main())

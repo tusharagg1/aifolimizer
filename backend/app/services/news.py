@@ -78,9 +78,7 @@ def _fetch_yfinance(symbol: str) -> list[dict]:
         content = a.get("content", {})
         is_new = isinstance(content, dict)
         title = content.get("title") if is_new else a.get("title", "")
-        publisher = (
-            content.get("provider", {}).get("displayName", "") if is_new else a.get("publisher", "")
-        )
+        publisher = content.get("provider", {}).get("displayName", "") if is_new else a.get("publisher", "")
         published = content.get("pubDate", "") if is_new else _fmt_epoch(a.get("providerPublishTime", ""))
         url = content.get("canonicalUrl", {}).get("url", "") if is_new else a.get("link", "")
         if title:

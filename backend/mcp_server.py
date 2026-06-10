@@ -332,9 +332,7 @@ async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
         except Exception:
             stale = _portfolio_from_cache(_PORTFOLIO_LASTGOOD_NS, key)
             if stale is not None:
-                logging.getLogger(__name__).warning(
-                    "[portfolio] live fetch failed — serving last-good snapshot"
-                )
+                logging.getLogger(__name__).warning("[portfolio] live fetch failed — serving last-good snapshot")
                 return stale
             raise
         payload = result.model_dump(mode="json")
@@ -1155,7 +1153,7 @@ async def get_dividend_calendar(
                 "ex_dividend_date": ex[:10],
                 "dividend_pay_date": (data.get("dividend_pay_date") or "")[:10] or None,
                 "days_until_ex": (ex_date - today).days,
-                "is_upcoming": today <= ex_date <= cutoff,
+                "is_upcoming": ex_date <= cutoff,
                 "dividend_yield": data.get("dividend_yield"),
                 "held": sym in held_set,
             }
@@ -1266,6 +1264,7 @@ async def get_trade_ideas(
                 try:
                     await close_pool()
                 except Exception:
+                    # Pool teardown is best-effort; a close error here is not actionable.
                     pass
             if state:
                 ranked["risk_gate"] = {
@@ -2871,7 +2870,7 @@ if __name__ == "__main__":
     # (Windows Defender scan + multi-instance disk contention) — get_profile hung
     # until killed. Importing here makes that lazy import a warm sys.modules hit.
     try:
-        import app.services.market_data  # noqa: F401
+        importlib.import_module("app.services.market_data")
     except Exception:
         logging.getLogger(__name__).warning(
             "[startup] market_data warm-import failed; falling back to lazy import", exc_info=True

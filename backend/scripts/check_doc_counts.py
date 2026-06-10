@@ -167,6 +167,7 @@ def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
+        # Non-reconfigurable stream (redirected/wrapped) — keep default encoding.
         pass
     actual = {
         "tools": count_mcp_tools(),
