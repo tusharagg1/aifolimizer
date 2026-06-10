@@ -17,7 +17,6 @@ Windows quick start (PowerShell, from backend/):
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
 from pathlib import Path
@@ -30,40 +29,46 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv(_BACKEND / ".env")
 
-from app.services import wealthsimple, market_data  # noqa: E402
+from app.services import portfolio_snapshot, data_router  # noqa: E402
 from app.services import alerts as alerts_svc  # noqa: E402
 from app.services import positioning as positioning_svc  # noqa: E402
 
 
-def _load_session() -> str:
-    # Use the hardened restore path: it force-refreshes an expired access token
-    # from the longer-lived refresh_token instead of dying on UNAUTHENTICATED.
-    session_id = wealthsimple.restore_session()
-    if not session_id:
-        raise RuntimeError("No valid WS session. Run mcp_login.py to re-authenticate.")
-    return session_id
+def _load_portfolio(account_id: str = ""):
+    # Read the shared portfolio snapshot (written by the MCP server on its live
+    # fetches) INSTEAD of calling Wealthsimple. A bg WS call would rotate the
+    # shared single-use refresh token and race interactive sessions into forced
+    # MFA — the documented "random expiry". No snapshot => skip (never hit WS).
+    portfolio = portfolio_snapshot.read(account_id)
+    if portfolio is None:
+        raise RuntimeError("No portfolio snapshot — open aifolimizer in Claude to populate it.")
+    _overlay_live_prices(portfolio)
+    return portfolio
 
 
-async def _load_portfolio(account_id: str = ""):
-    session_id = _load_session()
-    session = wealthsimple.get_session(session_id)
-    profile = session.get("profile") if session else None
-    if not profile:
-        raise RuntimeError("Session lost")
-
-    per_account = session.get("per_account", {})
-    if account_id and account_id in per_account:
-        acc = per_account[account_id]
-        cash = float(acc.get("cash_balance") or 0.0)
-        nlv = float(acc.get("invested_value") or 0.0)
-        upnl = float(acc.get("unrealized_pnl_cad") or 0.0)
-        raw = await asyncio.to_thread(wealthsimple.get_positions, session_id, account_id)
-    else:
-        cash = sum(a.cash_balance for a in profile.accounts)
-        nlv = sum(a.invested_value for a in profile.accounts)
-        upnl = float(session.get("unrealized_pnl_cad") or 0.0)
-        raw = await asyncio.to_thread(wealthsimple.get_all_positions, session_id)
-    return market_data.enrich(raw, cash, nlv, upnl)
+def _overlay_live_prices(portfolio) -> None:
+    """Refresh day_change_pct from real-time public-ticker quotes so price
+    alerts fire on live moves, not the snapshot-time day change. Holdings come
+    from the WS snapshot (cached); prices come from public market data — no WS.
+    Best-effort: a quote miss leaves the snapshot value for that symbol intact.
+    """
+    symbols = [p.symbol for p in portfolio.positions if p.symbol]
+    if not symbols:
+        return
+    try:
+        quotes = data_router.get_quotes_batch(symbols)
+    except Exception as e:
+        print(json.dumps({"status": "live_price_refresh_failed", "detail": f"{type(e).__name__}: {e}"}))
+        return
+    refreshed = []
+    for p in portfolio.positions:
+        q = quotes.get(p.symbol)
+        dcp = q.get("day_change_pct") if q else None
+        if dcp is not None:
+            refreshed.append(p.model_copy(update={"day_change_pct": round(float(dcp), 2)}))
+        else:
+            refreshed.append(p)
+    portfolio.positions = refreshed
 
 
 def main() -> int:
@@ -98,20 +103,14 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    # Session check drives the once-per-expiry MFA heads-up. On a dead/
-    # unrefreshable session, fire the (flag-deduped) notify and exit cleanly
-    # instead of crashing the scheduled task every 30 min.
-    import mfa_notify
-
+    # Holdings come from the shared WS snapshot (no live WS login here — that
+    # would rotate the shared token). If the snapshot isn't populated yet, skip
+    # cleanly instead of crashing the 30-min scheduled task.
     try:
-        portfolio = asyncio.run(_load_portfolio(args.account))
+        portfolio = _load_portfolio(args.account)
     except RuntimeError as e:
-        if "session" in str(e).lower() or "auth" in str(e).lower():
-            mfa_notify.main()  # sends once per expiry event (24h reminder cap)
-            print(json.dumps({"status": "session_expired", "mfa_notify": "fired"}))
-            return 0
-        raise
-    mfa_notify.clear_flag()  # session valid → reset MFA cursor for next expiry
+        print(json.dumps({"status": "no_snapshot", "detail": str(e)}))
+        return 0
 
     triggered = alerts_svc.evaluate(
         portfolio,

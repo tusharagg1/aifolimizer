@@ -64,27 +64,24 @@ def run_no_ws_jobs() -> None:
 
 
 def run_ws_jobs() -> None:
-    """Equity + positioning snapshots. Need a live WS session; skip if absent."""
-    from app.services import wealthsimple
+    """Equity + positioning snapshots from the shared portfolio snapshot.
 
-    try:
-        session_id = wealthsimple.restore_session()
-    except Exception as e:
-        _log(f"WS restore FAILED: {type(e).__name__}: {e} - skipping WS-gated jobs")
-        return
-    if not session_id:
-        _log("WS session unavailable - skipping equity + positioning snapshots (run mcp_login.py)")
-        return
-    session = wealthsimple.get_session(session_id)
-    profile = session.get("profile") if session else None
-    if not profile:
-        _log("WS session restored but no profile — skipping WS-gated jobs")
+    Reads the cached snapshot (written by the MCP server on live fetches)
+    instead of calling Wealthsimple — a bg WS call rotates the shared
+    single-use refresh token and races interactive sessions into forced MFA.
+    Skip cleanly if the snapshot isn't populated yet.
+    """
+    from app.services import portfolio_snapshot
+
+    portfolio = portfolio_snapshot.read()
+    if portfolio is None:
+        _log("no portfolio snapshot - skipping equity + positioning snapshots (open aifolimizer in Claude)")
         return
 
     try:
         from app.services import alpha_attribution
 
-        nlv = sum(float(getattr(a, "invested_value", 0) or 0) for a in profile.accounts)
+        nlv = float(portfolio.summary.total_value or 0)
         if nlv > 0:
             res = alpha_attribution.snapshot_equity(round(nlv, 2))
             _log(f"snapshot_equity: nlv={nlv:.2f} {res}")
@@ -96,12 +93,7 @@ def run_ws_jobs() -> None:
     try:
         from app.services import positioning
 
-        positions = wealthsimple.get_all_positions(session_id)
-        symbols = list(
-            dict.fromkeys(
-                (p.get("security") or {}).get("symbol") for p in positions if (p.get("security") or {}).get("symbol")
-            )
-        )[:15]
+        symbols = list(dict.fromkeys(p.symbol for p in portfolio.positions if p.symbol))[:15]
         if symbols:
             res = positioning.snapshot_to_history(symbols)
             _log(f"snapshot_positioning_history: {len(symbols)} symbols, {res}")

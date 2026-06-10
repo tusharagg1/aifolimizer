@@ -105,6 +105,7 @@ from app.services.pii_filter import (
 )
 from app.services import personal_context as personal_context_svc
 from app.services import cache_layer
+from app.services import portfolio_snapshot
 from app.models.personal_context import PersonalContext
 from app.models.portfolio import PortfolioResponse
 from ws_api import WSAPISession
@@ -286,9 +287,20 @@ async def _ensure_session() -> str:
 # instead of a hung/failed tool.
 _PORTFOLIO_TTL_S = int(os.getenv("PORTFOLIO_CACHE_TTL_S", "90") or 90)
 _PORTFOLIO_LASTGOOD_TTL_S = int(os.getenv("PORTFOLIO_LASTGOOD_TTL_S", str(24 * 3600)) or 24 * 3600)
-_PORTFOLIO_NS = "portfolio_snapshot"
-_PORTFOLIO_LASTGOOD_NS = "portfolio_lastgood"
+_PORTFOLIO_NS = portfolio_snapshot.SNAPSHOT_NS
+_PORTFOLIO_LASTGOOD_NS = portfolio_snapshot.LASTGOOD_NS
 _portfolio_lock = asyncio.Lock()
+
+# get_profile is real-time: it fetches live every call (no success snapshot).
+# But _ensure_session (restore_session -> get_accounts + per-account balance HTTPs)
+# can stall behind Cloudflare for the full _WS_OP_TIMEOUT_S, which is what made the
+# tool appear hung. We keep a last-good copy ONLY as a stall fallback: the live
+# fetch is always attempted first; the cached profile is returned (flagged stale)
+# solely when the live call errors/times out, so the tool degrades to slightly
+# stale data instead of blocking → kill → retry.
+_PROFILE_LASTGOOD_TTL_S = int(os.getenv("PROFILE_LASTGOOD_TTL_S", str(24 * 3600)) or 24 * 3600)
+_PROFILE_LASTGOOD_NS = "profile_lastgood"
+_PROFILE_KEY = "_PROFILE_"
 
 
 def _portfolio_from_cache(ns: str, key: str) -> PortfolioResponse | None:
@@ -381,11 +393,23 @@ async def get_profile() -> dict:
     Returns the user's account profile (account types, cash balances, total invested).
     PII-stripped. Use this first to learn account types (TFSA, RRSP, Non-Reg, etc.)
     """
-    session_id = await _ensure_session()
-    session = wealthsimple.get_session(session_id)
-    if not session or not session.get("profile"):
-        raise RuntimeError("Session lost — please re-authenticate via the web UI")
-    return filter_user_context(session["profile"].model_dump())
+    # Real-time: always attempt a live fetch first. The cached copy is used ONLY
+    # when the live call errors/times out, so the tool degrades to slightly-stale
+    # (flagged) data instead of hanging for the full WS timeout.
+    try:
+        session_id = await _ensure_session()
+        session = wealthsimple.get_session(session_id)
+        if not session or not session.get("profile"):
+            raise RuntimeError("Session lost — please re-authenticate via the web UI")
+        profile = filter_user_context(session["profile"].model_dump())
+    except Exception:
+        stale = cache_layer.cache_get(_PROFILE_LASTGOOD_NS, _PROFILE_KEY)
+        if stale is not None:
+            logging.getLogger(__name__).warning("[profile] live fetch failed — serving last-good (stale)")
+            return {**stale, "_stale": True}
+        raise
+    cache_layer.cache_set(_PROFILE_LASTGOOD_NS, _PROFILE_KEY, profile, _PROFILE_LASTGOOD_TTL_S)
+    return profile
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -2839,4 +2863,17 @@ def _warn_if_second_instance() -> None:
 
 if __name__ == "__main__":
     _warn_if_second_instance()
+    # Eagerly import the heavy market-data stack (yfinance -> numpy/pandas C
+    # extensions) ONCE, single-threaded, before serving any tool. It used to be
+    # imported lazily inside the concurrent account-enrich ThreadPool on the
+    # first get_profile: N enrich threads hit the first-ever import together and
+    # convoyed on Python's import lock behind a multi-minute cold numpy .pyd load
+    # (Windows Defender scan + multi-instance disk contention) — get_profile hung
+    # until killed. Importing here makes that lazy import a warm sys.modules hit.
+    try:
+        import app.services.market_data  # noqa: F401
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "[startup] market_data warm-import failed; falling back to lazy import", exc_info=True
+        )
     mcp.run()

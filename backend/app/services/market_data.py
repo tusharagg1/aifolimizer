@@ -8,6 +8,7 @@ import yfinance as yf
 
 from app.models.portfolio import Position, PortfolioSummary, PortfolioResponse
 from app.security import get_logger
+from app.services import cache_layer
 
 _LOG = get_logger("aifolimizer.services.market_data")
 
@@ -21,9 +22,20 @@ _FX_TTL = 300  # 5 min — forex moves during market hours
 _TICKER_CACHE: dict[str, tuple[dict, float]] = {}
 _TICKER_TTL = 300
 
+# currency + sector come from yf .info (the heavy HTTP); they're near-static,
+# so cache them to the shared L2 disk so a cold MCP process skips the .info
+# call per holding. Price fields stay on the short L1 TTL above for freshness.
+_TICKER_STATIC_NS = "ticker_meta_static"
+_TICKER_STATIC_TTL = 24 * 3600
+
 
 def _ticker_meta(symbol: str) -> dict:
-    """Cached {currency, last_price, prev_close, sector} per symbol."""
+    """Cached {currency, last_price, prev_close, sector} per symbol.
+
+    Price fields (last_price/prev_close) refresh on the short L1 TTL via
+    fast_info. Static fields (currency/sector) are cached cross-process to L2,
+    so the expensive .info HTTP is skipped once a symbol is known.
+    """
     entry = _TICKER_CACHE.get(symbol)
     now = time.time()
     if entry and (now - entry[1]) < _TICKER_TTL:
@@ -34,19 +46,30 @@ def _ticker_meta(symbol: str) -> dict:
         "prev_close": 0.0,
         "sector": None,
     }
+    static = cache_layer.cache_get(_TICKER_STATIC_NS, symbol)
     try:
         ticker = yf.Ticker(symbol)
         fast_info = ticker.fast_info
         meta["last_price"] = float(fast_info.last_price or 0)
         meta["prev_close"] = float(fast_info.regular_market_previous_close or 0)
-        try:
-            info = ticker.info or {}
-            yf_cur = str(info.get("currency") or "").upper()
-            if yf_cur in ("USD", "CAD"):
-                meta["currency"] = yf_cur
-            meta["sector"] = info.get("sector") or info.get("category")
-        except Exception:
-            _LOG.debug("suppressed exception", exc_info=True)
+        if static is not None:
+            meta["currency"] = static.get("currency")
+            meta["sector"] = static.get("sector")
+        else:
+            try:
+                info = ticker.info or {}
+                yf_cur = str(info.get("currency") or "").upper()
+                if yf_cur in ("USD", "CAD"):
+                    meta["currency"] = yf_cur
+                meta["sector"] = info.get("sector") or info.get("category")
+                cache_layer.cache_set(
+                    _TICKER_STATIC_NS,
+                    symbol,
+                    {"currency": meta["currency"], "sector": meta["sector"]},
+                    _TICKER_STATIC_TTL,
+                )
+            except Exception:
+                _LOG.debug("suppressed exception", exc_info=True)
     except Exception:
         _LOG.debug("suppressed exception", exc_info=True)
     _TICKER_CACHE[symbol] = (meta, now)
