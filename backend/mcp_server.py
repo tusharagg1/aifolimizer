@@ -841,7 +841,13 @@ async def get_economic_calendar() -> dict:
     For free Canadian macro use get_boc_snapshot + get_statcan_snapshot instead.
     Cached 30m.
     """
-    return await asyncio.to_thread(finnhub_extras_svc.finnhub_economic_calendar)
+    result = await asyncio.to_thread(finnhub_extras_svc.finnhub_economic_calendar)
+    if isinstance(result, dict) and result.get("error") == "premium_endpoint":
+        result["fallback"] = (
+            "Economic calendar is premium on the Finnhub free tier. "
+            "Use get_boc_snapshot + get_statcan_snapshot for free Canadian macro."
+        )
+    return result
 
 
 @mcp.tool()
@@ -2764,7 +2770,9 @@ async def get_alert_suite(account_id: str = "", since_hours: int = 24) -> dict:
                     {
                         "symbol": sym,
                         "earnings_date": str(d),
+                        "days_until": (d - today).days,
                         "is_upcoming": today <= d <= cutoff,
+                        "held": True,
                     }
                 )
             except (ValueError, TypeError):

@@ -122,7 +122,7 @@ Call `mcp__aifolimizer__log_recommendation` with:
 - `skill="pre-trade-check"`
 - `ticker=<TICKER>`
 - `action=<BUY/SELL>`
-- `conviction="filtered"` (this skill does not assess conviction - only rejects)
+- `conviction="MED"` (this skill is a discipline gate, not a conviction call - "MED" is the codebase's neutral default; `log_recommendation` only accepts HIGH/MED/LOW and raises ValueError on anything else)
 - `rationale=<user's thesis sentence>`
 - `entry_price` = `entry_zone.reference`, `stop_loss` = `stop_loss_price`, `target_price` = `exit_ladder` T2 price (primary target)
 

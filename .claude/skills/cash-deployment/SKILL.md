@@ -81,7 +81,7 @@ For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_sco
 ### 6. What's NOT in this plan
 - New tickers outside user's existing universe (use stock-analysis for individual research)
 - Bond / GIC / HISA cash parking (deploy ≠ park)
-- Crypto allocations (user does not hold crypto in Wealthsimple per profile)
+- Crypto allocations (only state this if `get_profile` shows no crypto account/holdings; if the user DOES hold crypto, drop this line or address crypto deployment explicitly - never assert it as a static fact)
 
 ## Rules
 
