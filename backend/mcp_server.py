@@ -626,8 +626,7 @@ async def get_dcf_valuation(symbol: str) -> dict:
     5-year FCF projection + Gordon terminal value, anchored to the SEC EDGAR
     free-cash-flow series, discounted at a CAPM cost of equity. Returns a
     per-share fair value, upside vs current price, a discount-rate × terminal-
-    growth sensitivity grid, and the FCF history. Gives price targets a
-    quantitative spine instead of a free-hand estimate.
+    growth sensitivity grid, and the FCF history.
 
     Caveats: US tickers only (no .TO); net debt ignored (≈ enterprise value
     per share); unreliable when latest FCF is negative (returns a note). One
@@ -1955,7 +1954,7 @@ async def get_trade_ticket(
     account_id: str = "",
 ) -> dict:
     """
-    Generate a precise, immediately actionable trade ticket.
+    Generate a trade ticket with sizing, stop, and exit targets.
 
     Returns: entry_price, quantity, dollar_amount_cad, stop_loss_price,
     target_price, risk_reward_ratio, max_loss_cad, position_size_pct,
@@ -2060,7 +2059,7 @@ async def remember_preference(
     tags: optional keywords for retrieval (e.g. ["TFSA", "ETF", "currency"])
 
     Stored in ~/.aifolimizer/memory/ — survives session restarts.
-    Recalled automatically via recall_preferences when relevant.
+    Retrieve later by calling recall_preferences (not automatic).
     """
     return await asyncio.to_thread(memory_svc.remember, memory_type, content, tags)
 
