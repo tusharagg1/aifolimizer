@@ -8,6 +8,9 @@ Scope:
   - CLAUDE.md, README.md, AGENTS.md (live, externally consumed)
   - .claude/context/architecture.md (live architecture reference)
   - backend/mcp_server.py docstrings (so a stale "13 skills" docstring fails)
+  - .claude-plugin/plugin.json, .claude-plugin/marketplace.json (the plugin
+    manifests shown in the marketplace install UI; drifted once because they
+    were outside this guard)
 
 Excluded by design:
   - .claude/context/changes.md — historical change log; numbers describe
@@ -53,6 +56,8 @@ _TOOL_PATTERNS: list[str] = [
     r"#\s*(\d+)\s+MCP\s+tools?",
     # 'MCP server (80 tools)' (AGENTS.md form) and 'MCP tools (80 total)'
     r"MCP\s+(?:server|tools?)\s*\((\d+)\s+(?:tools?|total)",
+    # plugin manifest prose: '103 analysis tools across ...' / '103 analysis tools +'
+    r"(\d+)\s+analysis\s+tools?",
     # docstring form: '"""... 80 institutional analysis frameworks'
     # NOT a tool count by itself — but mcp_server.py used "13 institutional
     # analysis frameworks" when it should match skills, handled below.
@@ -85,6 +90,8 @@ _SKILL_PATTERNS: list[str] = [
     # docstring in mcp_server.py: '13 institutional analysis frameworks' /
     # '13 institutional analysis skills'
     r"(\d+)\s+institutional\s+analysis\s+(?:frameworks|skills?)",
+    # plugin manifest prose: '+ 27 skills' / 'plus 27 skills'
+    r"(?:\+|plus)\s+(\d+)\s+skills?",
 ]
 
 # Map filename -> (patterns, kind) pairs for the scanner.
@@ -95,6 +102,8 @@ for filename in (
     "AGENTS.md",
     ".claude/context/architecture.md",
     "backend/mcp_server.py",
+    ".claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
 ):
     full = _ROOT / filename
     for pat in _TOOL_PATTERNS:
