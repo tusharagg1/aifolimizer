@@ -175,6 +175,9 @@ No frontend - analysis runs in Claude Code / Claude Desktop.
 | `backend/app/services/skill_backtest.py` | Backtest 13 codified-rule skills (LLM skills not replayed) |
 | `backend/app/services/trust_report.py` | Generate TRACK_RECORD.md + JSONL |
 | `backend/app/services/recommendations.py` | Rule-based BUY/SELL/HOLD/WATCH scoring |
+| `backend/app/services/signal_history.py` | Signal feature logging + forward-horizon scoring + accuracy (JSONL fallback path) |
+| `backend/app/services/signal_backfill.py` | Fills PG `signal_history.realized_return_*d` (bar-fetch compute; PG-canonical port of the JSONL scorer) |
+| `backend/app/services/signal_analytics.py` | PG-backed accuracy/decay/attribution/calibration — reads `signal_history`, reuses `signal_history` math |
 | `backend/app/services/llm_router.py` | 4-provider LLM fallback (GitHub→Gemini→OpenRouter→Qwen) |
 | `backend/scripts/run_alerts.py` | CLI: eval alerts, push to Telegram (cron-friendly) |
 | `backend/scripts/schedule_alerts.ps1` | Register Windows Task Scheduler job |

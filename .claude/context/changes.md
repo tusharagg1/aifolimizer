@@ -799,3 +799,25 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 
 ## 2026-06-10 - eager-warm market_data at MCP startup (kill get_profile import-convoy hang)
 - mcp_server __main__: import app.services.market_data before mcp.run(). Moves the cold yfinance/numpy C-ext load off the concurrent WS enrich path (where it convoyed on the import lock for minutes) to a one-time 3.3s single-threaded boot step. Enrich lazy import now 1ms warm hit. ruff clean, mcp_server imports clean, pytest 340 pass. Effective on next MCP spawn.
+
+## 2026-06-11 - signal_history JSONL->PG port (PG canonical, JSONL retired)
+- Fixed split-brain: scheduler wrote PG signal_history while the interactive engine wrote a parallel JSONL with a separate realized-return model; PG realized_return_*d were NEVER filled (calibration had retreated to JSONL). PG is now the single source of truth.
+- schema.sql + pool._apply_migrations: added entry_price + realized_return_{3,10,42}d (additive, idempotent; startup ALTER covers already-initialized containers). signals_repo allow-set -> 7 horizons via _HORIZONS/_REALIZED_COLS.
+- scheduler._persist_integrated_signals persists entry_price (rec.current_price); signals_repo.insert_signal gains entry_price col ($25).
+- NEW app/services/signal_backfill.py: ports score_horizons compute (data_router bars + _close_at_offset, sign-flip SELL/TRIM) into PG UPDATE realized_return_{H}d. Pure compute_return() unit-tested. Wired into scheduler nightly (Step 1b, beside the JSONL scorer).
+- NEW signals_repo fns: rows_needing_backfill, set_realized_return, fetch_scored. NEW app/services/signal_analytics.py: PG rows -> legacy shape -> the SAME signal_history math (accuracy/decay/attribution/calibrate*). Refactored 5 signal_history fns to accept injected rows= (default JSONL).
+- mcp_server: 6 signal tools now PG-first via _pg_or_jsonl_analytics helper; JSONL fallback when no pool OR PG empty (pre-migration).
+- recommendations.py: interactive log_signal JSONL write guarded behind `not settings.postgres_dsn` (scheduler is sole PG writer; dissolves the sync-thread/async-pool boundary).
+- migrate_jsonl_to_postgres: carries entry_price + outcomes.hN -> realized_return_Nd.
+- Verify: pytest 349 pass / 3 skip (+9 new), ruff clean (project config), imports+compile clean. pyright NOT run (not installed locally). Plan: .claude/context/signal-history-pg-port-plan.md.
+- NEXT (manual, docker up): run `python backend/scripts/migrate_jsonl_to_postgres.py` once to backfill PG from existing JSONL.
+## 2026-06-11 - symbol/exchange resolution (CA tickers fetch correctly)
+- Bug: WS-held Canadian tickers stored bare (XEQT, VFV) 404'd on yahoo; data_router never appended an exchange suffix even when classify_asset returned ca_equity. Backfill skipped_data=67.
+- data_router._resolve_fetch_symbol (NEW): appends .TO for suffix-less ca_equity (KNOWN_CANADIAN) symbols; applied in get_quote/get_history/get_fundamentals/get_quotes_batch (cache key + chain stay on original symbol; US/crypto/fx/index untouched). Verified: XEQT/VFV -> 252 bars; batch keys preserved.
+- Root cause of dual-listed ambiguity: wealthsimple.py stripped the WS exchange prefix (TSX:/NYSE:/NASDAQ:) at ingestion, discarding the only signal that distinguishes e.g. TSX:T (Telus->T.TO) from NYSE:T (AT&T->T). NEW _qualify_symbol maps the prefix -> Yahoo suffix (TSX/TSE->.TO, TSXV->.V, NEO/Cboe CA->.NE, CSE->.CN, US exchanges->bare); replaces the blind .replace() strip. Self-contained: uses the prefix already in the WS payload at ingestion, so resolution needs no live WS session later. Prefix-less symbols fall back to the offline classifier + _resolve_fetch_symbol.
+- Live re-backfill after .TO fix: skipped_data 67->33 (remainder = truly delisted e.g. AH + open windows), CA realized_return_5d 0->8, with_entry 969->981.
+- Known/benign: WS pseudo-symbols (A1, B1, CACHE1, cash/gold products) have no exchange prefix + no yahoo listing -> fetch-skip, no analytics (not real holdings to score). RR=Richtech (NASDAQ) and GLD (gold proxy) resolve bare.
+- Tests: +10 (test_data_router_resolve 4, test_wealthsimple_symbol 6 incl dual-listed T). pytest 360 pass/3 skip, ruff clean, imports clean.
+
+## 2026-06-11 - signal_history backfill: recover NULL entry_price (follow-on)
+- Follow-on: legacy rows with NULL entry_price are now recoverable — rows_needing_backfill no longer filters on entry_price; signal_backfill derives entry from the signal-date close (offset 0) and persists it via NEW signals_repo.set_entry_price. Live run: with_entry 760->969, realized_return_5d 41->248, written=695. Remaining NULL/empty = delisted symbols (data_router fetch fail, e.g. XEQT/$VFV) + windows not yet closed (21d+). pytest 350 pass.
