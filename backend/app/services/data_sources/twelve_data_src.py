@@ -25,6 +25,7 @@ from app.services.data_sources.base import (
     PriceBar,
     Quote,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _BASE = "https://api.twelvedata.com"
@@ -122,7 +123,7 @@ class TwelveDataSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"twelve_data http {symbol}: {e}") from e
+            raise SourceUnavailable(f"twelve_data http {symbol}: {redact_secrets(e)}") from e
 
         self._check_error(data, symbol)
         try:
@@ -169,7 +170,7 @@ class TwelveDataSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"twelve_data http {symbol}: {e}") from e
+            raise SourceUnavailable(f"twelve_data http {symbol}: {redact_secrets(e)}") from e
 
         self._check_error(data, symbol)
         values = data.get("values") or []

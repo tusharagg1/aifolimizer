@@ -834,3 +834,14 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 
 ## 2026-06-11 - signal_history backfill: recover NULL entry_price (follow-on)
 - Follow-on: legacy rows with NULL entry_price are now recoverable — rows_needing_backfill no longer filters on entry_price; signal_backfill derives entry from the signal-date close (offset 0) and persists it via NEW signals_repo.set_entry_price. Live run: with_entry 760->969, realized_return_5d 41->248, written=695. Remaining NULL/empty = delisted symbols (data_router fetch fail, e.g. XEQT/$VFV) + windows not yet closed (21d+). pytest 350 pass.
+
+## 2026-06-11 - security: redact API keys from data-source exception messages
+- Vuln: adapters passing credentials as URL query params leaked the key into httpx exception strings (full request URL embeds `apikey=`/`token=`). Those strings flow into SourceUnavailable -> logs + data_source_reliability error fields. Confirmed live: a twelve_data SHOP.TO 404 printed `apikey=<live-key>`.
+- Fix (single chokepoint, base.py): NEW redact_secrets() masks apikey|api_key|api_token|access_token|access_key|token|secret query values via regex. Applied at every `{e}` raise site in the 6 credential-bearing adapters: twelve_data, alphavantage, eodhd, finnhub, stooq, massive. Keyless adapters (yfinance/coingecko/binance/coinbase/frankfurter/kraken/openerapi) untouched; tiingo safe (Authorization header, not query param).
+- Verified: real SHOP.TO 404 now shows `apikey=<redacted>` (KEY LEAKED: False); AAPL quote unaffected; helper unit-tested on all 5 param forms incl camelCase apiKey; ruff clean; all 7 files import clean.
+- TWELVE_DATA_KEY rotated by user + verified working (AAPL/USDCAD live OK). twelve_data was 0/16 in reliability window on the old key.
+
+## 2026-06-11 - routing: drop tiingo from ca_equity chains (reliability)
+- Root cause of tiingo's 28.6% reliability: it was in the ca_equity quote+history chains but maps `.TO -> SYM-CA`, which 404s (no TSX coverage on free/standard tier). Every CA fallthrough = guaranteed-miss call + skewed metric. Removed _tiingo from both ca_equity chains in data_router.py (_quote_chain_base, _history_chain_base); stays in us_equity (works for US). yf/twelve/eodhd cover CA.
+- Not changed (verified by live probe, not actually broken): eodhd 0/2 = free-tier 20 calls/day quota exhaustion (SHOP.TO works on fresh quota, strong TSX); massive 0/3 = us_equity last-resort deep fallback (only hit when 5 providers ahead fail) + by-design is_tsx() reject — not in CA chain. twelve_data 0/16 was a genuinely bad key (rotated + fixed separately).
+- pytest 363 pass/3 skip, ruff clean.

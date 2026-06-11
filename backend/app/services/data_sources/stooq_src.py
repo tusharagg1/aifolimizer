@@ -26,6 +26,7 @@ from app.services.data_sources.base import (
     PriceBar,
     Quote,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _PERIOD_TO_DAYS = {
@@ -79,7 +80,7 @@ class StooqSource(DataSource):
             resp = httpx.get(url, timeout=10.0)
             resp.raise_for_status()
         except Exception as e:
-            raise SourceUnavailable(f"stooq http {ssym}: {e}") from e
+            raise SourceUnavailable(f"stooq http {ssym}: {redact_secrets(e)}") from e
         text = resp.text.strip()
         if not text or text.lower().startswith("no data"):
             raise SourceUnavailable(f"stooq: no data for {ssym}")

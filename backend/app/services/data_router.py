@@ -11,8 +11,7 @@ Public API:
 Routing matrix (per-asset, real-time first, EOD last):
   us_equity quote  : finnhub -> twelve_data -> yfinance -> tiingo -> stooq
                      -> massive
-  ca_equity quote  : twelve_data -> yfinance -> finnhub -> tiingo
-                     -> eodhd -> stooq
+  ca_equity quote  : twelve_data -> yfinance -> finnhub -> eodhd -> stooq
   uk_equity quote  : twelve_data -> yfinance -> eodhd -> stooq
   eu_equity quote  : twelve_data -> yfinance -> eodhd -> stooq
   crypto quote     : binance -> coingecko -> twelve_data -> yfinance
@@ -176,7 +175,9 @@ def _quote_chain_base(symbol: str) -> list[DataSource]:
     if ac == "us_equity":
         return [_finnhub, _twelve, _yf, _tiingo, _stooq, _massive]
     if ac == "ca_equity":
-        return [_twelve, _yf, _finnhub, _tiingo, _eodhd, _stooq]
+        # tiingo excluded: maps .TO -> SYM-CA, which 404s (no TSX coverage on
+        # free/standard tier) — a guaranteed-miss call that skews reliability.
+        return [_twelve, _yf, _finnhub, _eodhd, _stooq]
     if ac in ("uk_equity", "eu_equity"):
         return [_twelve, _yf, _eodhd, _stooq]
     return [_yf, _twelve, _tiingo, _stooq]
@@ -196,7 +197,8 @@ def _history_chain_base(symbol: str) -> list[DataSource]:
         # rate-limited (429s) and net-negative as a primary for history.
         return [_yf, _twelve, _tiingo, _stooq, _massive]
     if ac == "ca_equity":
-        return [_twelve, _yf, _tiingo, _eodhd, _stooq]
+        # tiingo excluded: .TO -> SYM-CA 404s (no TSX coverage) — see quote chain.
+        return [_twelve, _yf, _eodhd, _stooq]
     if ac in ("uk_equity", "eu_equity"):
         return [_twelve, _yf, _eodhd, _stooq]
     return [_yf, _twelve, _tiingo, _stooq]

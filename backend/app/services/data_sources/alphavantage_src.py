@@ -17,6 +17,7 @@ from app.services.data_sources.base import (
     DataSource,
     Fundamentals,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _BASE = "https://www.alphavantage.co/query"
@@ -43,7 +44,7 @@ class AlphaVantageSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"alpha_vantage http {symbol}: {e}") from e
+            raise SourceUnavailable(f"alpha_vantage http {symbol}: {redact_secrets(e)}") from e
 
         if not data or "Symbol" not in data:
             note = data.get("Note") or data.get("Information") or "empty"

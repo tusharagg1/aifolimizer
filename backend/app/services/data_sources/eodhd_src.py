@@ -22,6 +22,7 @@ from app.services.data_sources.base import (
     PriceBar,
     Quote,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _BASE = "https://eodhd.com/api"
@@ -88,7 +89,7 @@ class EODHDSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {e}") from e
+            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
 
         if not isinstance(data, dict) or "close" not in data:
             raise SourceUnavailable(f"eodhd: empty quote for {symbol}")
@@ -146,7 +147,7 @@ class EODHDSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or []
         except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {e}") from e
+            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
 
         if not data:
             raise SourceUnavailable(f"eodhd: empty history for {symbol}")
@@ -186,7 +187,7 @@ class EODHDSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {e}") from e
+            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
 
         if not data or not isinstance(data, dict):
             raise SourceUnavailable(f"eodhd: empty fundamentals for {symbol}")

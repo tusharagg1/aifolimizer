@@ -17,6 +17,7 @@ from app.services.data_sources.base import (
     PriceBar,
     Quote,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _BASE = "https://finnhub.io/api/v1"
@@ -49,7 +50,7 @@ class FinnhubSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"finnhub http {symbol}: {e}") from e
+            raise SourceUnavailable(f"finnhub http {symbol}: {redact_secrets(e)}") from e
 
         price = float(data.get("c") or 0.0)
         prev = float(data.get("pc") or 0.0)
@@ -90,7 +91,7 @@ class FinnhubSource(DataSource):
             resp.raise_for_status()
             data = resp.json() or {}
         except Exception as e:
-            raise SourceUnavailable(f"finnhub http {symbol}: {e}") from e
+            raise SourceUnavailable(f"finnhub http {symbol}: {redact_secrets(e)}") from e
 
         m = data.get("metric") or {}
         if not m:

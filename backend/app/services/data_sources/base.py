@@ -12,6 +12,7 @@ Staleness:
 from __future__ import annotations
 
 import abc
+import re
 import time
 from dataclasses import dataclass, field, asdict
 
@@ -22,6 +23,20 @@ class SourceUnavailable(Exception):
     Router catches this and falls through to the next source.
     Distinct from generic Exception so true bugs surface.
     """
+
+
+# Adapters that pass credentials as URL query params leak the key into httpx
+# exception strings (which embed the full request URL). Those messages flow into
+# logs and data_source_reliability error fields. Scrub credential values before
+# they reach any SourceUnavailable message so a live key never lands in a log.
+_SECRET_QUERY_RE = re.compile(
+    r"(?i)\b(apikey|api_key|api_token|access_token|access_key|token|secret)=[^&\s'\")>]+"
+)
+
+
+def redact_secrets(text: object) -> str:
+    """Mask credential values in URL/query strings before logging or raising."""
+    return _SECRET_QUERY_RE.sub(lambda m: f"{m.group(1)}=<redacted>", str(text))
 
 
 @dataclass

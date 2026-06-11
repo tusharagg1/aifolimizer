@@ -16,6 +16,7 @@ from app.services.data_sources.base import (
     PriceBar,
     Quote,
     SourceUnavailable,
+    redact_secrets,
 )
 
 _TSX_SUFFIXES = (".TO", ".V", ".TSX", ".NE", ".CN")
@@ -142,7 +143,7 @@ class MassiveSource(DataSource):
         except SourceUnavailable:
             raise
         except Exception as e:
-            raise SourceUnavailable(f"massive quote {symbol}: {e}") from e
+            raise SourceUnavailable(f"massive quote {symbol}: {redact_secrets(e)}") from e
 
     def get_history(self, symbol: str, period: str = "1y", interval: str = "1d") -> list[PriceBar]:
         if is_tsx(symbol):
@@ -185,7 +186,7 @@ class MassiveSource(DataSource):
         except SourceUnavailable:
             raise
         except Exception as e:
-            raise SourceUnavailable(f"massive history {symbol}: {e}") from e
+            raise SourceUnavailable(f"massive history {symbol}: {redact_secrets(e)}") from e
 
     def get_fundamentals(self, symbol: str) -> Fundamentals:
         # ticker_details is rate-limited on free tier — delegate to yfinance
