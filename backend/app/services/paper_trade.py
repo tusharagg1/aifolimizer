@@ -260,6 +260,66 @@ def _mirror_to_postgres(rec: dict) -> None:
     threading.Thread(target=_runner, daemon=True, name="pg-mirror").start()
 
 
+_CLOSED_STATUSES = frozenset({"stopped_out", "target_hit", "horizon_closed"})
+
+
+async def _async_mirror_close(dsn: str, closed: list[dict]) -> None:
+    import asyncpg
+
+    conn = await asyncpg.connect(dsn, command_timeout=3, timeout=3)
+    try:
+        for rec in closed:
+            await conn.execute(
+                """
+                UPDATE recommendations
+                SET status = $1, exit_price = $2, exit_date = $3,
+                    return_pct = $4, win = $5
+                WHERE tenant_hash = $6 AND date = $7 AND skill = $8
+                  AND ticker = $9 AND action = $10
+                """,
+                rec.get("status"),
+                rec.get("exit_price"),
+                datetime.fromisoformat(rec["exit_date"]).date() if rec.get("exit_date") else None,
+                rec.get("return_pct"),
+                bool(rec.get("win")),
+                _LEGACY_TENANT_HASH,
+                datetime.fromisoformat(rec["date"]).date(),
+                rec.get("skill", ""),
+                rec.get("ticker", ""),
+                rec.get("action", ""),
+            )
+    finally:
+        await conn.close()
+
+
+def _mirror_closes_to_postgres(closed: list[dict]) -> None:
+    """Best-effort mirror of newly-closed recs to Postgres.
+
+    Completes the open->closed lifecycle of the PG `recommendations` rows that
+    _mirror_to_postgres opened (otherwise they stay status='open' forever and
+    PG-backed track-record reads are starved). Same daemon-thread / fresh
+    connection / swallow-errors contract — JSONL stays source of truth.
+    """
+    if not closed:
+        return
+    try:
+        from app.core.config import settings
+
+        dsn = settings.postgres_dsn
+    except Exception:
+        return
+    if not dsn:
+        return
+
+    def _runner() -> None:
+        try:
+            asyncio.run(_async_mirror_close(dsn, closed))
+        except Exception as exc:
+            _log.debug("postgres close-mirror skipped (%d recs): %s", len(closed), exc)
+
+    threading.Thread(target=_runner, daemon=True, name="pg-mirror-close").start()
+
+
 def _benchmark_returns(rec: dict, quote_map: dict[str, float] | None = None) -> dict[str, float]:
     """Compute current return for each benchmark captured at entry.
 
@@ -400,6 +460,8 @@ def score_recommendations(max_age_days: int = 180) -> dict:
     with _SCORED_FILE.open("w", encoding="utf-8") as f:
         for r in scored:
             f.write(json.dumps(r) + "\n")
+
+    _mirror_closes_to_postgres([r for r in scored if r.get("status") in _CLOSED_STATUSES])
 
     return _summary(scored, skipped)
 
