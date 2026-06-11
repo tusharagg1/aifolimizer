@@ -223,6 +223,12 @@ async def import_signal_history(tenant_hash: str) -> int:
         for r in rows:
             try:
                 features = r.get("features") or {}
+                outcomes = r.get("outcomes") or {}
+
+                def _ret(h: int) -> Any:
+                    o = outcomes.get(f"h{h}") or {}
+                    return o.get("ret_pct")
+
                 await conn.execute(
                     """
                     INSERT INTO signal_history (
@@ -231,13 +237,20 @@ async def import_signal_history(tenant_hash: str) -> int:
                       skill_consensus, skill_confidence, skill_evidence,
                       rsi, stage, market_regime, analyst_upside_pct, weight,
                       signal_quality, risk_reward, kelly_pct, win_prob,
-                      earnings_risk
+                      earnings_risk, entry_price,
+                      realized_return_1d, realized_return_3d, realized_return_5d,
+                      realized_return_10d, realized_return_21d,
+                      realized_return_42d, realized_return_63d
                     ) VALUES (
                       $1, $2, $3, $4, $5, $6,
                       $7, $8, $9, $10,
                       $11, $12, $13,
                       $14, $15, $16, $17, $18,
-                      $19, $20, $21, $22, $23
+                      $19, $20, $21, $22,
+                      $23, $24,
+                      $25, $26, $27,
+                      $28, $29,
+                      $30, $31
                     )
                     ON CONFLICT (tenant_hash, symbol, ts) DO NOTHING
                     """,
@@ -264,6 +277,14 @@ async def import_signal_history(tenant_hash: str) -> int:
                     features.get("kelly_pct"),
                     features.get("win_prob"),
                     features.get("earnings_risk"),
+                    r.get("entry_price"),
+                    _ret(1),
+                    _ret(3),
+                    _ret(5),
+                    _ret(10),
+                    _ret(21),
+                    _ret(42),
+                    _ret(63),
                 )
                 count += 1
             except Exception as e:

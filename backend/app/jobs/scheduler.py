@@ -251,6 +251,7 @@ async def _persist_integrated_signals(tenant_hash: str, recs: list[dict], eviden
                 action=rec.get("action") or "HOLD",
                 conviction=rec.get("confidence"),
                 score=float(rec.get("score") or 0),
+                entry_price=rec.get("current_price"),
                 tech_score=rec.get("tech_score"),
                 fund_score=rec.get("fund_score"),
                 macro_score=rec.get("macro_score"),
@@ -884,6 +885,22 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             )
         except Exception as e:
             _LOG.warning("signal horizons score failed: %s", e)
+
+        # Step 1b: same realized-return compute, written to the PG
+        # signal_history.realized_return_*d columns so PG is the single source
+        # of truth (powers the SQL-backed accuracy/decay/attribution readers
+        # and the weights tuner). Mirrors the JSONL scorer above.
+        try:
+            from app.services import signal_backfill
+
+            backfill_result = await signal_backfill.run()
+            _LAST_SCORE_RESULT["signal_backfill"] = backfill_result
+            _LOG.info(
+                "scheduler: PG realized-returns backfilled — %s rows",
+                (backfill_result or {}).get("written", "?"),
+            )
+        except Exception as e:
+            _LOG.warning("PG realized-return backfill failed: %s", e)
 
         # Step 2: resolve open trade decisions to target_hit / stop_hit /
         # expired so the reflection loop has fresh outcomes to inject into

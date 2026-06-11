@@ -1712,6 +1712,38 @@ async def get_ticker_reflection(symbol: str, n: int = 3) -> dict:
     }
 
 
+async def _pg_or_jsonl_analytics(pg_fn, jsonl_call):
+    """Run signal analytics over PG when a pool is available, else JSONL.
+
+    pg_fn: zero-arg coroutine factory using signal_analytics (pool up).
+    jsonl_call: zero-arg sync callable over the JSONL store.
+    PG is authoritative when docker is up; JSONL is the no-pool fallback.
+
+    The pool is left open (init_pool is idempotent and pools are meant to be
+    long-lived) — closing it here would null the shared global mid-flight for
+    any concurrent PG op (e.g. the long-running backfill), silently turning its
+    writes into no-ops.
+    """
+    from app.db import init_pool
+
+    pool = None
+    try:
+        pool = await init_pool()
+    except Exception:
+        pool = None
+    if pool is not None:
+        try:
+            result = await pg_fn()
+            # Fall through to JSONL when PG has no scored data yet (e.g. the
+            # one-time migrate_jsonl_to_postgres hasn't been run). Once PG is
+            # populated this branch returns the PG result directly.
+            if not (isinstance(result, dict) and result.get("error")):
+                return result
+        except Exception as e:
+            logging.getLogger(__name__).warning("PG signal analytics failed, JSONL fallback: %s", e)
+    return await asyncio.to_thread(jsonl_call)
+
+
 @mcp.tool()
 async def score_signal_horizons(horizons: list[int] | None = None) -> dict:
     """Fill realized H-day forward returns on every logged signal.
@@ -1723,11 +1755,25 @@ async def score_signal_horizons(horizons: list[int] | None = None) -> dict:
     Default horizons: full set (1, 3, 5, 10, 21, 42, 63) — must cover the
     decay-curve queries; restricting to (5, 21) silently emptied 5 of 7
     decay buckets.
-    Writes back to .claude/context/signal_history.jsonl in place.
-    Returns counts: scored_new, skipped_window, skipped_data, total_rows.
+    When Postgres is up, fills signal_history.realized_return_*d (single source
+    of truth); otherwise writes .claude/context/signal_history.jsonl in place.
     """
     h = tuple(horizons) if horizons else signal_history_svc._DEFAULT_HORIZONS
-    return await asyncio.to_thread(signal_history_svc.score_horizons, h)
+
+    async def _pg():
+        from app.services import signal_backfill
+
+        r = await signal_backfill.run(h)
+        # Alias to the JSONL scorer's shape so callers keying on scored_new /
+        # total_rows keep working regardless of which store served the request.
+        written = r.get("written", 0)
+        return {
+            **r,
+            "scored_new": written,
+            "total_rows": written + r.get("skipped_window", 0) + r.get("skipped_data", 0),
+        }
+
+    return await _pg_or_jsonl_analytics(_pg, lambda: signal_history_svc.score_horizons(h))
 
 
 @mcp.tool()
@@ -1738,7 +1784,15 @@ async def get_signal_accuracy(horizon: int = 21, min_count: int = 5) -> dict:
     action class (BUY/SELL/ADD/TRIM), score bucket, and confidence level.
     Run score_signal_horizons first to populate realized returns.
     """
-    return await asyncio.to_thread(signal_history_svc.accuracy_report, horizon, min_count=min_count)
+
+    async def _pg():
+        from app.services import signal_analytics
+
+        return await signal_analytics.accuracy_report(horizon, min_count=min_count)
+
+    return await _pg_or_jsonl_analytics(
+        _pg, lambda: signal_history_svc.accuracy_report(horizon, min_count=min_count)
+    )
 
 
 @mcp.tool()
@@ -1749,7 +1803,15 @@ async def calibrate_signal_thresholds(horizon: int = 21, min_count: int = 10) ->
     thresholds with n_traded + expectancy. Apply manually after sanity check.
     Small-sample caveat: only trust once n_scored >= a few hundred.
     """
-    return await asyncio.to_thread(signal_history_svc.calibrate_thresholds, horizon, min_count=min_count)
+
+    async def _pg():
+        from app.services import signal_analytics
+
+        return await signal_analytics.calibrate_thresholds(horizon, min_count=min_count)
+
+    return await _pg_or_jsonl_analytics(
+        _pg, lambda: signal_history_svc.calibrate_thresholds(horizon, min_count=min_count)
+    )
 
 
 @mcp.tool()
@@ -2327,11 +2389,16 @@ async def get_signal_decay_curve(
     Identifies the peak holding period for the signal type. Anything held
     beyond peak is signal decay — exits should happen at or before peak.
     """
-    return await asyncio.to_thread(
-        signal_history_svc.signal_decay_curve,
-        signal_history_svc._DEFAULT_HORIZONS,
-        action_filter=action_filter,
-        min_count=min_count,
+    h = signal_history_svc._DEFAULT_HORIZONS
+
+    async def _pg():
+        from app.services import signal_analytics
+
+        return await signal_analytics.signal_decay_curve(h, action_filter=action_filter, min_count=min_count)
+
+    return await _pg_or_jsonl_analytics(
+        _pg,
+        lambda: signal_history_svc.signal_decay_curve(h, action_filter=action_filter, min_count=min_count),
     )
 
 
@@ -2347,10 +2414,14 @@ async def get_signal_source_attribution(
     avg_ret <= 0 or win_rate < 50% are adding noise — candidates for
     down-weighting in the composite engine.
     """
-    return await asyncio.to_thread(
-        signal_history_svc.per_signal_source_attribution,
-        horizon,
-        min_count=min_count,
+
+    async def _pg():
+        from app.services import signal_analytics
+
+        return await signal_analytics.per_signal_source_attribution(horizon, min_count=min_count)
+
+    return await _pg_or_jsonl_analytics(
+        _pg, lambda: signal_history_svc.per_signal_source_attribution(horizon, min_count=min_count)
     )
 
 
@@ -2361,10 +2432,13 @@ async def calibrate_confidence_labels(horizon: int = 21) -> dict:
     If HIGH does not outperform MEDIUM/LOW by >=10pp win-rate, the
     confidence label is uncalibrated and should not be relied on.
     """
-    return await asyncio.to_thread(
-        signal_history_svc.calibrate_confidence,
-        horizon,
-    )
+
+    async def _pg():
+        from app.services import signal_analytics
+
+        return await signal_analytics.calibrate_confidence(horizon)
+
+    return await _pg_or_jsonl_analytics(_pg, lambda: signal_history_svc.calibrate_confidence(horizon))
 
 
 # ────────────────────────────────────────────────────────────────────────────────

@@ -988,14 +988,18 @@ def get_recommendations(
         )
     )
 
-    # Append each rec to signal_history.jsonl for forward-horizon accuracy
-    # auditing. Idempotent per (date, source, symbol, action) — duplicate
-    # same-day signals are skipped inside log_signal.
-    for rec in results:
-        try:
-            signal_history.log_signal(rec, source="recommendations")
-        except Exception:
-            _log.debug("suppressed exception", exc_info=True)
+    # Forward-horizon accuracy auditing. Postgres signal_history is the
+    # canonical store, written by the scheduler (_persist_integrated_signals).
+    # Only fall back to JSONL logging when no Postgres DSN is configured
+    # (no-docker single-user) to avoid a redundant, split-brain second store.
+    from app.core.config import settings as _settings
+
+    if not _settings.postgres_dsn:
+        for rec in results:
+            try:
+                signal_history.log_signal(rec, source="recommendations")
+            except Exception:
+                _log.debug("suppressed exception", exc_info=True)
 
     # Full-contract trade log into paper_trade for benchmark-relative
     # alpha scoring. Single benchmark fetch shared across the whole batch.
