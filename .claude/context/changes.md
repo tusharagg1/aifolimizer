@@ -4,6 +4,19 @@ Append-only. Most recent at top.
 
 ---
 
+## 2026-06-11 - Signal PG-port review fixes: signal-loss gate, stale-bar guard, source marker
+
+Adversarial review (multi-agent) of the uncommitted signal_history JSONL→Postgres port found 3 real defects; all fixed.
+
+- **recommendations.py / scheduler.py — signal loss (must-fix).** The `if not postgres_dsn:` gate around `log_signal` dropped JSONL logging for EVERY `get_recommendations` caller when PG configured, but PG only receives per-holding rows from the scheduler. Discovery scans, watchlist, REST, and skill_runner signals reached neither store → lost from the forward-audit corpus. `get_recommendations` is sync + tenant-less, so PG-insert from there is wrong (needs tenant_hash). Fix: added `log_jsonl: bool = True` param; ad-hoc callers keep JSONL (their only store); scheduler passes `log_jsonl=not postgres_dsn` so holdings go to PG only when PG is live (no double-write, no loss when no PG).
+- **signal_backfill.py — stale-bar corruption (should-fix).** Port dropped the legacy 365d age cap. Bars span only ~1y, so a signal older than the earliest bar anchored both entry and exit to `bars[0]` via `_close_at_offset`, writing a wrong realized_return to the PG source-of-truth table. Fix: `_earliest_bar_date()` helper + skip (`skipped_data`) any candidate whose `ts.date()` predates the earliest bar — guard tied to actual coverage, not a hardcoded number.
+- **mcp_server.py — provenance ambiguity (nit).** `_pg_or_jsonl_analytics` fell through to JSONL on empty PG with no way to tell which store served. Fix: `result["_source"]` = `postgres` | `jsonl`. (NOTE: live only after MCP server restart — persistent process.)
+- Preserved a concurrent fix that removed `close_pool()` from the helper (closing the shared global pool mid-flight nulled it for the running backfill).
+
+Verified: ruff clean on 4 files; 10/10 signal_backfill+analytics tests; log_jsonl gate (False→0 / True→1 log calls); age guard skips a synthetic 400d-old row without writing; `_source` marker on both paths in-process; live MCP PG read still n=256 @ h5.
+
+---
+
 ## 2026-06-10 - Data-source resilience: multi-source news + remove single-source yfinance gaps
 
 Problem: `get_news_headlines` was single-source `yfinance.Ticker().news` — flaky/laggy/often empty, no fallback, in-process-only cache (3-4x Yahoo hits across MCP/cron processes). Two other paths reused the same broken scrape or had no fallback.
