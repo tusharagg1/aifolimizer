@@ -30,7 +30,13 @@ import pandas as pd
 import ta
 
 from app.services import data_router
-from app.services.backtest import _cagr
+from app.services.backtest_core import (
+    annualize_factor as _annualize,
+    cagr as _cagr,
+    max_drawdown as _max_dd,
+    sharpe as _sharpe,
+    sortino as _sortino,
+)
 
 _BENCH_SPY = "SPY"
 _BENCH_XEQT = "XEQT.TO"
@@ -335,32 +341,6 @@ def _period_for_days(days: int) -> str:
     if days <= 365 * 10:
         return "10y"
     return "max"
-
-
-def _annualize() -> float:
-    return math.sqrt(252)
-
-
-def _sharpe(daily_ret: pd.Series) -> float:
-    if daily_ret.empty or daily_ret.std() == 0:
-        return 0.0
-    return float(daily_ret.mean() / daily_ret.std() * _annualize())
-
-
-def _sortino(daily_ret: pd.Series) -> float:
-    if daily_ret.empty:
-        return 0.0
-    downside = daily_ret[daily_ret < 0]
-    if downside.empty or downside.std() == 0:
-        return 0.0
-    return float(daily_ret.mean() / downside.std() * _annualize())
-
-
-def _max_dd(equity: pd.Series) -> float:
-    if equity.empty:
-        return 0.0
-    peak = equity.cummax()
-    return float(((equity - peak) / peak).min() * 100)
 
 
 def _simulate(close: pd.Series, signal: pd.Series, tx_cost_bps: float) -> tuple[pd.Series, list[Trade], list[float]]:

@@ -28,7 +28,6 @@ walk-forward backtest because there is no historical crowding-score series.
 
 from __future__ import annotations
 
-import math
 import time
 from typing import Any
 
@@ -38,6 +37,11 @@ import ta
 import yfinance as yf
 
 from app.services import positioning as positioning_svc
+from app.services.backtest_core import (
+    cagr as _cagr,
+    max_drawdown as _max_drawdown,
+    sharpe as _sharpe,
+)
 from app.services.quant import deterministic_split_idx
 from app.services.backtest_validation import run_validation
 from app.services.run_card import generate_run_card, save_run_card
@@ -68,34 +72,6 @@ def _risk_adjusted(total_return_pct: float, max_drawdown_pct: float) -> float:
     """Return minus drawdown penalty on excess beyond the free threshold."""
     excess = max(0.0, abs(max_drawdown_pct) - _DD_FREE_PCT)
     return round(total_return_pct - excess * _DD_PENALTY, 2)
-
-
-def _annualize_factor(periods_per_year: int = 252) -> float:
-    return math.sqrt(periods_per_year)
-
-
-def _max_drawdown(equity: pd.Series) -> float:
-    if equity.empty:
-        return 0.0
-    peak = equity.cummax()
-    dd = (equity - peak) / peak
-    return float(dd.min() * 100)
-
-
-def _sharpe(returns: pd.Series) -> float:
-    if returns.empty or returns.std() == 0:
-        return 0.0
-    return float(returns.mean() / returns.std() * _annualize_factor())
-
-
-def _cagr(start: float, end: float, days: int) -> float:
-    if start <= 0 or days <= 0:
-        return 0.0
-    years = days / 365.25
-    try:
-        return float(((end / start) ** (1 / years) - 1) * 100)
-    except Exception:
-        return 0.0
 
 
 def _run_buy_hold(close: pd.Series, tx_cost_bps: float = 0.0) -> dict:

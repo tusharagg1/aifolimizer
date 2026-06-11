@@ -14,15 +14,15 @@ from __future__ import annotations
 import os
 import time
 
-import httpx
-
 from app.services.data_sources.base import (
     DataSource,
     Fundamentals,
     PriceBar,
     Quote,
     SourceUnavailable,
-    redact_secrets,
+    fetch_json,
+    pct_normalize,
+    to_float,
 )
 
 _BASE = "https://eodhd.com/api"
@@ -80,16 +80,14 @@ class EODHDSource(DataSource):
         if not self.is_configured():
             raise SourceUnavailable("eodhd: no key")
         sym = _eod_symbol(symbol)
-        try:
-            resp = httpx.get(
-                f"{_BASE}/real-time/{sym}",
-                params={"api_token": self.api_key, "fmt": "json"},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/real-time/{sym}",
+            name="eodhd",
+            symbol=symbol,
+            params={"api_token": self.api_key, "fmt": "json"},
+            timeout=10.0,
+            default={},
+        )
 
         if not isinstance(data, dict) or "close" not in data:
             raise SourceUnavailable(f"eodhd: empty quote for {symbol}")
@@ -134,20 +132,14 @@ class EODHDSource(DataSource):
         }
         days = days_map.get(period, 365)
         start = (date.today() - timedelta(days=days)).isoformat()
-        try:
-            resp = httpx.get(
-                f"{_BASE}/eod/{sym}",
-                params={
-                    "api_token": self.api_key,
-                    "from": start,
-                    "fmt": "json",
-                },
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or []
-        except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/eod/{sym}",
+            name="eodhd",
+            symbol=symbol,
+            params={"api_token": self.api_key, "from": start, "fmt": "json"},
+            timeout=15.0,
+            default=[],
+        )
 
         if not data:
             raise SourceUnavailable(f"eodhd: empty history for {symbol}")
@@ -178,16 +170,14 @@ class EODHDSource(DataSource):
         if not self.is_configured():
             raise SourceUnavailable("eodhd: no key")
         sym = _eod_symbol(symbol)
-        try:
-            resp = httpx.get(
-                f"{_BASE}/fundamentals/{sym}",
-                params={"api_token": self.api_key},
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"eodhd http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/fundamentals/{sym}",
+            name="eodhd",
+            symbol=symbol,
+            params={"api_token": self.api_key},
+            timeout=15.0,
+            default={},
+        )
 
         if not data or not isinstance(data, dict):
             raise SourceUnavailable(f"eodhd: empty fundamentals for {symbol}")
@@ -196,30 +186,18 @@ class EODHDSource(DataSource):
         tech = data.get("Technicals") or {}
         return Fundamentals(
             symbol=symbol,
-            pe_ratio=_f(hi.get("PERatio")),
-            eps=_f(hi.get("EarningsShare")),
-            dividend_yield_pct=_pct(hi.get("DividendYield")),
-            payout_ratio_pct=_pct(hi.get("PayoutRatio")),
-            market_cap=_f(hi.get("MarketCapitalization")),
-            beta=_f(tech.get("Beta")),
-            analyst_target=_f(hi.get("WallStreetTargetPrice")),
+            pe_ratio=to_float(hi.get("PERatio")),
+            eps=to_float(hi.get("EarningsShare")),
+            dividend_yield_pct=pct_normalize(hi.get("DividendYield")),
+            payout_ratio_pct=pct_normalize(hi.get("PayoutRatio")),
+            market_cap=to_float(hi.get("MarketCapitalization")),
+            beta=to_float(tech.get("Beta")),
+            analyst_target=to_float(hi.get("WallStreetTargetPrice")),
             earnings_date=hi.get("MostRecentQuarter"),
             sector=gen.get("Sector"),
             industry=gen.get("Industry"),
             institutional_pct=None,
-            short_pct_float=_f(tech.get("ShortPercent")),
+            short_pct_float=to_float(tech.get("ShortPercent")),
             source=self.name,
             as_of=time.time(),
         )
-
-
-def _f(x) -> float | None:
-    try:
-        return float(x) if x is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _pct(x) -> float | None:
-    f = _f(x)
-    return f * 100 if f is not None and f < 1 else f

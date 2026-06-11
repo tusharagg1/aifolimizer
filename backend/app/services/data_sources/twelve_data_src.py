@@ -18,14 +18,12 @@ from __future__ import annotations
 import os
 import time
 
-import httpx
-
 from app.services.data_sources.base import (
     DataSource,
     PriceBar,
     Quote,
     SourceUnavailable,
-    redact_secrets,
+    fetch_json,
 )
 
 _BASE = "https://api.twelvedata.com"
@@ -114,16 +112,14 @@ class TwelveDataSource(DataSource):
         sym = _td_symbol(symbol)
         params = {"symbol": sym, "apikey": self.api_key}
         params.update(_td_extra_params(symbol))
-        try:
-            resp = httpx.get(
-                f"{_BASE}/quote",
-                params=params,
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"twelve_data http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/quote",
+            name="twelve_data",
+            symbol=symbol,
+            params=params,
+            timeout=10.0,
+            default={},
+        )
 
         self._check_error(data, symbol)
         try:
@@ -161,16 +157,14 @@ class TwelveDataSource(DataSource):
             "order": "ASC",
         }
         params.update(_td_extra_params(symbol))
-        try:
-            resp = httpx.get(
-                f"{_BASE}/time_series",
-                params=params,
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"twelve_data http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/time_series",
+            name="twelve_data",
+            symbol=symbol,
+            params=params,
+            timeout=15.0,
+            default={},
+        )
 
         self._check_error(data, symbol)
         values = data.get("values") or []

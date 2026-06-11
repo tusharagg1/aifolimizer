@@ -9,15 +9,14 @@ from __future__ import annotations
 import os
 import time
 
-import httpx
-
 from app.services.data_sources.base import (
     DataSource,
     Fundamentals,
     PriceBar,
     Quote,
     SourceUnavailable,
-    redact_secrets,
+    fetch_json,
+    to_float,
 )
 
 _BASE = "https://finnhub.io/api/v1"
@@ -41,16 +40,14 @@ class FinnhubSource(DataSource):
     def get_quote(self, symbol: str) -> Quote:
         if not self.is_configured():
             raise SourceUnavailable("finnhub: no API key")
-        try:
-            resp = httpx.get(
-                f"{_BASE}/quote",
-                params={"symbol": self._fh_symbol(symbol), "token": self.api_key},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"finnhub http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/quote",
+            name="finnhub",
+            symbol=symbol,
+            params={"symbol": self._fh_symbol(symbol), "token": self.api_key},
+            timeout=10.0,
+            default={},
+        )
 
         price = float(data.get("c") or 0.0)
         prev = float(data.get("pc") or 0.0)
@@ -78,32 +75,30 @@ class FinnhubSource(DataSource):
     def get_fundamentals(self, symbol: str) -> Fundamentals:
         if not self.is_configured():
             raise SourceUnavailable("finnhub: no API key")
-        try:
-            resp = httpx.get(
-                f"{_BASE}/stock/metric",
-                params={
-                    "symbol": self._fh_symbol(symbol),
-                    "metric": "all",
-                    "token": self.api_key,
-                },
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or {}
-        except Exception as e:
-            raise SourceUnavailable(f"finnhub http {symbol}: {redact_secrets(e)}") from e
+        data = fetch_json(
+            f"{_BASE}/stock/metric",
+            name="finnhub",
+            symbol=symbol,
+            params={
+                "symbol": self._fh_symbol(symbol),
+                "metric": "all",
+                "token": self.api_key,
+            },
+            timeout=10.0,
+            default={},
+        )
 
         m = data.get("metric") or {}
         if not m:
             raise SourceUnavailable(f"finnhub: empty metrics for {symbol}")
         return Fundamentals(
             symbol=symbol,
-            pe_ratio=_f(m.get("peTTM") or m.get("peNormalizedAnnual")),
-            eps=_f(m.get("epsTTM") or m.get("epsAnnual")),
-            dividend_yield_pct=_f(m.get("dividendYieldIndicatedAnnual")),
-            payout_ratio_pct=_f(m.get("payoutRatioTTM")),
-            market_cap=_f(m.get("marketCapitalization")),
-            beta=_f(m.get("beta")),
+            pe_ratio=to_float(m.get("peTTM") or m.get("peNormalizedAnnual")),
+            eps=to_float(m.get("epsTTM") or m.get("epsAnnual")),
+            dividend_yield_pct=to_float(m.get("dividendYieldIndicatedAnnual")),
+            payout_ratio_pct=to_float(m.get("payoutRatioTTM")),
+            market_cap=to_float(m.get("marketCapitalization")),
+            beta=to_float(m.get("beta")),
             analyst_target=None,
             earnings_date=None,
             sector=None,
@@ -113,10 +108,3 @@ class FinnhubSource(DataSource):
             source=self.name,
             as_of=time.time(),
         )
-
-
-def _f(x) -> float | None:
-    try:
-        return float(x) if x is not None else None
-    except (TypeError, ValueError):
-        return None

@@ -20,8 +20,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from app.models.portfolio import PortfolioResponse
 from app.security import get_logger
 from app.services import (
@@ -29,6 +27,7 @@ from app.services import (
     portfolio_analytics,
     technicals as technicals_svc,
 )
+from app.services.notifications.telegram import send as _push_telegram
 
 _LOG = get_logger("aifolimizer.services.alerts")
 
@@ -36,41 +35,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CTX_DIR = _REPO_ROOT / ".claude" / "context"
 _STATE_FILE = _CTX_DIR / "alerts_state.json"
 _HISTORY_FILE = _CTX_DIR / "alerts.jsonl"
-
-_TELEGRAM_API = "https://api.telegram.org"
-
-
-_EMOJI_MAP = {
-    "price_drop_intraday": "📉",
-    "rsi_oversold": "⬇️",
-    "rsi_overbought": "⬆️",
-    "earnings_imminent": "📅",
-    "concentration_single": "⚠️",
-    "concentration_sector": "⚠️",
-}
-
-
-def _push_telegram(
-    bot_token: str,
-    chat_id: str,
-    title: str,
-    body: str,
-    severity: str = "medium",
-    rule: str = "",
-) -> None:
-    """Send alert via Telegram bot. Swallows errors so one bad alert doesn't block."""
-    try:
-        emoji = _EMOJI_MAP.get(rule, "🔔")
-        severity_tag = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity, "🔵")
-        text = f"{severity_tag} <b>{emoji} {title}</b>\n{body}"
-        httpx.post(
-            f"{_TELEGRAM_API}/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-            timeout=5.0,
-        )
-    except Exception as e:
-        _LOG.warning(f"[alerts] telegram push failed: {e}")
-
 
 def _load_state() -> dict[str, str]:
     if not _STATE_FILE.exists():

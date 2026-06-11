@@ -338,18 +338,13 @@ async def _handle_session_expired(sid: str) -> None:
 
     # 2. Telegram push (deduped per day per tenant).
     try:
-        from app.core.config import settings as _cfg
+        from app.services.notifications.telegram import push
 
-        if _cfg.telegram_bot_token and _cfg.telegram_chat_id:
-            from app.services.alerts import _push_telegram
-
-            _push_telegram(
-                _cfg.telegram_bot_token,
-                _cfg.telegram_chat_id,
-                title="Wealthsimple session expired",
-                body="Reopen Claude and re-enter MFA to resume monitoring.",
-                severity="high",
-            )
+        push(
+            title="Wealthsimple session expired",
+            body="Reopen Claude and re-enter MFA to resume monitoring.",
+            severity="high",
+        )
     except Exception as e:
         _LOG.warning("session_expired telegram push failed: %s", e)
 

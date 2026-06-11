@@ -16,6 +16,8 @@ import re
 import time
 from dataclasses import dataclass, field, asdict
 
+import httpx
+
 
 class SourceUnavailable(Exception):
     """Raised when a source cannot serve the request (no key, rate limit, 404).
@@ -37,6 +39,51 @@ _SECRET_QUERY_RE = re.compile(
 def redact_secrets(text: object) -> str:
     """Mask credential values in URL/query strings before logging or raising."""
     return _SECRET_QUERY_RE.sub(lambda m: f"{m.group(1)}=<redacted>", str(text))
+
+
+def to_float(x: object) -> float | None:
+    """Coerce a provider value to float, treating None/'None'/'-'/garbage as None."""
+    if x is None or x == "None" or x == "-":
+        return None
+    try:
+        return float(x)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
+def pct_normalize(x: object) -> float | None:
+    """Normalize a ratio-or-percent field to percent (0.04 -> 4.0; 4.0 stays 4.0)."""
+    f = to_float(x)
+    if f is None:
+        return None
+    return f * 100 if f < 1 else f
+
+
+def fetch_json(
+    url: str,
+    *,
+    name: str,
+    symbol: str,
+    params: dict | None = None,
+    headers: dict | None = None,
+    timeout: float = 10.0,
+    default: object = None,
+):
+    """GET + raise_for_status + json, with credential-safe error wrapping.
+
+    Every adapter HTTP error funnels through here so the request URL (which may
+    carry an apikey query param) is scrubbed by redact_secrets before it reaches
+    a SourceUnavailable message / log. `default` is returned when the body is
+    falsy (pass {} for object endpoints, [] for list endpoints).
+    """
+    try:
+        resp = httpx.get(url, params=params, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json() or ({} if default is None else default)
+    except SourceUnavailable:
+        raise
+    except Exception as e:
+        raise SourceUnavailable(f"{name} http {symbol}: {redact_secrets(e)}") from e
 
 
 @dataclass

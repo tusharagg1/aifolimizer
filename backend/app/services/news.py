@@ -28,11 +28,11 @@ import os
 import time
 from datetime import datetime, timedelta
 
-import httpx
 import yfinance as yf
 
 from app.security import get_logger
 from app.services import data_cache as cache
+from app.services.data_sources.base import fetch_json
 from app.services.data_sources.circuit_breaker import default_breaker
 from app.services.data_sources.symbol_classifier import classify_asset
 
@@ -103,13 +103,14 @@ def _fetch_finnhub(symbol: str) -> list[dict]:
     sym = symbol.strip().upper()
     today = datetime.utcnow().date()
     frm = (today - timedelta(days=30)).isoformat()
-    resp = httpx.get(
+    rows = fetch_json(
         "https://finnhub.io/api/v1/company-news",
+        name="news:finnhub",
+        symbol=sym,
         params={"symbol": sym, "from": frm, "to": today.isoformat(), "token": key},
         timeout=_HTTP_TIMEOUT,
+        default=[],
     )
-    resp.raise_for_status()
-    rows = resp.json() or []
     out: list[dict] = []
     for r in rows:
         title = r.get("headline", "")
@@ -137,13 +138,14 @@ def _fetch_eodhd(symbol: str) -> list[dict]:
     key = os.environ.get("EODHD_KEY", "").strip()
     if not key:
         return []
-    resp = httpx.get(
+    rows = fetch_json(
         "https://eodhd.com/api/news",
+        name="news:eodhd",
+        symbol=_eod_symbol(symbol),
         params={"s": _eod_symbol(symbol), "api_token": key, "limit": _MAX_ARTICLES, "fmt": "json"},
         timeout=_HTTP_TIMEOUT,
+        default=[],
     )
-    resp.raise_for_status()
-    rows = resp.json() or []
     out: list[dict] = []
     for r in rows:
         title = r.get("title", "")

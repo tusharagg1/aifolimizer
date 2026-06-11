@@ -70,22 +70,9 @@ async def _persist(tenant_hash: str, snapshot: dict) -> None:
 
 
 def _push_telegram(title: str, body: str, severity: str = "medium") -> None:
-    try:
-        from app.core.config import settings
+    from app.services.notifications.telegram import push
 
-        if not settings.telegram_bot_token or not settings.telegram_chat_id:
-            return
-        from app.services.alerts import _push_telegram as tg_send
-
-        tg_send(
-            settings.telegram_bot_token,
-            settings.telegram_chat_id,
-            title=title,
-            body=body,
-            severity=severity,
-        )
-    except Exception as e:
-        log.warning("event_dispatcher: telegram push failed: %s", e)
+    push(title, body, severity)
 
 
 # ── Public event handlers ──────────────────────────────────────────────────
