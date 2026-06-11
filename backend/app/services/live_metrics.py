@@ -3,16 +3,16 @@
 Replaces accuracy-only paper-trade reporting with the EV + risk-adjusted
 KPI set per the goal restated in plan v4:
 
-  expectancy_per_trade_pct  — direct EV proxy
-  profit_factor             — Σwins / Σlosses (PF)
-  sharpe_30d                — daily-return based Sharpe ratio
-  sortino_30d               — downside-only Sharpe
-  max_drawdown_pct          — equity-curve peak-to-trough
-  hit_rate                  — sanity, not goal
+  expectancy_per_trade_pct  - direct EV proxy
+  profit_factor             - Σwins / Σlosses (PF)
+  sharpe_30d                - daily-return based Sharpe ratio
+  sortino_30d               - downside-only Sharpe
+  max_drawdown_pct          - equity-curve peak-to-trough
+  hit_rate                  - sanity, not goal
   avg_win_pct, avg_loss_pct
   n_trades
-  after_cost_drag_bps       — implicit tx cost net
-  regime_breakdown          — {composite: {pf, expectancy}}
+  after_cost_drag_bps       - implicit tx cost net
+  regime_breakdown          - {composite: {pf, expectancy}}
 
 Reads from `recommendations` table (status != 'open') for closed-trade
 metrics + `portfolio_equity` for drawdown. Regime-breakdown joins each

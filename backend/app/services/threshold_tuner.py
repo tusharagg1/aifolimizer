@@ -8,7 +8,7 @@ recommendation engine reads from there.
 Safety:
   * Skip the update entirely when n_scored < 50 (too noisy).
   * Skip when the best expectancy is no better than current by ≥0.5pp.
-  * Cap each tick's movement to ±0.5 thresholds — no big jumps.
+  * Cap each tick's movement to ±0.5 thresholds - no big jumps.
 """
 
 from __future__ import annotations

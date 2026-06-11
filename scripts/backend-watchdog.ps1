@@ -30,7 +30,7 @@ try {
 
 if ($alive) { exit 0 }
 
-Write-Log 'backend not responding — restarting'
+Write-Log 'backend not responding - restarting'
 
 # Kill ALL stale listeners on 8000 (uvicorn binds both IPv4 and IPv6 → two
 # LISTENING rows). Killing only the first PID leaves the other stack holding

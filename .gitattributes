@@ -1,4 +1,4 @@
-# Shell scripts and POSIX unit files MUST stay LF — CRLF breaks the shebang
+# Shell scripts and POSIX unit files MUST stay LF - CRLF breaks the shebang
 # (`#!/usr/bin/env bash\r`) and systemd/launchd parsing on Linux/macOS.
 *.sh            text eol=lf
 *.service       text eol=lf

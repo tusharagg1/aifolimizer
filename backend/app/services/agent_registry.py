@@ -1,4 +1,4 @@
-"""Central agent registry — single source of truth for skill→trigger→runner.
+"""Central agent registry - single source of truth for skill→trigger→runner.
 
 Each skill in .claude/skills/ has a backend agent counterpart that:
   - Runs headless on a trigger (cron or event)
@@ -13,7 +13,7 @@ Adding a new skill agent:
   1. Author SKILL.md in .claude/skills/<name>/
   2. Add backend runner function (skill_llm_runner.py or skill_runner.py)
   3. Register entry below with trigger + runner reference
-  4. Scheduler picks it up on next tick — no scheduler.py edit needed
+  4. Scheduler picks it up on next tick - no scheduler.py edit needed
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class AgentSpec:
 
 # ── In-memory operational state (per skill) ───────────────────────────────────
 # Set/cleared by REST endpoints + scheduler ticks. Persistent state (snoozed
-# until, manual overrides) intentionally NOT here — would need DB. Keep simple
+# until, manual overrides) intentionally NOT here - would need DB. Keep simple
 # for P1.
 _RUNTIME_STATE: dict[str, dict[str, Any]] = {}
 
@@ -93,7 +93,7 @@ def runtime_state(name: str) -> dict[str, Any]:
     return dict(_state(name))
 
 
-# ── Registry (declarations only — runtime state above) ───────────────────────
+# ── Registry (declarations only - runtime state above) ───────────────────────
 
 REGISTRY: dict[str, AgentSpec] = {
     # ─ Behavioral discipline ────────────────────────────────────────────────
@@ -122,7 +122,7 @@ REGISTRY: dict[str, AgentSpec] = {
     # ─ Trading skills (event/intra-day) ─────────────────────────────────────
     "stock-analysis": AgentSpec(
         name="stock-analysis",
-        description="Goldman+Citadel deep-dive — fires on alert or crowding shift",
+        description="Goldman+Citadel deep-dive - fires on alert or crowding shift",
         trigger="event",
         event_types=["alert_triggered", "crowding_flip"],
         runner_ref="app.services.skill_llm_runner:run_stock_analysis_for_ticker",
@@ -132,7 +132,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "earnings-analyzer": AgentSpec(
         name="earnings-analyzer",
-        description="Pre-earnings JPMorgan check — fires 3d before earnings on >2% holdings",
+        description="Pre-earnings JPMorgan check - fires 3d before earnings on >2% holdings",
         trigger="event",
         event_types=["earnings_imminent_3d"],
         runner_ref="app.services.skill_llm_runner:run_earnings_analyzer",
@@ -142,7 +142,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "earnings-postmortem": AgentSpec(
         name="earnings-postmortem",
-        description="Post-report beat/miss breakdown — fires on >5% surprise",
+        description="Post-report beat/miss breakdown - fires on >5% surprise",
         trigger="event",
         event_types=["earnings_surprise"],
         runner_ref="app.services.skill_llm_runner:run_earnings_postmortem_ctx",
@@ -152,7 +152,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "adversarial-research": AgentSpec(
         name="adversarial-research",
-        description="Bull/bear/consensus pipeline — nightly on top-N holdings",
+        description="Bull/bear/consensus pipeline - nightly on top-N holdings",
         trigger="cron",
         schedule="0 4 * * *",  # nightly 4am UTC
         runner_ref="app.services.skill_llm_runner:run_adversarial_research_ctx",
@@ -162,7 +162,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "cash-deployment": AgentSpec(
         name="cash-deployment",
-        description="Cash deployment plan — fires when settled cash > $500",
+        description="Cash deployment plan - fires when settled cash > $500",
         trigger="event",
         event_types=["settled_cash_above_threshold"],
         runner_ref="app.services.skill_llm_runner:run_cash_deployment",
@@ -173,7 +173,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "top-trades-today": AgentSpec(
         name="top-trades-today",
-        description="Ranked decision-ready trade ideas — weekday pre-open push",
+        description="Ranked decision-ready trade ideas - weekday pre-open push",
         trigger="cron",
         schedule="0 11 * * 1-5",  # 7am ET ≈ 11am UTC standard
         runner_ref="app.services.skill_runner:run_top_trades_today",
@@ -183,7 +183,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "position-review": AgentSpec(
         name="position-review",
-        description="HOLD/TRIM/SELL verdict sweep over top holdings — nightly",
+        description="HOLD/TRIM/SELL verdict sweep over top holdings - nightly",
         trigger="cron",
         schedule="0 2 * * *",  # nightly 2am UTC
         runner_ref="app.services.skill_runner:run_position_review",
@@ -194,7 +194,7 @@ REGISTRY: dict[str, AgentSpec] = {
     # ─ Portfolio health (cron) ───────────────────────────────────────────────
     "daily-briefing": AgentSpec(
         name="daily-briefing",
-        description="Morning portfolio digest — weekdays 7am ET pre-open",
+        description="Morning portfolio digest - weekdays 7am ET pre-open",
         trigger="cron",
         schedule="0 11 * * 1-5",  # 7am ET ≈ 11am UTC standard
         runner_ref="app.services.skill_llm_runner:run_daily_briefing",
@@ -204,7 +204,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "portfolio-health": AgentSpec(
         name="portfolio-health",
-        description="BlackRock health score — daily nightly",
+        description="BlackRock health score - daily nightly",
         trigger="cron",
         schedule="0 3 * * *",
         runner_ref="app.services.skill_llm_runner:run_portfolio_health",
@@ -214,7 +214,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "risk-assessment": AgentSpec(
         name="risk-assessment",
-        description="Bridgewater risk profile — weekly Friday close",
+        description="Bridgewater risk profile - weekly Friday close",
         trigger="cron",
         schedule="0 22 * * 5",  # Friday 6pm ET ≈ 10pm UTC
         runner_ref="app.services.skill_llm_runner:run_risk_assessment",
@@ -224,7 +224,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "macro-impact": AgentSpec(
         name="macro-impact",
-        description="McKinsey macro brief — fires on regime flip + weekly",
+        description="McKinsey macro brief - fires on regime flip + weekly",
         trigger="event",
         event_types=["regime_flip", "fomc_decision", "cpi_release"],
         runner_ref="app.services.skill_llm_runner:run_macro_impact",
@@ -235,7 +235,7 @@ REGISTRY: dict[str, AgentSpec] = {
     # ─ Wealth-building (monthly) ────────────────────────────────────────────
     "auto-rebalance": AgentSpec(
         name="auto-rebalance",
-        description="Monthly core ETF rebalance + DCA prompt — 1st of month",
+        description="Monthly core ETF rebalance + DCA prompt - 1st of month",
         trigger="cron",
         schedule="0 13 1 * *",  # 1st of month 9am ET ≈ 1pm UTC
         runner_ref="app.services.skill_llm_runner:run_auto_rebalance",
@@ -246,7 +246,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "dividend-strategy": AgentSpec(
         name="dividend-strategy",
-        description="Harvard endowment income view — quarterly",
+        description="Harvard endowment income view - quarterly",
         trigger="cron",
         schedule="0 13 1 1,4,7,10 *",  # quarterly 1st
         runner_ref="app.services.skill_llm_runner:run_dividend_strategy",
@@ -256,7 +256,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "sector-rotation": AgentSpec(
         name="sector-rotation",
-        description="Renaissance sector flow tilt — bi-weekly",
+        description="Renaissance sector flow tilt - bi-weekly",
         trigger="cron",
         schedule="0 13 1,15 * *",
         runner_ref="app.services.skill_llm_runner:run_sector_rotation",
@@ -266,7 +266,7 @@ REGISTRY: dict[str, AgentSpec] = {
     ),
     "tax-loss-review": AgentSpec(
         name="tax-loss-review",
-        description="Canadian tax-loss harvest review — Nov 15 + Dec 15",
+        description="Canadian tax-loss harvest review - Nov 15 + Dec 15",
         trigger="cron",
         schedule="0 13 15 11,12 *",
         runner_ref="app.services.skill_llm_runner:run_tax_loss_review",
@@ -324,7 +324,7 @@ def event_agents_for(event_type: str) -> list[AgentSpec]:
     return [s for s in REGISTRY.values() if s.trigger == "event" and event_type in s.event_types]
 
 
-# ── Cron-due check (minimal cron parser — supports 5-field standard) ─────────
+# ── Cron-due check (minimal cron parser - supports 5-field standard) ─────────
 
 
 def _cron_field_match(field: str, value: int) -> bool:
@@ -353,7 +353,7 @@ def is_cron_due(schedule: str, now: datetime | None = None) -> bool:
     """True if cron expr matches current minute. 5 fields: min hour dom mon dow.
 
     dow: 0=Sunday ... 6=Saturday (cron-standard).
-    Match resolution = 1 minute — caller must dedupe per-day if running coarser.
+    Match resolution = 1 minute - caller must dedupe per-day if running coarser.
     """
     if not schedule:
         return False

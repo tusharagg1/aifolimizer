@@ -11,7 +11,7 @@ Schema:
     PK (symbol, source, period, interval)
   fundamentals(symbol, source, payload_json, as_of) PK (symbol, source)
   news(symbol, source, payload_json, as_of) PK (symbol, source)
-  source_stats(source, ts, ok, latency_ms, error) — track-record evidence
+  source_stats(source, ts, ok, latency_ms, error) - track-record evidence
 
 TTLs are caller-decided. We just store + return. Router enforces freshness.
 """
@@ -194,7 +194,7 @@ def put_news(symbol: str, source: str, articles: list[dict]) -> None:
 
 
 def log_source_call(source: str, ok: bool, latency_ms: float | None, error: str | None = None) -> None:
-    """Append a call outcome row — used by the public track-record report."""
+    """Append a call outcome row - used by the public track-record report."""
     with _LOCK:
         c = _conn_get()
         c.execute(
@@ -234,7 +234,7 @@ def source_stats_summary(since_s: float = 86400 * 7) -> list[dict]:
 
 
 def clear_all() -> None:
-    """Test helper — wipe cache. Production calls should never use this."""
+    """Test helper - wipe cache. Production calls should never use this."""
     with _LOCK:
         c = _conn_get()
         c.executescript(

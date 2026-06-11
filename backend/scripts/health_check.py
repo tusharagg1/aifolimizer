@@ -75,12 +75,12 @@ def _check_services() -> None:
 def _check_ws_session() -> None:
     f = Path.home() / ".aifolimizer" / "ws_session.json"
     if not f.exists():
-        _add("ws_session", _WARN, "no token file — first run will require WS login")
+        _add("ws_session", _WARN, "no token file - first run will require WS login")
         return
     age_h = (time.time() - f.stat().st_mtime) / 3600
     ttl_h = float(os.environ.get("WS_TOKEN_TTL_HOURS", "336"))
     if age_h > ttl_h:
-        _add("ws_session", _WARN, f"stale: {age_h:.0f}h old > {ttl_h:.0f}h TTL — re-auth needed")
+        _add("ws_session", _WARN, f"stale: {age_h:.0f}h old > {ttl_h:.0f}h TTL - re-auth needed")
     else:
         _add("ws_session", _OK, f"fresh: {age_h:.0f}h old (TTL {ttl_h:.0f}h)")
 
@@ -112,7 +112,7 @@ def _check_settings_hooks() -> None:
 def _check_env_file() -> None:
     f = Path(__file__).resolve().parents[1] / ".env"
     if not f.exists():
-        _add("env_file", _WARN, "backend/.env missing — copy from .env.example")
+        _add("env_file", _WARN, "backend/.env missing - copy from .env.example")
         return
     email = ""
     for line in f.read_text(encoding="utf-8").splitlines():
@@ -120,7 +120,7 @@ def _check_env_file() -> None:
             email = line.split("=", 1)[1].strip()
             break
     if not email or email == "your@email.com":
-        _add("env_file", _WARN, "WS_EMAIL not set — portfolio skills need it")
+        _add("env_file", _WARN, "WS_EMAIL not set - portfolio skills need it")
     else:
         _add("env_file", _OK, "backend/.env present, WS_EMAIL set")
 
@@ -128,7 +128,7 @@ def _check_env_file() -> None:
 def _check_mcp_registered() -> None:
     claude = shutil.which("claude")
     if not claude:
-        _add("mcp_registered", _WARN, "claude CLI not on PATH — cannot verify")
+        _add("mcp_registered", _WARN, "claude CLI not on PATH - cannot verify")
         return
     try:
         out = (
@@ -148,12 +148,12 @@ def _check_mcp_registered() -> None:
     if "aifolimizer" in out:
         _add("mcp_registered", _OK, "aifolimizer registered with Claude")
     else:
-        _add("mcp_registered", _WARN, "not registered — run setup.sh / setup.ps1")
+        _add("mcp_registered", _WARN, "not registered - run setup.sh / setup.ps1")
 
 
 def _check_signal_freshness() -> None:
     """Flag a stale PG signal_history (scheduler down). Skips cleanly when no
-    POSTGRES_DSN (JSONL-only deployments). Isolated 5s connection — never the
+    POSTGRES_DSN (JSONL-only deployments). Isolated 5s connection - never the
     app pool, never hangs the doctor."""
     try:
         from app.core.config import settings
@@ -161,7 +161,7 @@ def _check_signal_freshness() -> None:
         _add("signal_freshness", _WARN, f"config import failed: {exc}")
         return
     if not settings.postgres_dsn:
-        _add("signal_freshness", _OK, "no POSTGRES_DSN — signals via JSONL fallback")
+        _add("signal_freshness", _OK, "no POSTGRES_DSN - signals via JSONL fallback")
         return
     try:
         import asyncio
@@ -187,11 +187,11 @@ def _check_signal_freshness() -> None:
 
     latest = row["latest"] if row else None
     if latest is None:
-        _add("signal_freshness", _WARN, "signal_history empty — run scheduler / migrate_jsonl_to_postgres")
+        _add("signal_freshness", _WARN, "signal_history empty - run scheduler / migrate_jsonl_to_postgres")
         return
     age_h = (_dt.datetime.now(_dt.timezone.utc) - latest).total_seconds() / 3600
     if age_h > 72:
-        _add("signal_freshness", _WARN, f"stale: newest signal {age_h:.0f}h old — scheduler may be down")
+        _add("signal_freshness", _WARN, f"stale: newest signal {age_h:.0f}h old - scheduler may be down")
     else:
         _add("signal_freshness", _OK, f"fresh: newest {age_h:.0f}h ago, {row['last7']} rows/7d")
 

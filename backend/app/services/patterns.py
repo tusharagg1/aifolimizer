@@ -1,6 +1,6 @@
 """
 Chart pattern detection: double top/bottom, head & shoulders, inverse H&S.
-Uses local pivot points on daily close price — no external deps beyond numpy/pandas.
+Uses local pivot points on daily close price - no external deps beyond numpy/pandas.
 """
 
 import time
@@ -224,7 +224,7 @@ def detect_patterns(symbol: str, period: str = "1y") -> dict:
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
-        # Align High/Low/Close on shared non-null index — pivot indices then
+        # Align High/Low/Close on shared non-null index - pivot indices then
         # reference the same row across all three series.
         ohlc = df[["High", "Low", "Close"]].dropna()
         if len(ohlc) < 30:

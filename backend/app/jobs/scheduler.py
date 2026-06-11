@@ -1,13 +1,13 @@
 """Asyncio scheduler for codified skill runs.
 
-Cadence (US market reference — TZ-aware):
+Cadence (US market reference - TZ-aware):
   Market hours (Mon-Fri 09:30-16:00 America/New_York): 15 min
   Off-hours weekday:                                    60 min
   Weekend:                                              360 min (6 h)
 
 Picks the first active Wealthsimple session to source portfolio data. For
 single-user mode this is sufficient; multi-user mode requires per-session
-scheduling and namespaced snapshots — TODO.
+scheduling and namespaced snapshots - TODO.
 
 Lifecycle hooked from app/main.py startup. Uses asyncio.create_task so it
 never blocks the FastAPI event loop. Each tick is wrapped in try/except so
@@ -121,30 +121,30 @@ async def catch_up_missed_runs() -> dict | None:
     if last == due:
         return None
     _LOG.info(
-        "scheduler: catch-up — last_score=%s due=%s, firing now",
+        "scheduler: catch-up - last_score=%s due=%s, firing now",
         last,
         due,
     )
     return await _score_once_if_due(force=True)
 
 
-# Sentry digest — hourly poll for live errors.
+# Sentry digest - hourly poll for live errors.
 _SENTRY_LOOP_INTERVAL_S = 60 * 60
 
 # Per-tenant scheduling: max parallel tenants per tick to bound load.
 _MAX_TENANT_FANOUT = 5
 
 # Phase 6: dedup Telegram session-expired pushes per (tenant_hash, date).
-# In-process — fine because the scheduler is a single process.
+# In-process - fine because the scheduler is a single process.
 _SESSION_EXPIRED_PUSHED: set[tuple[str, str]] = set()
 
-# Phase 15: event_dispatcher state — track last seen regime composite and
+# Phase 15: event_dispatcher state - track last seen regime composite and
 # per-tenant risk-gate status so material flips can fire LLM skill re-runs.
 _PREV_REGIME = None
 _PREV_GATE_STATUS: dict[str, str] = {}
 
 # Nightly score: any tick at/after this Eastern-time hour triggers it once per day.
-_SCORE_HOUR_ET = 16  # 4pm ET — 30 min post US close, captures end-of-day prices
+_SCORE_HOUR_ET = 16  # 4pm ET - 30 min post US close, captures end-of-day prices
 _SCORE_LOOP_INTERVAL_S = 30 * 60  # check every 30 min whether to fire
 
 
@@ -219,7 +219,7 @@ def _build_evidence_map(
     regime_composite: str | None = None,
 ) -> dict[str, dict]:
     """Phase 1+ / Phase 8: build per-symbol skill evidence map, optionally
-    regime-gated. Pure function — no DB writes.
+    regime-gated. Pure function - no DB writes.
     """
     symbols = [p.symbol for p in portfolio.positions if getattr(p, "symbol", None)]
     return skill_evidence.build(
@@ -477,7 +477,7 @@ async def _run_for_session(sid: str) -> dict:
             from app.services import signal_change_detector
             from app.core.config import settings as _cfg
 
-            # Pass topic only if configured — detector silently no-ops on push
+            # Pass topic only if configured - detector silently no-ops on push
             # but still records detected count + updates last_signals snapshot.
             change_stats = await signal_change_detector.detect_and_dispatch(
                 thash,
@@ -575,7 +575,7 @@ async def _loop():
 async def _score_once_if_due(force: bool = False) -> dict | None:
     """Run paper_trade.score_recommendations once per UTC date after market close.
 
-    Runs independent of any active Wealthsimple session — open recs may exist
+    Runs independent of any active Wealthsimple session - open recs may exist
     even if no user is currently logged in. Idempotent: only fires the first
     eligible tick per day.
 
@@ -600,7 +600,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         _LAST_SCORE_DATE = today
         _LAST_SCORE_RESULT = {"ts": time.time(), "summary": result}
         _LOG.info(
-            "scheduler: nightly score complete — %s recs scored",
+            "scheduler: nightly score complete - %s recs scored",
             (result or {}).get("total", "?"),
         )
 
@@ -877,7 +877,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             )
             _LAST_SCORE_RESULT["signal_horizons"] = score_horizons_result
             _LOG.info(
-                "scheduler: signal horizons scored — %s rows",
+                "scheduler: signal horizons scored - %s rows",
                 (score_horizons_result or {}).get("scored_new", "?"),
             )
         except Exception as e:
@@ -893,7 +893,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             backfill_result = await signal_backfill.run()
             _LAST_SCORE_RESULT["signal_backfill"] = backfill_result
             _LOG.info(
-                "scheduler: PG realized-returns backfilled — %s rows",
+                "scheduler: PG realized-returns backfilled - %s rows",
                 (backfill_result or {}).get("written", "?"),
             )
         except Exception as e:
@@ -918,7 +918,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             outcomes_result = await asyncio.to_thread(decision_memory.resolve_outcomes, price_map)
             _LAST_SCORE_RESULT["decision_outcomes"] = outcomes_result
             _LOG.info(
-                "scheduler: decision outcomes — %s",
+                "scheduler: decision outcomes - %s",
                 outcomes_result,
             )
         except Exception as e:
@@ -953,7 +953,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
                 },
             }
             _LOG.info(
-                "scheduler: calibration (h=21) — Brier=%s ECE=%s verdict=%s",
+                "scheduler: calibration (h=21) - Brier=%s ECE=%s verdict=%s",
                 primary.get("brier_score"),
                 primary.get("ece"),
                 primary.get("verdict"),
@@ -970,7 +970,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
             tuner_result = await recalibrate()
             _LAST_SCORE_RESULT["tuner"] = tuner_result
             _LOG.info(
-                "scheduler: weights tuner result — %s",
+                "scheduler: weights tuner result - %s",
                 tuner_result.get("status"),
             )
         except Exception as e:
@@ -985,7 +985,7 @@ async def _score_once_if_due(force: bool = False) -> dict | None:
         except Exception as e:
             _LOG.warning("adaptive regime recalibration failed: %s", e)
 
-        # Threshold tuner — promote calibrated buy/sell thresholds.
+        # Threshold tuner - promote calibrated buy/sell thresholds.
         try:
             from app.services.threshold_tuner import recalibrate as thr_recal
 
@@ -1056,7 +1056,7 @@ async def _sentry_digest_once() -> dict | None:
         _LAST_SENTRY_DIGEST = digest
         if digest.get("count", 0) > 0:
             _LOG.warning(
-                "scheduler: sentry digest — %s unresolved issues (top: %s)",
+                "scheduler: sentry digest - %s unresolved issues (top: %s)",
                 digest["count"],
                 digest["issues"][0].get("short_id"),
             )
@@ -1163,7 +1163,7 @@ async def _registry_cron_loop():
 
 
 def start_scheduler() -> None:
-    """Spawn scheduler tasks. Idempotent — safe to call multiple times."""
+    """Spawn scheduler tasks. Idempotent - safe to call multiple times."""
     global _TASK, _SCORE_TASK, _SENTRY_TASK, _REGISTRY_TASK, _STOP_EVENT
     if _TASK and not _TASK.done():
         return
@@ -1217,5 +1217,5 @@ def scheduler_status() -> dict:
 
 
 async def force_tick() -> dict:
-    """Manual one-shot tick — used by REST /skills/refresh endpoint."""
+    """Manual one-shot tick - used by REST /skills/refresh endpoint."""
     return await _tick()

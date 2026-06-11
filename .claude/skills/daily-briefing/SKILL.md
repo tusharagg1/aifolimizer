@@ -20,7 +20,7 @@ If `last_crowding_regime` is set, use it as prior context when interpreting posi
 ## Decision Memory Protocol (load first, log after)
 
 **Before** forming any view, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) - portfolio-level win/loss patterns
 - For any name you issue a per-ticker BUY/SELL/TRIM/HOLD/ADD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
 
 **After** output, log every actionable verdict: for each BUY/SELL/TRIM/ADD/HOLD issued, call `mcp__aifolimizer__log_recommendation` (`skill="daily-briefing", ticker, action, conviction, rationale, target_pct, stop_pct`). Skipping breaks the cross-session feedback loop and causes drift.
@@ -71,7 +71,7 @@ Single-page brief, ≤ 450 words, this exact order:
 
 ### 1. Headline (one sentence)
 Format: `[Portfolio value CAD] · [Day Δ %] · [Regime label] · [N alerts last 24h]`
-Example: `$182,300 CAD · −0.7% · bull_high_fear · 3 alerts last 24h`
+Example: `$182,300 CAD · -0.7% · bull_high_fear · 3 alerts last 24h`
 
 ### 2. What changed (≤ 5 bullets)
 Action-significant items only. No filler.
@@ -94,10 +94,10 @@ Suggested action is one of: `review`, `trim`, `hedge`, `hold`, `add (small)`.
 - Yield curve / VIX / Fear-Greed extremes if macro snapshot flags; inverted `curve_signal` from `get_boc_snapshot` is a Canadian recession flag
 - Crypto sleeve (only if held): `get_crypto_fear_greed` extreme (≤20 fear / ≥80 greed) + falling DefiLlama TVL = risk-off in crypto
 
-### 5. Anti-FOMO traps (only surface real ones — else one line)
-Behavioral guardrail. Built from data ALREADY fetched (crowding + day-change + earnings) — no new tool calls. List ≤ 3, each as `TRAP · ticker · horizon · why · the disciplined move`.
+### 5. Anti-FOMO traps (only surface real ones - else one line)
+Behavioral guardrail. Built from data ALREADY fetched (crowding + day-change + earnings) - no new tool calls. List ≤ 3, each as `TRAP · ticker · horizon · why · the disciplined move`.
 
-**Horizon scope (READ FIRST — the logic inverts):** the traps below are calibrated for **swing / position / long-term** entries. For **intraday momentum** trades the crowding + narrative-spike logic is REVERSED — riding the crowd is the edge, not the trap. Tag each trap with the horizon it bites. Never flag an intraday momentum scalp with a long-horizon crowding trap.
+**Horizon scope (READ FIRST - the logic inverts):** the traps below are calibrated for **swing / position / long-term** entries. For **intraday momentum** trades the crowding + narrative-spike logic is REVERSED - riding the crowd is the edge, not the trap. Tag each trap with the horizon it bites. Never flag an intraday momentum scalp with a long-horizon crowding trap.
 
 Swing / position / long-term traps:
 - **Chase-the-consensus**: `crowding_label == consensus` (score ≥ 70) on a name with a positive day → late-entry, negative expected alpha over weeks-months. Move: defer / size down, not add.
@@ -107,10 +107,10 @@ Swing / position / long-term traps:
 
 Intraday traps (the discipline is exit-rules, NOT crowd-avoidance):
 - **No-stop scalp**: intraday entry without a hard stop + time-stop. Move: define both before entry or no trade.
-- **Late chase**: entering after price already ran > 2 ATR / RSI(2) extreme — the move is spent. Move: wait for VWAP reclaim or next setup.
+- **Late chase**: entering after price already ran > 2 ATR / RSI(2) extreme - the move is spent. Move: wait for VWAP reclaim or next setup.
 - **Overstay**: intraday thesis but holding past your time-stop into close → it's now an unplanned swing. Move: flatten or consciously convert with a swing stop.
 
-If none apply, write: `No active FOMO traps — positioning disciplined.`
+If none apply, write: `No active FOMO traps - positioning disciplined.`
 
 ### 6. Intraday addendum (only if US market open or pre-market)
 From `get_technicals_intraday` on focus-list + top 5 by weight, surface:

@@ -1,4 +1,4 @@
-"""Phase 2 — verify skill evidence flows into score.
+"""Phase 2 - verify skill evidence flows into score.
 
 Tests are pure (no DB, no network). They monkey-patch recommendations'
 weights loader so we don't depend on Postgres being available.
@@ -130,7 +130,7 @@ def test_low_confidence_skill_does_not_vote():
     )
     # skill_score still contributes to raw_score (always added), but the
     # contribution at low consensus × w_skill is small. Convergence gate
-    # should NOT count the skill vote — so confidence label must not switch
+    # should NOT count the skill vote - so confidence label must not switch
     # from medium to high purely due to skill.
     assert base["confidence"] == low_conf["confidence"], (
         f"low-confidence skill should not change confidence label: "

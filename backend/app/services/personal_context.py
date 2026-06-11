@@ -25,7 +25,7 @@ from app.models.personal_context import SCHEMA_VERSION, PersonalContext
 _CONTEXT_FILE = Path.home() / ".aifolimizer" / "personal_context.json"
 
 
-# Skills that produce advice on the user's actual portfolio — their
+# Skills that produce advice on the user's actual portfolio - their
 # track record should be segmented by life-stage hash so self-learning
 # (weights tuner, threshold calibration) can stratify by personal context.
 _PERSONAL_SKILLS = {
@@ -119,12 +119,12 @@ def clear() -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Derived helpers — computed once, cached on the dict before returning.
+# Derived helpers - computed once, cached on the dict before returning.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 2026 federal + provincial combined marginal rates (approximate, top-of-bracket
 # at common income levels). Update annually. Source: published CRA + provincial
-# bracket tables. Used as guidance only — not a substitute for a tax pro.
+# bracket tables. Used as guidance only - not a substitute for a tax pro.
 _MARGINAL_RATE_TABLE: dict[str, list[tuple[float, float]]] = {
     "ON": [
         (55_867, 0.2005),

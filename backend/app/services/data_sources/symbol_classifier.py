@@ -4,14 +4,14 @@ Foundation for currency-aware routing. Each Quote / fetch path picks its
 provider chain based on classify_asset(symbol).
 
 Asset classes:
-  us_equity     — NYSE/Nasdaq listings, USD
-  ca_equity     — TSX/TSXV/NEO/CSE listings, CAD
-  uk_equity     — LSE listings, GBP/GBp
-  eu_equity     — Paris/Frankfurt/Milan/Amsterdam/Madrid/SIX, EUR/CHF
-  crypto        — known crypto tickers (BTC, ETH, ...) — USD-denominated upstream
-  fx            — currency pairs (yfinance =X form, or 6-char pair)
-  index         — ^-prefixed indices
-  unknown       — fallback
+  us_equity     - NYSE/Nasdaq listings, USD
+  ca_equity     - TSX/TSXV/NEO/CSE listings, CAD
+  uk_equity     - LSE listings, GBP/GBp
+  eu_equity     - Paris/Frankfurt/Milan/Amsterdam/Madrid/SIX, EUR/CHF
+  crypto        - known crypto tickers (BTC, ETH, ...) - USD-denominated upstream
+  fx            - currency pairs (yfinance =X form, or 6-char pair)
+  index         - ^-prefixed indices
+  unknown       - fallback
 
 The classifier is deterministic and cheap. Used by data_router to select
 chains and staleness budgets without per-call lookups.

@@ -1,4 +1,4 @@
-"""`get_open_decisions` regression — added so the scheduler can mark-to-market."""
+"""`get_open_decisions` regression - added so the scheduler can mark-to-market."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def test_get_open_decisions_filters_resolved(tmp_path: Path, monkeypatch) -> Non
         thesis_summary="t",
         skill_used="adv",
     )
-    # AAA hits target — resolved.
+    # AAA hits target - resolved.
     dm.resolve_outcomes({"AAA": 111.0, "BBB": 51.0})
 
     open_now = dm.get_open_decisions()

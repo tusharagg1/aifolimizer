@@ -7,7 +7,7 @@ description: Run a parallel bull/bear adversarial research pipeline on a specifi
 
 > **Data-grounding contract:** every numeric claim made by ANY advocate or the
 > PM must trace to a Layer-1 tool response in this run. Restate the verified
-> figures up front; cite only those. No recalled or estimated numbers — if it
+> figures up front; cite only those. No recalled or estimated numbers - if it
 > wasn't fetched, it's "not available". This is what keeps the debate honest.
 
 Modelled on TradingAgents multi-agent hedge fund workflow. Explicit DAG: memory recall → parallel data → parallel advocates → three-tier risk debate → portfolio manager synthesis → log decision. Each layer waits for prior layer to complete.
@@ -31,7 +31,7 @@ Layer 5 (serial):   Decision output + log_trade_decision
 
 Rules for DAG execution:
 - Layer 0: 4 MCP calls in ONE message (true parallel)
-- Layer 1: 12 MCP calls in ONE message (true parallel); the 4 US-only adds (insider/news/filings/search) return empty for .TO names — that's fine, agents note "unavailable"
+- Layer 1: 12 MCP calls in ONE message (true parallel); the 4 US-only adds (insider/news/filings/search) return empty for .TO names - that's fine, agents note "unavailable"
 - Layer 2: 3 Agent calls in ONE message (true parallel); pass identical data to all three
 - Layer 2.5: IN MAIN CONTEXT - read all three Layer 2 outputs, produce ARBITER_MEMO (see below). Do NOT spawn agent.
 - Layer 3: 3 Agent calls in ONE message (true parallel); pass Layer 2 outputs + Layer 1 data + ARBITER_MEMO
@@ -64,7 +64,7 @@ If cross-ticker lessons contain patterns relevant to this ticker (same sector, s
 11. `mcp__aifolimizer__get_recent_filings` with `ticker=ticker` - recent material SEC filings; an 8-K in the last week is a catalyst both advocates must address
 12. `mcp__aifolimizer__get_search_interest` with `keywords=[company name]` - retail search-demand proxy; a surge is crowding confirmation for the Consensus agent
 
-(Items 9-12 are US-only — empty for .TO tickers; pass through as "unavailable".)
+(Items 9-12 are US-only - empty for .TO tickers; pass through as "unavailable".)
 
 ## Stage 2 - Adversarial sub-agents (spawn ALL THREE in parallel)
 

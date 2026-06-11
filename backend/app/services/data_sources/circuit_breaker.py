@@ -5,8 +5,8 @@ symbol burns latency and quota that better sources need. The breaker
 trips after N failures inside a sliding window and opens a cooldown
 during which the router skips the source automatically.
 
-State is in-process — survives a single backend run, resets on restart
-(by design — restart is a natural reprobe).
+State is in-process - survives a single backend run, resets on restart
+(by design - restart is a natural reprobe).
 
 API:
   trip = CircuitBreaker()
@@ -41,7 +41,7 @@ class CircuitBreaker:
             if until and time.time() < until:
                 return True
             if until and time.time() >= until:
-                # cooldown expired — reset and let next call probe
+                # cooldown expired - reset and let next call probe
                 self._open_until.pop(source, None)
                 self._failures.pop(source, None)
             return False

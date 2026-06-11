@@ -9,13 +9,13 @@ requires_profile: true
 ## Goal
 Short ranked list of names worth trading TODAY - held or watchlist - each with explicit entry / stop / target / R:R / conviction. Built on the same scoring engine as the dashboard signals (`get_trade_ideas`), then gated by crowding + macro catalysts. Designed to be pushed to Telegram each morning.
 
-## Stage 0 — Decision Memory (load FIRST)
+## Stage 0 - Decision Memory (load FIRST)
 
 Before ranking, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 - For any name you promote to the list, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## How to run
 Call `get_profile` FIRST (accounts, capital - never hardcode). Then in parallel:

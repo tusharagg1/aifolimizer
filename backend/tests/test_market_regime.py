@@ -1,4 +1,4 @@
-"""Unit tests for market_regime (Phase 8). Pure classifier — no I/O."""
+"""Unit tests for market_regime (Phase 8). Pure classifier - no I/O."""
 
 from __future__ import annotations
 

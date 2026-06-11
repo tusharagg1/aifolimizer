@@ -38,10 +38,10 @@ def _load_portfolio(account_id: str = ""):
     # Read the shared portfolio snapshot (written by the MCP server on its live
     # fetches) INSTEAD of calling Wealthsimple. A bg WS call would rotate the
     # shared single-use refresh token and race interactive sessions into forced
-    # MFA — the documented "random expiry". No snapshot => skip (never hit WS).
+    # MFA - the documented "random expiry". No snapshot => skip (never hit WS).
     portfolio = portfolio_snapshot.read(account_id)
     if portfolio is None:
-        raise RuntimeError("No portfolio snapshot — open aifolimizer in Claude to populate it.")
+        raise RuntimeError("No portfolio snapshot - open aifolimizer in Claude to populate it.")
     _overlay_live_prices(portfolio)
     return portfolio
 
@@ -49,7 +49,7 @@ def _load_portfolio(account_id: str = ""):
 def _overlay_live_prices(portfolio) -> None:
     """Refresh day_change_pct from real-time public-ticker quotes so price
     alerts fire on live moves, not the snapshot-time day change. Holdings come
-    from the WS snapshot (cached); prices come from public market data — no WS.
+    from the WS snapshot (cached); prices come from public market data - no WS.
     Best-effort: a quote miss leaves the snapshot value for that symbol intact.
     """
     symbols = [p.symbol for p in portfolio.positions if p.symbol]
@@ -103,7 +103,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    # Holdings come from the shared WS snapshot (no live WS login here — that
+    # Holdings come from the shared WS snapshot (no live WS login here - that
     # would rotate the shared token). If the snapshot isn't populated yet, skip
     # cleanly instead of crashing the 30-min scheduled task.
     try:

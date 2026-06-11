@@ -20,7 +20,7 @@ _SKILL_TEMPLATE = """\
 ---
 name: {skill_name}
 description: |
-  Run a {skill_title} analysis. Update this description — it controls
+  Run a {skill_title} analysis. Update this description - it controls
   when Claude auto-triggers this skill.
 ---
 
@@ -28,14 +28,14 @@ description: |
 
 ## How to run
 
-1. Call `mcp__aifolimizer__get_profile` — account types and capital context
+1. Call `mcp__aifolimizer__get_profile` - account types and capital context
 2. Call `mcp__aifolimizer__get_portfolio` for current holdings
-3. Call `mcp__aifolimizer__{tool_name}` — {docstring_first_line}
+3. Call `mcp__aifolimizer__{tool_name}` - {docstring_first_line}
 
 ## Investor profile
 
 - Canadian retail investor
-- Account types and capital: always read from `get_profile` — never hardcode
+- Account types and capital: always read from `get_profile` - never hardcode
 
 ## Output structure
 
@@ -43,8 +43,8 @@ description: |
 
 ## Rules
 
-- Always call `get_profile` first — never hardcode account types or capital
-- Never reference PII — MCP filters it before returning data
+- Always call `get_profile` first - never hardcode account types or capital
+- Never reference PII - MCP filters it before returning data
 - Under 500 words
 """
 

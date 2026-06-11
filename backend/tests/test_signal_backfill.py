@@ -1,4 +1,4 @@
-"""Unit tests for signal_backfill (PG realized-return port). DB-free —
+"""Unit tests for signal_backfill (PG realized-return port). DB-free -
 repo + data_router calls are monkeypatched."""
 
 from __future__ import annotations
@@ -38,10 +38,7 @@ def test_compute_return_guards_bad_entry():
 
 
 def _bars_from(start: datetime, n: int, start_close: float) -> list[dict]:
-    return [
-        {"date": f"2026-01-{str(start.day + i).zfill(2)}", "close": start_close + i}
-        for i in range(n)
-    ]
+    return [{"date": f"2026-01-{str(start.day + i).zfill(2)}", "close": start_close + i} for i in range(n)]
 
 
 def test_run_writes_realized_return(monkeypatch):

@@ -229,5 +229,5 @@ def test_top_n_picks_limits(monkeypatch):
             n=3,
         ),
     )
-    # Test patched universe is the full default — limit applied AFTER score sort
+    # Test patched universe is the full default - limit applied AFTER score sort
     assert len(picks) <= 3

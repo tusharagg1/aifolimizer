@@ -1,4 +1,4 @@
-"""Multi-source data router — currency-aware, fault-tolerant.
+"""Multi-source data router - currency-aware, fault-tolerant.
 
 Public API:
   get_quote(symbol, max_age_s=300, verify=False)        -> dict
@@ -119,7 +119,7 @@ def demoted_sources() -> list[str]:
 
 # Demote-only routing. The hand-curated chain order encodes DATA-QUALITY /
 # accuracy judgement (e.g. official venue before scrape), which success-rate
-# stats cannot measure — a source can return 100% "successful" responses that
+# stats cannot measure - a source can return 100% "successful" responses that
 # are stale or wrong. So observed reliability is used ONLY to push chronically
 # FAILING sources to the back (via source_drift -> demote()), never to promote
 # an available-but-unvalidated source ahead of a trusted one. Accuracy itself
@@ -176,7 +176,7 @@ def _quote_chain_base(symbol: str) -> list[DataSource]:
         return [_finnhub, _twelve, _yf, _tiingo, _stooq, _massive]
     if ac == "ca_equity":
         # tiingo excluded: maps .TO -> SYM-CA, which 404s (no TSX coverage on
-        # free/standard tier) — a guaranteed-miss call that skews reliability.
+        # free/standard tier) - a guaranteed-miss call that skews reliability.
         return [_twelve, _yf, _finnhub, _eodhd, _stooq]
     if ac in ("uk_equity", "eu_equity"):
         return [_twelve, _yf, _eodhd, _stooq]
@@ -193,11 +193,11 @@ def _history_chain_base(symbol: str) -> list[DataSource]:
     if ac == "index":
         return [_yf, _twelve, _stooq]
     if ac == "us_equity":
-        # yfinance leads (most reliable here); massive last — it is free-tier
+        # yfinance leads (most reliable here); massive last - it is free-tier
         # rate-limited (429s) and net-negative as a primary for history.
         return [_yf, _twelve, _tiingo, _stooq, _massive]
     if ac == "ca_equity":
-        # tiingo excluded: .TO -> SYM-CA 404s (no TSX coverage) — see quote chain.
+        # tiingo excluded: .TO -> SYM-CA 404s (no TSX coverage) - see quote chain.
         return [_twelve, _yf, _eodhd, _stooq]
     if ac in ("uk_equity", "eu_equity"):
         return [_twelve, _yf, _eodhd, _stooq]
@@ -251,7 +251,7 @@ def _try_source(
 def _validate_currency(payload: dict, asset_class: str) -> bool:
     """True if payload's currency is plausible for the asset class.
 
-    Empty / None currency is permissive — many sources don't stamp it and
+    Empty / None currency is permissive - many sources don't stamp it and
     we don't want to reject otherwise-good data.
     """
     cur = (payload.get("currency") or "").upper()
@@ -352,7 +352,7 @@ def _fx_rate(from_ccy: str, to_ccy: str) -> float | None:
 
 
 def _held_cached(symbol: str) -> bool:
-    """True if the symbol is in the WS positions cache — zero network."""
+    """True if the symbol is in the WS positions cache - zero network."""
     try:
         from app.services.data_sources import wealthsimple_src as _wss
 
@@ -364,7 +364,7 @@ def _held_cached(symbol: str) -> bool:
 def _held_cross_check(payload: dict, info, max_age_s: float) -> dict:
     """Zero-latency cross-check for a held position. Cache + peek only.
 
-    Primary: native consensus — compare against any OTHER source's already-
+    Primary: native consensus - compare against any OTHER source's already-
     cached quote in the same currency (no FX, no fetch). Accurate.
     Fallback: WS broker sanity (FX-tolerant) when no native peer is cached;
     on a cold WS cache, kick a non-blocking warm so the next call can check.
@@ -415,16 +415,16 @@ def _augment_with_ws_verification(payload: dict, asset_class: str, *, allow_refr
     """Cross-check primary quote against the user's broker (Wealthsimple).
 
     Only fires when the WS session is currently authed. Expired/missing
-    session is silently ignored — the primary payload is returned
+    session is silently ignored - the primary payload is returned
     untouched so freshness is never coupled to broker auth state.
 
-    allow_refresh=False reads the WS positions cache only (no network) — used
+    allow_refresh=False reads the WS positions cache only (no network) - used
     for the held-position default check so it adds no latency; True permits a
     refresh and is used on explicit verify=True.
 
     Currency is reconciled first: WS reports held US stocks in the account
     currency (CAD), so the WS price is FX-converted into the payload's
-    currency before comparing — otherwise every USD holding falsely flags a
+    currency before comparing - otherwise every USD holding falsely flags a
     'disagreement' equal to the USD/CAD rate.
     """
     if not _ws_src.is_configured():
@@ -468,7 +468,7 @@ def _augment_with_ws_verification(payload: dict, asset_class: str, *, allow_refr
     # WS is the broker's converted position value, not a native quote. When a
     # currency round-trip is involved (WS-CAD -> payload-USD), the WS and ECB
     # FX rates differ by a basis spread, so this is a GROSS-error sanity check,
-    # not a precision price validator — widen the band to tolerate FX basis and
+    # not a precision price validator - widen the band to tolerate FX basis and
     # flag only large divergences (wrong ticker, missed split, stale/corrupt).
     base = 2.0 if asset_class == "crypto" else 1.5
     threshold = base + 2.5 if fx_converted else base
@@ -498,7 +498,7 @@ def _merge_verified(a: dict, b: dict, lat_a: float, lat_b: float, asset_class: s
         merged["_verify_sources"] = [a.get("source"), b.get("source")]
         return merged
 
-    # Disagreement — prefer lower-latency source, tag confidence
+    # Disagreement - prefer lower-latency source, tag confidence
     winner = a if lat_a <= lat_b else b
     out = dict(winner)
     out["_verify_status"] = "disagreement"
@@ -556,7 +556,7 @@ def get_source_reliability(since_s: float = 86400 * 7) -> list[dict]:
 
 
 def get_quotes_batch(symbols: list[str], max_age_s: float | None = None) -> dict[str, dict]:
-    """Batched fetch — yfinance batch path for US/CA equities, per-symbol
+    """Batched fetch - yfinance batch path for US/CA equities, per-symbol
     fallback for crypto/fx/index since they need different providers.
 
     Returns {symbol: quote_dict}. Symbols that fail every source silently

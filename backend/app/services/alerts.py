@@ -36,6 +36,7 @@ _CTX_DIR = _REPO_ROOT / ".claude" / "context"
 _STATE_FILE = _CTX_DIR / "alerts_state.json"
 _HISTORY_FILE = _CTX_DIR / "alerts.jsonl"
 
+
 def _load_state() -> dict[str, str]:
     if not _STATE_FILE.exists():
         return {}
@@ -87,7 +88,7 @@ def evaluate(
             sev = "high" if pos.day_change_pct <= -abs(high_drop_pct) else "medium"
             body = (
                 f"{pos.symbol} ({pos.name}) intraday "
-                f"{pos.day_change_pct:.2f}% — weight {pos.weight:.1f}%, "
+                f"{pos.day_change_pct:.2f}% - weight {pos.weight:.1f}%, "
                 f"value {pos.market_value_cad:.0f} CAD."
             )
             triggered.append(
@@ -118,7 +119,7 @@ def evaluate(
             }
         )
 
-    # 3. Technicals — RSI oversold/overbought on top N
+    # 3. Technicals - RSI oversold/overbought on top N
     top = sorted(portfolio.positions, key=lambda p: p.weight, reverse=True)[:top_n_for_technicals]
     tech_symbols = [p.symbol for p in top]
     if tech_symbols:
@@ -138,7 +139,7 @@ def evaluate(
                         "symbol": sym,
                         "severity": "low",
                         "title": f"{sym} RSI oversold ({rsi:.0f})",
-                        "body": (f"{sym} RSI(14) at {rsi:.1f} — potential bounce setup. Review entry."),
+                        "body": (f"{sym} RSI(14) at {rsi:.1f} - potential bounce setup. Review entry."),
                         "ts": now_iso,
                     }
                 )
@@ -149,7 +150,7 @@ def evaluate(
                         "symbol": sym,
                         "severity": "low",
                         "title": f"{sym} RSI overbought ({rsi:.0f})",
-                        "body": (f"{sym} RSI(14) at {rsi:.1f} — extended; consider trim or hedge."),
+                        "body": (f"{sym} RSI(14) at {rsi:.1f} - extended; consider trim or hedge."),
                         "ts": now_iso,
                     }
                 )

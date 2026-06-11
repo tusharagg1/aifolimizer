@@ -66,7 +66,7 @@ def _call_tool(fn):
 
         # `asyncio.get_event_loop()` raises on Python 3.12+ when there is
         # no running loop in the main thread. `asyncio.run` creates a
-        # fresh loop and tears it down per call — exactly what we need
+        # fresh loop and tears it down per call - exactly what we need
         # for a one-shot test invocation.
         result = asyncio.run(result)
     return result

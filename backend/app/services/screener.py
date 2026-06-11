@@ -15,7 +15,7 @@ _LOG = get_logger("aifolimizer.services.screener")
 
 
 _cache: dict[str, tuple[list, float]] = {}
-_CACHE_TTL = 1800  # 30 min — screener is expensive
+_CACHE_TTL = 1800  # 30 min - screener is expensive
 
 # Curated universe: liquid TSX + S&P 500 names suitable for Canadian retail investor
 TSX_UNIVERSE = [

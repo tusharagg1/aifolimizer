@@ -7,7 +7,7 @@ when anything changes.
 
 Bounds:
   legacy signals (tech/fund/macro/sentiment): [0.5, 1.5]
-  skill weight: [0.1, 1.5]   — starts smaller, allowed to grow if proven
+  skill weight: [0.1, 1.5]   - starts smaller, allowed to grow if proven
 
 Phase 11 swaps the objective from accuracy → after-cost expectancy.
 This module keeps both code paths so the swap is a one-line config change.

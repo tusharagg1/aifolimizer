@@ -28,7 +28,7 @@ def main() -> None:
     print("queue:", q.name, "redis_ping:", r.ping())
 
     # run_weights_tuner is a Phase-5 placeholder that returns a noop dict
-    # — importable from app.jobs.tasks so RQ can serialize it.
+    # - importable from app.jobs.tasks so RQ can serialize it.
     job = q.enqueue(run_weights_tuner)
     print("enqueued job:", job.id)
     print(

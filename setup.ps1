@@ -30,7 +30,7 @@ if (-not (Test-Path $VenvPy)) {
     & $pyExe -m venv backend\.venv
     Write-Host '    created backend\.venv'
 } else {
-    Write-Host '    backend\.venv exists — keeping'
+    Write-Host '    backend\.venv exists - keeping'
 }
 
 Write-Host '==> 2/5 dependencies'
@@ -41,9 +41,9 @@ Write-Host '    installed backend\requirements.txt'
 Write-Host '==> 3/5 backend\.env'
 if (-not (Test-Path backend\.env)) {
     Copy-Item .env.example backend\.env
-    Write-Host '    created backend\.env — EDIT IT and fill WS_EMAIL / WS_PASSWORD'
+    Write-Host '    created backend\.env - EDIT IT and fill WS_EMAIL / WS_PASSWORD'
 } else {
-    Write-Host '    backend\.env exists — keeping'
+    Write-Host '    backend\.env exists - keeping'
 }
 
 Write-Host '==> 4/5 .mcp.json'
@@ -53,7 +53,7 @@ if (-not (Test-Path .mcp.json)) {
         $VenvPy (Join-Path $Repo 'backend\mcp_server.py')
     Write-Host '    wrote .mcp.json'
 } else {
-    Write-Host '    .mcp.json exists — keeping'
+    Write-Host '    .mcp.json exists - keeping'
 }
 
 $claudeExe = (Get-Command claude -ErrorAction SilentlyContinue).Source
@@ -63,7 +63,7 @@ if ($claudeExe) {
     if ($LASTEXITCODE -eq 0) { Write-Host '    registered (restart Claude to pick it up)' }
     else { Write-Host '    already registered or registration skipped' }
 } else {
-    Write-Host '    claude CLI not on PATH — register manually:'
+    Write-Host '    claude CLI not on PATH - register manually:'
     Write-Host "      claude mcp add aifolimizer `"$VenvPy`" `"$(Join-Path $Repo 'backend\mcp_server.py')`""
 }
 
@@ -72,7 +72,7 @@ Write-Host '==> 5/5 doctor'
 
 Write-Host ''
 Write-Host 'Setup done. Next:'
-Write-Host '  1. Edit backend\.env  (WS_EMAIL / WS_PASSWORD — optional, only for portfolio skills)'
+Write-Host '  1. Edit backend\.env  (WS_EMAIL / WS_PASSWORD - optional, only for portfolio skills)'
 Write-Host '  2. cd backend; .venv\Scripts\python.exe mcp_login.py   # first Wealthsimple login (MFA)'
 Write-Host '  3. .venv\Scripts\python.exe run.py                      # start backend on :8000'
 Write-Host '  4. Restart Claude, then ask "get my profile" or run /daily-briefing'

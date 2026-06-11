@@ -16,13 +16,13 @@ Mechanism: anchoring bias - investors slow to push past prior resistance, so nea
 
 **Combined signal:** High 12m momentum AND near 52wk high = double confirmation. Strongest continuation setup.
 
-## Stage 0 — Decision Memory (load FIRST)
+## Stage 0 - Decision Memory (load FIRST)
 
 Before analysis, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 - For any name you issue a per-ticker BUY/SELL/TRIM/HOLD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## How to run
 
@@ -43,7 +43,7 @@ For each holding, compute composite momentum score (0-100):
 | Component | Weight | Signal |
 |-----------|--------|--------|
 | 12m return rank (percentile within portfolio) | 50% | Higher = stronger |
-| 52wk high proximity (1 − abs(pct_from_52w_high)/100) | 30% | Closer to high = stronger |
+| 52wk high proximity (1 - abs(pct_from_52w_high)/100) | 30% | Closer to high = stronger |
 | Minervini score / 7 | 20% | Stage 2 breakout = strongest |
 
 **Labels:**
@@ -72,7 +72,7 @@ Cross-check crowding: if `crowding_score ≥ 70` (consensus), suppress add signa
 
 Per line:
 ```
-TICKER · −XX% 12m · XX% below 52wk high · account: TFSA/Non-Reg · action: trim / watch / exit
+TICKER · -XX% 12m · XX% below 52wk high · account: TFSA/Non-Reg · action: trim / watch / exit
 ```
 For Non-Reg positions at a loss: flag tax-loss harvest opportunity.
 For TFSA positions at a loss: trim - no tax benefit for waiting, capital better deployed in momentum names.

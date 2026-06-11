@@ -5,20 +5,19 @@ __pycache__/
 .venv/
 venv/
 
-# Wealthsimple session tokens (live credentials — never commit)
+# Wealthsimple session tokens (live credentials - never commit)
 backend/.ws_session.json
 *.ws_session.json
 
 # Logs
 *.log
 backend_run.log
-frontend_run.log
 
 # Env (credentials)
 .env
 backend/.env
 
-# Per-machine MCP registration (contains absolute paths) — use .mcp.example.json
+# Per-machine MCP registration (contains absolute paths) - use .mcp.example.json
 .mcp.json
 
 # Per-machine Claude Code overrides (absolute paths, personal hooks)
@@ -36,6 +35,7 @@ Thumbs.db
 # Tooling caches at repo root (per-machine)
 .pytest_cache/
 .ruff_cache/
+.code-review-graph/
 
 # Local runtime caches + logs (per-machine, not portable)
 .claude/context/.diskcache/
@@ -47,6 +47,7 @@ Thumbs.db
 .claude/context/portfolio_history.jsonl
 .claude/context/track_record_full.jsonl
 .claude/context/STATE.md
+.claude/context/plan-*.md
 backend/.pytest_cache/
 backend/.cache/
 backend/.claude/
@@ -55,7 +56,7 @@ backend/data/run_cards/
 # Backup files created by skill scaffolding / plugin tools
 *.original.md
 
-# Per-machine personal docs (beginner walkthroughs, private notes) — never commit
+# Per-machine personal docs (beginner walkthroughs, private notes) - never commit
 *.local.md
 
 # Agent worktrees (per-session ephemeral checkouts)

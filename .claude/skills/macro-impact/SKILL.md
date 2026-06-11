@@ -8,7 +8,7 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 ## Decision Memory Protocol (load first, log after)
 
 **Before** forming any view, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) - portfolio-level win/loss patterns
 - For any name you issue a per-ticker BUY/SELL/TRIM/HOLD/ADD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
 
 **After** output, log every actionable verdict: for each BUY/SELL/TRIM/ADD/HOLD issued, call `mcp__aifolimizer__log_recommendation` (`skill="macro-impact", ticker, action, conviction, rationale, target_pct, stop_pct`). Skipping breaks the cross-session feedback loop and causes drift.
@@ -24,7 +24,7 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 7. Call `mcp__aifolimizer__get_market_breadth` - VIX, SPY regime (bull/bear vs SMA200), composite market_regime signal
 8. WebSearch only if you need details the above don't cover (geopolitics, breaking news)
 9. Map each macro factor to specific holdings in portfolio
-10. Before issuing any ADD in section 9, call `mcp__aifolimizer__get_positioning_signals` (`symbols=[those names]`) — macro tailwinds alone don't justify adding to a crowded name. Defer ADDs with `crowding_score >= 70` (consensus-crowded, negative expected alpha); favor `crowding_score <= 30` (contrarian edge).
+10. Before issuing any ADD in section 9, call `mcp__aifolimizer__get_positioning_signals` (`symbols=[those names]`) - macro tailwinds alone don't justify adding to a crowded name. Defer ADDs with `crowding_score >= 70` (consensus-crowded, negative expected alpha); favor `crowding_score <= 30` (contrarian edge).
 11. Use `market_regime` to calibrate portfolio risk stance (bull_low_fear → risk-on; bear_high_fear → defensive)
 
 ## Investor profile
@@ -60,5 +60,5 @@ description: Run a McKinsey-style macro economic impact briefing on the user's p
 - `market_regime` is composite (VIX + SPY vs SMA200) - bear_high_fear ≠ recession; state components, not just label.
 - CAD/USD impact applies only to USD-denominated holdings; .TO tickers already CAD-quoted - don't double-count FX.
 - BoC and Fed rate differentials matter more than absolute levels for CAD/USD direction; cite spread, not just one rate.
-- `get_boc_snapshot` / `get_statcan_snapshot` are official Canadian sources — when they disagree with `get_macro_snapshot`'s FRED mirror, trust BoC/StatCan and note the FRED lag.
-- `get_factor_snapshot` returns US factors (Ken French) — read factor leadership as a global style signal, not a Canada-specific one.
+- `get_boc_snapshot` / `get_statcan_snapshot` are official Canadian sources - when they disagree with `get_macro_snapshot`'s FRED mirror, trust BoC/StatCan and note the FRED lag.
+- `get_factor_snapshot` returns US factors (Ken French) - read factor leadership as a global style signal, not a Canada-specific one.

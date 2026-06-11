@@ -4,13 +4,13 @@
 
 The combination is the gap.
 
-OpenBB is a strong financial-data terminal and now ships its own agentic workspace and MCP support. It excels at data aggregation; live brokerage portfolio sync and forward-tested skill recommendations are not its primary focus.
+OpenBB is a financial-data terminal with an agentic workspace and MCP support, focused on data aggregation. Live brokerage portfolio sync and forward-tested skill recommendations are not its focus.
 
-FinGPT is a research-grade platform of finance-domain LLMs (sentiment, NER, forecasting, RAG demos). It produces excellent model-layer output and slots into any agent stack - including this one - at the LLM tier.
+FinGPT is a set of finance-domain LLMs (sentiment, NER, forecasting, RAG). It slots into any agent stack - including this one - at the LLM tier.
 
 ChatGPT (and any general-purpose chat model) does not see actual holdings, cost basis, account types, or cash. It improvises positions from whatever the user pastes.
 
-aifolimizer plugs a live Wealthsimple portfolio into Claude through MCP, runs 27 analysis skills against it, and forward-tests the trade-oriented skills (`pre-trade-check`, `position-review`) by logging every recommendation with entry / stop / target and marking them to market on a nightly schedule. The track record is auditable.
+aifolimizer plugs a live Wealthsimple portfolio into Claude through MCP, runs 28 analysis skills against it, and forward-tests the trade-oriented skills (`pre-trade-check`, `position-review`) by logging every recommendation with entry / stop / target and marking them to market on a nightly schedule. The track record is auditable.
 
 ## Do you store my Wealthsimple password?
 
@@ -40,7 +40,7 @@ Depends on which LLM.
 
 | Provider | What it sees |
 |---|---|
-| Claude Code / Claude Desktop (Pro) | Tool responses for the three portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`) with PII fields stripped - symbols, weights as % of NLV, returns %, scores, and dollar values. Public-data tools (technicals, fundamentals, macro, news, crypto) carry no PII and pass through directly. |
+| Claude Code / Claude Desktop (Pro) | Tool responses for the four portfolio-bearing tools (`get_profile`, `get_portfolio`, `get_portfolio_analysis`, `get_xray`) with PII fields stripped - symbols, weights as % of NLV, returns %, scores, and dollar values. Public-data tools (technicals, fundamentals, macro, news, crypto) carry no PII and pass through directly. |
 | Anthropic API (if configured separately) | Same as above |
 | Gemini / GitHub Models / OpenRouter / Qwen (fallback) | Hand-built %-of-NAV prompts that omit absolute dollar values. Fallback only fires if the corresponding env var is set. |
 
@@ -57,13 +57,13 @@ Leave the fallback API keys unset to keep all inference local to Claude Code or 
 
 Yes - the backend, MCP server, and skills are cross-platform Python 3.12.
 
-The Windows-only bits are the convenience launchers in `AUTOMATION.md` and `scripts/aifolimizer-launch.ps1`. On Mac or Linux, start the backend and MCP server manually:
+The Windows-only bits are the convenience launchers in `scripts/AUTOMATION.md` and `scripts/aifolimizer-launch.ps1`. On Mac or Linux, start the backend and MCP server manually:
 
 ```bash
 cd backend && source .venv/bin/activate && uvicorn main:app --reload --port 8000
 ```
 
-Frontend, Docker, Postgres, Redis, yfinance, FRED, and CoinGecko all work identically.
+Docker, Postgres, Redis, yfinance, FRED, and CoinGecko all work identically.
 
 ## Why are there no real-time quotes?
 
@@ -81,7 +81,7 @@ See the disclaimer in `README.md`.
 
 ## How do I add a different brokerage (Questrade, IBKR, Robinhood, etc.)?
 
-Today, brokerage support is Wealthsimple. The integration sits in `backend/app/services/wealthsimple.py` and is referenced directly across the API, MCP, jobs, and scripts (~89 sites).
+Today, brokerage support is Wealthsimple. The integration sits in `backend/app/services/wealthsimple.py` and is referenced directly across the API, MCP, jobs, and scripts.
 
 A `Brokerage` interface that lets Plaid, Schwab, IBKR, and others plug in alongside Wealthsimple is on the roadmap. Forking the Wealthsimple service today and matching the function shapes (positions, cash balances, account metadata) is possible, but expect to update the call sites that import `wealthsimple` directly. PRs that introduce the abstraction cleanly are welcome.
 

@@ -2,12 +2,12 @@
 
 Triggered by mfa-watchdog.ps1 every 30 min. Idempotent within COOLDOWN_SEC
 so the user does not get a stream of identical messages while away from
-their PC. Does NOT wait for a reply — this is notification-only. The user
+their PC. Does NOT wait for a reply - this is notification-only. The user
 runs aifolimizer-launch.ps1 (or invokes mfa_popup.py directly) to actually
 re-auth via a local popup when they sit down.
 
 Exit codes:
-    0  notification sent (or cooldown active — silently skipped)
+    0  notification sent (or cooldown active - silently skipped)
     1  telegram config missing
 """
 
@@ -53,7 +53,7 @@ def clear_flag() -> None:
     try:
         NOTIFY_FILE.unlink(missing_ok=True)
     except OSError:
-        # File absent or unwritable — cursor already effectively clear.
+        # File absent or unwritable - cursor already effectively clear.
         pass
 
 

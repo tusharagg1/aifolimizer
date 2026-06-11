@@ -1,4 +1,4 @@
-"""Statistics Canada WDS API — official Canadian macro (free, no key).
+"""Statistics Canada WDS API - official Canadian macro (free, no key).
 
 Complements Bank of Canada (rates/FX) with the real-economy series: CPI
 all-items (with computed YoY inflation) and the headline unemployment rate.
@@ -23,7 +23,7 @@ _LOG = get_logger("aifolimizer.services.statcan")
 
 _URL = "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods"
 _TIMEOUT = 15.0
-_TTL = 12 * 3600  # 12h — StatCan releases monthly
+_TTL = 12 * 3600  # 12h - StatCan releases monthly
 _cache: tuple[dict, float] | None = None
 
 
@@ -31,7 +31,7 @@ def _fetch(vector_id: int, latest_n: int) -> list[dict]:
     try:
         from curl_cffi import requests as creq
     except ImportError:
-        _LOG.warning("[statcan] curl_cffi not installed — pip install curl_cffi")
+        _LOG.warning("[statcan] curl_cffi not installed - pip install curl_cffi")
         return []
     try:
         resp = creq.post(

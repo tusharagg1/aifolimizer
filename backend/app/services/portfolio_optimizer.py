@@ -1,7 +1,7 @@
 """Portfolio optimization using PyPortfolioOpt.
 
 Runs Efficient Frontier (max Sharpe) on current holdings.
-Returns optimal weights vs current weights — tells you exactly
+Returns optimal weights vs current weights - tells you exactly
 how much of each position to add/trim to maximise risk-adjusted return.
 
 No API key required. Uses yfinance price history + analyst targets
@@ -21,7 +21,7 @@ _LOG = get_logger("aifolimizer.services.portfolio_optimizer")
 
 
 _CACHE: dict[str, tuple[dict, float]] = {}
-_CACHE_TTL = 3600  # 1h — same as technicals
+_CACHE_TTL = 3600  # 1h - same as technicals
 
 
 def _fetch_price_history(symbols: list[str], period: str = "2y") -> pd.DataFrame:
@@ -98,7 +98,7 @@ def optimize(
         # Covariance matrix (Ledoit-Wolf shrinkage reduces estimation error)
         S = risk_models.CovarianceShrinkage(prices).ledoit_wolf()
 
-        # Efficient Frontier — maximise Sharpe ratio.
+        # Efficient Frontier - maximise Sharpe ratio.
         # Default weight_bounds=(0,1) already enforces non-negative weights.
         # No forced minimum: optimizer is free to allocate 0% (exit a name);
         # the previous w>=0.01 floor consumed ~30% of capital on a 30-name book

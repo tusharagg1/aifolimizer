@@ -1,7 +1,7 @@
 """SHA256-based run card provenance for backtests.
 
 Each backtest emits a run_card.json recording the strategy name, config hash,
-metrics, validation results, and UTC timestamp — making backtest claims auditable.
+metrics, validation results, and UTC timestamp - making backtest claims auditable.
 
 Adapted from Vibe-Trading (HKUDS/Vibe-Trading, MIT License).
 """

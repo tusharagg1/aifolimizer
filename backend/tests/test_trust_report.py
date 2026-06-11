@@ -1,6 +1,6 @@
 """Offline tests for the trust-report renderer + labeled-run lookup.
 
-Pure-function coverage — no network, no live backtest. Verifies the
+Pure-function coverage - no network, no live backtest. Verifies the
 evidence-tier banner, survivorship caveat, two labeled blocks, and that
 `latest_results(label)` filters correctly.
 """
@@ -78,8 +78,8 @@ def test_render_markdown_has_banner_caveat_and_two_blocks():
         "QQQ",
     ]
     blocks = [
-        ("Headline — Your Holdings", "sub a", _block(["AAPL", "MSFT"], holdings_rows)),
-        ("Mechanics — Unbiased Broad Basket", "sub b", _block(broad_universe, [])),
+        ("Headline - Your Holdings", "sub a", _block(["AAPL", "MSFT"], holdings_rows)),
+        ("Mechanics - Unbiased Broad Basket", "sub b", _block(broad_universe, [])),
     ]
     md = trust_report._render_markdown(
         "2026-01-01 00:00 UTC",
@@ -90,8 +90,8 @@ def test_render_markdown_has_banner_caveat_and_two_blocks():
     assert "## Evidence Tier" in md
     assert "EXPERIMENTAL" in md
     assert "Survivorship-bias caveat" in md
-    assert "Headline — Your Holdings" in md
-    assert "Mechanics — Unbiased Broad Basket" in md
+    assert "Headline - Your Holdings" in md
+    assert "Mechanics - Unbiased Broad Basket" in md
     assert "(13 total)" in md  # broad universe truncated w/ count
     assert "shifted one bar" in md  # look-ahead-free disclosure
     assert "portfolio_health" in md  # row rendered

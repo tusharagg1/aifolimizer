@@ -1,11 +1,11 @@
-"""Trade-idea ranking — single source shared by the MCP tool and the headless
+"""Trade-idea ranking - single source shared by the MCP tool and the headless
 fallback runner.
 
 `rank_trade_ideas` turns a list of recommendation dicts (from
 recommendations.get_recommendations) into ranked, decision-ready trade ideas,
 applying the same filters the dashboard uses: drop non-actionable actions, drop
-wait-for-pullback entries, drop ideas below the risk/reward floor. Pure — no I/O,
-no session — so both `mcp_server.get_trade_ideas` and the codified fallback
+wait-for-pullback entries, drop ideas below the risk/reward floor. Pure - no I/O,
+no session - so both `mcp_server.get_trade_ideas` and the codified fallback
 runner produce identical output.
 """
 

@@ -51,7 +51,7 @@ _MAX_SKILLS = len(_SKILL_KEYS)
 
 
 # ---------------------------------------------------------------------------
-# Per-skill mappers — each returns dict[symbol] -> -1/+1
+# Per-skill mappers - each returns dict[symbol] -> -1/+1
 # ---------------------------------------------------------------------------
 
 
@@ -62,7 +62,7 @@ def _map_portfolio_health(snapshot: Mapping[str, Any]) -> dict[str, int]:
         sym = row.get("symbol")
         if not sym:
             continue
-        # Flagged means problem — bearish vote.
+        # Flagged means problem - bearish vote.
         out[sym] = -1
     return out
 
@@ -200,11 +200,11 @@ def build(
     """Build per-symbol evidence dict.
 
     Args:
-      snapshots: { skill_name: snapshot_dict | None } — latest per skill.
+      snapshots: { skill_name: snapshot_dict | None } - latest per skill.
                  Missing/None skills are skipped (count 0 toward confidence).
       symbols:   iterable of every symbol you want a row for (typically every
                  holding + every discovery candidate).
-      regime_composite: Phase 8 — if set, per-skill votes are scaled by
+      regime_composite: Phase 8 - if set, per-skill votes are scaled by
                  market_regime.multiplier_for(skill, composite) so a skill
                  that historically underperforms in this regime contributes
                  less to consensus. None = no regime gating.
@@ -285,5 +285,5 @@ def build_for_portfolio(
     snapshots: Mapping[str, Mapping[str, Any] | None],
     portfolio_symbols: Iterable[str],
 ) -> dict[str, dict[str, Any]]:
-    """Convenience wrapper — same as build() but takes portfolio symbol list."""
+    """Convenience wrapper - same as build() but takes portfolio symbol list."""
     return build(snapshots, portfolio_symbols)

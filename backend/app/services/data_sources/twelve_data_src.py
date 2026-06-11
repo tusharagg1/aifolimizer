@@ -1,4 +1,4 @@
-"""Twelve Data adapter — 800 calls/day free tier, key required.
+"""Twelve Data adapter - 800 calls/day free tier, key required.
 
 Strong because:
 - Real-time US + EU equities, ETFs, FX, crypto, indices in one feed.

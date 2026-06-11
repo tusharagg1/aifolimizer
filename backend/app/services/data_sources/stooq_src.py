@@ -48,7 +48,7 @@ def _stooq_symbol(symbol: str) -> str:
     if s.endswith(".TO") or s.endswith(".V"):
         return s.split(".")[0].lower() + ".ca"
     if s.startswith("^"):
-        # Index — best effort. Caller can fall through if mapping fails.
+        # Index - best effort. Caller can fall through if mapping fails.
         idx_map = {
             "^GSPC": "^spx",
             "^GSPTSE": "^tsx",

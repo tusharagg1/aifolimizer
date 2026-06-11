@@ -18,7 +18,9 @@
 
 aifolimizer turns Claude into a markets analyst you drive in plain English: fundamentals, technicals, earnings, macro, options, and quant signals on **any ticker, no brokerage account required**. Connect Wealthsimple (optional) and the same tools go portfolio-aware: allocation, concentration, tax-loss, and rebalancing on your real holdings.
 
-It runs on your own Claude Pro plan and your own machine, and only tickers and percentages ever leave it. **103 MCP tools, 27 skills, 15 market-data adapters.** Claude writes the analysis; the integration, privacy filter, forward-test harness, and adapter layer are built around it.
+It runs on your own Claude Pro plan and your own machine, and only tickers and percentages ever leave it. **107 MCP tools, 28 skills, 15 market-data adapters** - every source is free or free-tier, researched to exhaust the viable free options so no paid market-data subscription is ever required. Claude writes the analysis; this project supplies the data integration, privacy filter, forward-test harness, and adapter layer.
+
+> **Get started in two commands.** With [Claude Code](https://claude.com/claude-code) and [`uv`](https://docs.astral.sh/uv/getting-started/installation/) installed, run `claude plugin marketplace add tusharagg1/aifolimizer` then `claude plugin install aifolimizer@aifolimizer`, and start asking. No clone, no Python to manage, no servers to run. Stock and market analysis work right away; connecting a Wealthsimple portfolio is optional and comes later. Step-by-step: [Quick start](#quick-start).
 
 ### Example prompts
 
@@ -37,29 +39,27 @@ should I add to NVDA?        (Wealthsimple) weighs your holding and a crowding s
 
 ## Why not just ask Claude directly?
 
-Ask a chatbot about your portfolio and it answers from a stale training cutoff, with no idea what you actually hold, making up a P/E or an RSI when it doesn't know one. aifolimizer changes what Claude is working with:
+Ask a chatbot about your portfolio and it guesses - stale training data, no idea what you hold, a made-up P/E or RSI. aifolimizer changes what Claude works with:
 
-- **Real numbers, computed, not guessed.** Every price, fundamental, technical, and option Greek comes from a live feed or real math, so Claude reasons over facts instead of plausible-sounding fiction.
+- **Real numbers, not guesses.** Prices, fundamentals, technicals, and option Greeks come from live feeds or are computed in-process - Claude reasons over data, not stale training memory.
 - **Your actual holdings.** Concentration, Canadian tax (TFSA / RRSP / FHSA), crowding, and rebalancing run on your live Wealthsimple positions, not a screenshot you paste in.
-- **A track record, not guesswork.** Tracked skills log every call with entry, stop, and target, then get marked to market nightly. Deflated-Sharpe and calibration gates flag the strategies that are only luck.
+- **Tracked, not assumed.** Tracked skills log every call with entry, stop, and target and mark to market nightly; deflated-Sharpe and calibration gates flag strategies that are only luck.
 - **Private by default.** Only tickers and percentages leave your machine. Balances, account numbers, and your name never do.
-
-Same Claude, now grounded in live data, your real book, and a track record you can audit.
 
 ## Who it's for
 
 - **Self-directed investors:** ticker-level research (fundamentals, technicals, earnings, macro, bull/bear theses). Broker-agnostic; no portfolio connection needed.
 - **Wealthsimple users:** the full portfolio-aware suite on top: allocation health, concentration warnings, rebalancing, tax-loss harvesting, daily briefings on live holdings.
 - **Quant developers:** a working forward-test reference: walk-forward OOS validation, deflated-Sharpe gates, signal-decay curves, regime-conditional weight tuning.
-- **MCP integrators:** a real-world tool layout, fallback adapter chain, and PII-filter pattern (103 tools, 15 adapters, 27 skills).
+- **MCP integrators:** a real-world tool layout, fallback adapter chain, and PII-filter pattern (107 tools, 15 adapters, 28 skills).
 
 ## Features
 
 - **Live brokerage portfolio.** Wealthsimple via the unofficial [`ws-api`](https://github.com/gboudreau/ws-api-python): MFA-aware, every account type (TFSA / RRSP / FHSA / Non-Reg / Crypto). Holdings, cost basis, and cash flow from the real account; cross-account aggregation and tax-aware logic run server-side.
-- **103 MCP tools:** live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), FRED macro, crowding, crypto, insider activity, options chains with Greeks, Reddit + StockTwits sentiment, GDELT geopolitics. Verified on Claude Desktop and Claude Code.
-- **27 analysis skills:** allocation health, risk, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on intent, or invoke as slash commands.
-- **15 data adapters** behind one base class ([`data_sources/base.py`](backend/app/services/data_sources/base.py)): yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage, plus the Wealthsimple broker. `data_router` chains them with circuit-breaker fallback; adding Polygon or any paid feed is one file.
-- **Forward-tested where tracked.** Two skills (`pre-trade-check`, `position-review`) log every call with entry/stop/target; a nightly job marks them to market for 7/30/90-day win rates and alpha vs XEQT/SPY/TSX/QQQ. The other 25 are read-only. Wins and losses both: [TRACK_RECORD.md](TRACK_RECORD.md).
+- **107 MCP tools:** live prices, fundamentals, technicals (SMA / RSI / MACD / Bollinger / Minervini stage), FRED macro, crowding, crypto, insider activity, options chains with Greeks, Reddit + StockTwits sentiment, GDELT geopolitics. Verified on Claude Desktop and Claude Code.
+- **28 analysis skills:** allocation health, risk, sector rotation, dividends, tax-loss harvesting, pre/post-earnings, macro, and quant anomalies (PEAD, momentum). Auto-trigger on intent, or invoke as slash commands.
+- **15 data adapters** behind one base class ([`data_sources/base.py`](backend/app/services/data_sources/base.py)): yfinance, Finnhub, Twelve Data, Tiingo, EODHD, Stooq, Massive, Binance, Kraken, Coinbase, CoinGecko, Frankfurter, open.er-api, Alpha Vantage, plus the Wealthsimple broker. `data_router` chains them with circuit-breaker fallback; adding a new feed is one file.
+- **Forward-tested where tracked.** Two skills (`pre-trade-check`, `position-review`) log every call with entry/stop/target; a nightly job marks them to market for 7/30/90-day win rates and alpha vs XEQT/SPY/TSX/QQQ. The rest are advisory. Wins and losses are in [TRACK_RECORD.md](TRACK_RECORD.md).
 - **Statistical safeguards.** Walk-forward OOS validation, deflated-Sharpe overfitting gate (Bailey & López de Prado 2014), Brier + ECE calibration, signal-decay curves (1 to 63 days), regime-conditional gating, nightly weight tuner.
 - **Runs locally.** State in JSONL under `~/.aifolimizer/` and `backend/.claude/context/`; Postgres + Redis optional via `docker compose up -d`.
 
@@ -72,11 +72,11 @@ Inference runs inside an existing Claude Pro session - symbols, weights (% of NL
 ```
 Claude Code / Claude Desktop   (Pro subscription)
          ↓ invokes
-   .claude/skills/*            (27 analysis skills)
+   .claude/skills/*            (28 analysis skills)
          ↓ calls MCP tools
-   backend/mcp_server.py       (FastMCP - 103 tools)
+   backend/mcp_server.py       (FastMCP - 107 tools)
          ↓ uses
-   app/services/*              (50+ service modules)
+   app/services/*              (75+ service modules)
          ↓
    Wealthsimple GraphQL  |  yfinance  |  FRED  |  CoinGecko  |  …
          ↓
@@ -118,9 +118,9 @@ claude plugin marketplace add tusharagg1/aifolimizer
 claude plugin install aifolimizer@aifolimizer
 ```
 
-The plugin ships all 27 skills and launches the MCP server via `uv run`, which builds the dependency env on first use. The first launch takes ~1-2 min while uv downloads wheels; if the `mcp__aifolimizer__*` tools don't show up immediately, restart Claude once (the env is cached afterward). The market-data tools work out of the box; the Wealthsimple portfolio tools stay dormant until you run `mcp_login.py` (see below). Note: plugin state (paper-trade history etc.) lives in the per-version plugin cache and resets on plugin updates, so for persistent history and the always-on scheduler, use the local clone path below.
+The plugin ships all 28 skills and launches the MCP server via `uv run`, which builds the dependency env on first use. The first launch takes ~1-2 min while uv downloads wheels; if the `mcp__aifolimizer__*` tools don't show up immediately, restart Claude once (the env is cached afterward). The market-data tools work out of the box; the Wealthsimple portfolio tools stay dormant until you run `mcp_login.py` (see below). Note: plugin state (paper-trade history etc.) lives in the per-version plugin cache and resets on plugin updates, so for persistent history and the always-on scheduler, use the local clone path below.
 
-**Full local install — one command.** Creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
+**Advanced: full local install (optional).** Most people can stop after the plugin above. Use this only for persistent paper-trade history, the always-on scheduler, or to work on the code. One command creates the venv, installs deps, seeds `backend/.env`, writes `.mcp.json` with absolute paths for your machine, registers the MCP server, and runs a health check. Idempotent (won't clobber existing config):
 
 ```bash
 ./setup.sh                                            # macOS / Linux / WSL / Git-Bash
@@ -171,7 +171,7 @@ Restart Claude, then ask "get my profile" or run `/daily-briefing` to verify liv
 ## Tests
 
 ```bash
-cd backend && PYTHONPATH=. python -m pytest tests/ -q
+pytest                      # from repo root (testpaths configured in pyproject.toml)
 ```
 
 ## Usage
@@ -204,7 +204,7 @@ Skills auto-trigger on intent in Claude. Or invoke directly:
 
 The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/scheduler.py`; they are also invocable on demand. Sample outputs (synthetic data) live under [docs/examples/](docs/examples/).
 
-## MCP tools (103 total - table highlights core 32; full list in `backend/mcp_server.py`)
+## MCP tools (107 total - table highlights core 32; full list in `backend/mcp_server.py`)
 
 | Tool | Returns | Cache |
 |------|---------|-------|
@@ -239,7 +239,7 @@ The five `(scheduler-driven)` skills run on a nightly cadence in `app/jobs/sched
 | `get_crowding_shifts` | Detect symbols with crowding score shifts | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + full JSONL | live |
 | `get_options_chain` | Options chain with Black-Scholes Greeks | 15m |
-| `list_analysis_modes` | Filesystem-driven list of all 27 skills + their MCP tools | static |
+| `list_analysis_modes` | Filesystem-driven list of all 28 skills + their MCP tools | static |
 
 ## Project layout
 
@@ -253,9 +253,9 @@ aifolimizer/
 │       ├── cache/       # Redis client
 │       ├── jobs/        # Scheduler + task queue (RQ)
 │       ├── models/      # Pydantic models
-│       └── services/    # 50+ service modules
+│       └── services/    # 75+ service modules
 ├── .claude/
-│   ├── skills/          # 27 analysis skills
+│   ├── skills/          # 28 analysis skills
 │   ├── context/         # architecture.md, changes.md, lessons.md, STATE.md
 │   └── agents/
 ├── docs/                # FAQ + sample skill outputs
@@ -307,7 +307,7 @@ Data persisted in `.data/` (gitignored). Secrets in `.secrets/pg_password.txt`.
 
 ## Contributing
 
-Issues and PRs welcome. Counts of MCP tools (103) and skills (27) cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` - runs in CI after lint, fails the build if a doc claim drifts. Run locally before editing those numbers. `TRACK_RECORD.md` is auto-generated by the `generate_trust_report` MCP tool - refresh by calling the tool rather than editing by hand.
+Issues and PRs welcome. Counts of MCP tools (107) and skills (28) cited in CLAUDE.md / README.md / AGENTS.md / architecture.md are guarded by `python backend/scripts/check_doc_counts.py` - runs in CI after lint, fails the build if a doc claim drifts. Run locally before editing those numbers. `TRACK_RECORD.md` is auto-generated by the `generate_trust_report` MCP tool - refresh by calling the tool rather than editing by hand.
 
 ## Troubleshooting
 

@@ -132,7 +132,7 @@ def _fetch_one(symbol: str) -> dict:
 
 
 def get_fundamentals(symbols: list[str]) -> dict[str, dict]:
-    """Parallel-fetch uncached symbols. yfinance.info is HTTP-bound — threads
+    """Parallel-fetch uncached symbols. yfinance.info is HTTP-bound - threads
     overlap network latency. Cached symbols return instantly.
     """
     now = time.time()
@@ -158,7 +158,7 @@ def get_fundamentals(symbols: list[str]) -> dict[str, dict]:
 
 
 _HISTORY_CACHE: dict[str, tuple[list, float]] = {}
-_HISTORY_TTL = 12 * 3600  # 12h — reported quarters don't change
+_HISTORY_TTL = 12 * 3600  # 12h - reported quarters don't change
 
 
 def _fetch_earnings_history_one(symbol: str, quarters: int) -> list[dict]:
@@ -223,7 +223,7 @@ def get_earnings_history(symbols: list[str], quarters: int = 4) -> dict[str, lis
 
 
 _EM_CACHE: dict[str, tuple[dict, float]] = {}
-_EM_TTL = 7200  # 2h — options prices change but not rapidly
+_EM_TTL = 7200  # 2h - options prices change but not rapidly
 
 
 def _fetch_expected_move(symbol: str, earnings_date_str: str | None, current_price: float | None) -> dict:
@@ -281,7 +281,7 @@ def _fetch_expected_move(symbol: str, earnings_date_str: str | None, current_pri
         return {}
 
 
-_INSIDER_TTL = 6 * 3600  # 6h — insider filings update infrequently
+_INSIDER_TTL = 6 * 3600  # 6h - insider filings update infrequently
 _insider_cache: dict[str, tuple[dict, float]] = {}
 
 

@@ -1,6 +1,6 @@
 ---
 name: health-check
-description: Self-diagnostic for the aifolimizer harness wiring. Use when something is silently broken or before relying on the system — "is everything working?", "health check", "why is the MCP not responding?", "check my setup", "diagnose aifolimizer". Audits MCP server, services, WS token freshness, hooks. Catches stale-token / unregistered-MCP / broken-hook silent failures.
+description: Self-diagnostic for the aifolimizer harness wiring. Use when something is silently broken or before relying on the system - "is everything working?", "health check", "why is the MCP not responding?", "check my setup", "diagnose aifolimizer". Audits MCP server, services, WS token freshness, hooks. Catches stale-token / unregistered-MCP / broken-hook silent failures.
 ---
 
 # Health Check (Harness Self-Diagnostic)
@@ -13,19 +13,19 @@ hooks. Output is a PASS/WARN/FAIL report with the one thing to fix.
 
 ## How to run
 
-**Step 1 — Run the deterministic diagnostic:**
+**Step 1 - Run the deterministic diagnostic:**
 ```
 backend/.venv/Scripts/python.exe backend/scripts/health_check.py
 ```
 Reports: python version, mcp_server import + tool count, core service imports,
 WS session token freshness (vs WS_TOKEN_TTL_HOURS), settings.json hook events.
 
-**Step 2 — Live data-source check (only if Step 1 PASS):**
-- `mcp__aifolimizer__get_data_source_reliability` — per-source success rate +
+**Step 2 - Live data-source check (only if Step 1 PASS):**
+- `mcp__aifolimizer__get_data_source_reliability` - per-source success rate +
   latency over the trailing window. Flags providers degrading (yfinance / FRED /
   CoinGecko / SEC).
 
-**Step 3 — Optional backend reachability:**
+**Step 3 - Optional backend reachability:**
 - `curl -s http://127.0.0.1:8000/health` if the FastAPI backend is expected up.
 
 ## Interpreting results

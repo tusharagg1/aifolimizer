@@ -8,7 +8,7 @@ retry exactly once. Anything beyond that bubbles up so the breaker can
 take over.
 
 This module replaces ad-hoc `httpx.get(...)` calls scattered through
-adapters / Telegram / Sentry. Existing callers can migrate gradually —
+adapters / Telegram / Sentry. Existing callers can migrate gradually -
 unwrapped callers still work, they just get the previous behaviour.
 
 Why one retry only:

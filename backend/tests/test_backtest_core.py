@@ -1,7 +1,7 @@
 """Locks backtest_core metric formulas (extracted from backtest + skill_backtest).
 
 If these change, a published Sharpe/Sortino/drawdown/CAGR in track records or
-trust reports changes too — so the formulas are pinned here.
+trust reports changes too - so the formulas are pinned here.
 """
 
 import math

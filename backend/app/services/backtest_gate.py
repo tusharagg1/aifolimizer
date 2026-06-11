@@ -36,7 +36,7 @@ _BACKTEST_DIR = Path(__file__).resolve().parents[2] / ".cache" / "backtests"
 _AUDIT_FILE = Path(__file__).resolve().parents[2] / ".cache" / "backtest_gate_audit.jsonl"
 
 # DSR < this over `lookback_runs` walk-forward runs trips the gate. 0.5 is the
-# Bailey/Lopez threshold for "weak evidence — borderline, could be noise".
+# Bailey/Lopez threshold for "weak evidence - borderline, could be noise".
 DEFAULT_DSR_THRESHOLD = 0.5
 DEFAULT_LOOKBACK_RUNS = 2
 
@@ -87,7 +87,7 @@ def enforce_dsr_gate(
 ) -> dict[str, Any]:
     """Read recent walk-forward runs, mute skills below threshold.
 
-    Skill must appear in at least `lookback_runs` runs to be considered —
+    Skill must appear in at least `lookback_runs` runs to be considered -
     a one-off bad run shouldn't trip the gate.
     """
     runs = _load_recent_runs(lookback_runs)
@@ -102,7 +102,7 @@ def enforce_dsr_gate(
         inspected.append({"skill": skill, "median_dsr": med, "n": len(scores)})
         if med >= threshold:
             continue
-        # Skip if user already disabled the skill — nothing to do.
+        # Skip if user already disabled the skill - nothing to do.
         try:
             current = agent_registry.runtime_state(skill).get("enabled", True)
         except Exception:

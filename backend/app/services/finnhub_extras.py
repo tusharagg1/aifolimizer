@@ -4,10 +4,10 @@ Extends the existing Finnhub price/fundamentals adapter with the free-tier
 endpoints not surfaced elsewhere:
   - company news + crude bull/bear headline tally (/company-news)
   - insider sentiment MSPR trend (/stock/insider-sentiment)
-  - economic calendar (/calendar/economic) — PREMIUM on most plans; the tool
+  - economic calendar (/calendar/economic) - PREMIUM on most plans; the tool
     degrades gracefully to {"error": "premium_endpoint"} on 401/403.
 
-All public market data — no PII.
+All public market data - no PII.
 """
 
 from __future__ import annotations
@@ -211,7 +211,7 @@ def finnhub_economic_calendar() -> dict[str, Any]:
     except _Premium:
         return {
             "error": "premium_endpoint",
-            "note": "Finnhub economic calendar requires a paid plan.",
+            "note": "Finnhub economic calendar is unavailable; use get_boc_snapshot / get_statcan_snapshot.",
             "data_source": "finnhub",
         }
     except Exception as e:

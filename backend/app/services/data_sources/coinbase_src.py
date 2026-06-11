@@ -1,4 +1,4 @@
-"""Coinbase Exchange (Advanced Trade) public REST adapter — crypto, free, no key.
+"""Coinbase Exchange (Advanced Trade) public REST adapter - crypto, free, no key.
 
 Endpoints:
   https://api.exchange.coinbase.com/products/BTC-USD/ticker     # quote (last price)

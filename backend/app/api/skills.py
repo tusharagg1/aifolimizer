@@ -52,7 +52,7 @@ async def refresh_snapshots(
     """Force an immediate tick for this tenant. Optional `skill` runs one only."""
     tenant = _tenant_from(request)
     if not tenant:
-        raise HTTPException(401, "no session — log in first")
+        raise HTTPException(401, "no session - log in first")
     if skill:
         if skill not in skill_runner.SKILL_RUNNERS:
             raise HTTPException(400, f"unknown or LLM-only skill: {skill}")

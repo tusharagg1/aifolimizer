@@ -23,7 +23,7 @@ def run_skill_tick_for_tenant(sid: str) -> dict:
     """Execute one scheduler tick for a single tenant.
 
     Wraps scheduler._run_for_session (which already persists snapshots +
-    skill evidence to Postgres). Safe to retry — repo inserts are
+    skill evidence to Postgres). Safe to retry - repo inserts are
     idempotent on (tenant_hash, symbol, ts).
     """
     try:
@@ -73,7 +73,7 @@ def run_alerts_for_tenant(sid: str) -> dict:
         raise
 
 
-# Phase 5/9/11/12/13 placeholders — keep import-safe so worker doesn't
+# Phase 5/9/11/12/13 placeholders - keep import-safe so worker doesn't
 # crash before those phases ship. Each replaced with real impl in its
 # phase.
 
@@ -168,7 +168,7 @@ def run_llm_skills_for_tenant(sid: str) -> dict:
     """Phase 7: nightly LLM skills (adversarial / earnings-postmortem /
     stock-compare) for top-N holdings of the given session.
 
-    Soft contributor — skipped silently if no LLM providers available.
+    Soft contributor - skipped silently if no LLM providers available.
     """
     try:
         from app.db import init_pool, close_pool

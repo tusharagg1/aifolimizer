@@ -1,4 +1,4 @@
-"""Signal history — feature-vector logger + forward-horizon scorer + accuracy report.
+"""Signal history - feature-vector logger + forward-horizon scorer + accuracy report.
 
 Primary KPI: buy/sell signal accuracy. This module turns the recommendation
 engine into a measurable prediction problem so thresholds and sub-score
@@ -6,16 +6,16 @@ weights can later be calibrated against realized outcomes.
 
 Three concerns:
 
-1. log_signal()   — append a full feature snapshot for every recommendation
+1. log_signal()   - append a full feature snapshot for every recommendation
                     produced by recommendations._score_position. Captures
                     sub-scores, indicators, action, entry price and source.
 
-2. score_horizons() — for every open signal whose H-day window has elapsed,
+2. score_horizons() - for every open signal whose H-day window has elapsed,
                     fetch historical bars via data_router and compute the
                     realized forward return at +5d / +21d. Writes back to
                     the same JSONL (in-place rewrite) with horizon columns.
 
-3. accuracy_report() — classification metrics per action class
+3. accuracy_report() - classification metrics per action class
                     (precision/recall/F1), calibration table (score bucket →
                     realized win rate), and per-feature lift. Drives
                     threshold and weight calibration.
@@ -79,7 +79,7 @@ def log_signal(rec: dict, *, source: str = "recommendations") -> dict:
 
     `rec` is the dict returned by recommendations._score_position. Only the
     fields needed for accuracy auditing are persisted. Idempotency is per
-    (date, source, symbol, action) — duplicate same-day signals are skipped.
+    (date, source, symbol, action) - duplicate same-day signals are skipped.
     """
     symbol = (rec.get("symbol") or "").upper()
     action = (rec.get("action") or "").upper()
@@ -104,7 +104,7 @@ def log_signal(rec: dict, *, source: str = "recommendations") -> dict:
         "confidence": rec.get("confidence"),
         "evidence_tier": rec.get("evidence_tier"),
         "entry_price": rec.get("current_price"),
-        # Feature vector — what the model "saw" at decision time
+        # Feature vector - what the model "saw" at decision time
         "features": {
             "tech_score": rec.get("tech_score"),
             "fund_score": rec.get("fund_score"),
@@ -121,7 +121,7 @@ def log_signal(rec: dict, *, source: str = "recommendations") -> dict:
             "win_prob": rec.get("win_prob"),
             "earnings_risk": rec.get("earnings_risk"),
         },
-        # Outcome columns — filled by score_horizons()
+        # Outcome columns - filled by score_horizons()
         "outcomes": {},  # {"h5": {"ret_pct":..., "win":..., "scored_at":...}, ...}
     }
 
@@ -254,7 +254,7 @@ def accuracy_report(
     """
     rows = rows if rows is not None else _load_history()
     if not rows:
-        return {"error": "no signal history — log signals first"}
+        return {"error": "no signal history - log signals first"}
 
     key = f"h{horizon}"
     scored = [
@@ -264,7 +264,7 @@ def accuracy_report(
         return {
             "horizon": horizon,
             "n": 0,
-            "error": f"no scored signals at h{horizon} — run score_horizons first",
+            "error": f"no scored signals at h{horizon} - run score_horizons first",
         }
 
     # By action
@@ -397,7 +397,7 @@ def _classify_subset(rows: list[dict], horizon: int) -> dict:
     avg_loss = mean(losses) if losses else 0.0  # negative or zero
     avg_ret = mean(rets)
     expectancy = win_rate * avg_win + (1 - win_rate) * avg_loss
-    # NOTE: precision/recall/F1 were dropped — by construction of this subset
+    # NOTE: precision/recall/F1 were dropped - by construction of this subset
     # (every row is a "predicted positive") they all collapsed to win_rate
     # and reported a meaningless `f1 == win_rate`. Use win_rate + expectancy
     # for accuracy framing; reach for binary-contrast metrics only when the
@@ -485,7 +485,7 @@ def signal_decay_curve(
 
     For each horizon h in horizons, computes mean ret_pct, win_rate, n.
     The horizon with the highest mean return is the empirical "best" hold
-    duration for this signal type — anything held longer is decay.
+    duration for this signal type - anything held longer is decay.
 
     action_filter: restrict to one action (BUY / SELL / ADD / TRIM). When
     None, pools all directional actions (long-side returns + flipped
@@ -520,7 +520,7 @@ def signal_decay_curve(
             "win_rate_pct": round(wins / len(rets) * 100, 1),
         }
 
-    # Peak holding period — horizon with highest avg_ret_pct
+    # Peak holding period - horizon with highest avg_ret_pct
     valid = {k: v for k, v in curve.items() if "avg_ret_pct" in v}
     peak = max(valid.items(), key=lambda kv: kv[1]["avg_ret_pct"]) if valid else None
 
@@ -686,13 +686,13 @@ def calibrate_confidence(
         monotone = all(rates[i] >= rates[i + 1] for i in range(len(rates) - 1))
         if monotone and (rates[0] - rates[-1]) >= 10:
             verdict = "calibrated"
-            suggested = "confidence labels are meaningful — keep current thresholds"
+            suggested = "confidence labels are meaningful - keep current thresholds"
         elif monotone:
             verdict = "weakly_calibrated"
-            suggested = "ordering correct but spread <10pp — tighten HIGH threshold"
+            suggested = "ordering correct but spread <10pp - tighten HIGH threshold"
         else:
             verdict = "uncalibrated"
-            suggested = "HIGH does not outperform MEDIUM/LOW — re-weight sub-scores or retire the confidence label"
+            suggested = "HIGH does not outperform MEDIUM/LOW - re-weight sub-scores or retire the confidence label"
 
     return {
         "horizon": horizon,

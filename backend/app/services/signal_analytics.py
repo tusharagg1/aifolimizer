@@ -3,7 +3,7 @@
 Reads realized outcomes from the Postgres signal_history table (the single
 source of truth once the JSONL scorer was ported) and reuses the exact pure
 math in signal_history by feeding it rows in the legacy JSONL shape. Only the
-data source changes — accuracy / decay / attribution / calibration logic is
+data source changes - accuracy / decay / attribution / calibration logic is
 identical.
 
 Each function returns the same dict shape as its signal_history counterpart.
@@ -64,9 +64,7 @@ async def signal_decay_curve(
     action_filter: str | None = None,
     min_count: int = 5,
 ) -> dict:
-    return _sh.signal_decay_curve(
-        horizons, action_filter=action_filter, min_count=min_count, rows=await _legacy_rows()
-    )
+    return _sh.signal_decay_curve(horizons, action_filter=action_filter, min_count=min_count, rows=await _legacy_rows())
 
 
 async def per_signal_source_attribution(horizon: int = 21, *, min_count: int = 5) -> dict:
@@ -74,9 +72,7 @@ async def per_signal_source_attribution(horizon: int = 21, *, min_count: int = 5
 
 
 async def calibrate_confidence(horizon: int = 21, *, min_count_per_bucket: int = 5) -> dict:
-    return _sh.calibrate_confidence(
-        horizon, min_count_per_bucket=min_count_per_bucket, rows=await _legacy_rows()
-    )
+    return _sh.calibrate_confidence(horizon, min_count_per_bucket=min_count_per_bucket, rows=await _legacy_rows())
 
 
 async def calibrate_thresholds(horizon: int = 21, *, min_count: int = 10) -> dict:

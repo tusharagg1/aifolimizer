@@ -1,4 +1,4 @@
-"""Kraken public REST adapter — crypto spot, free, no API key.
+"""Kraken public REST adapter - crypto spot, free, no API key.
 
 Endpoints:
   https://api.kraken.com/0/public/Ticker?pair=XBTUSD            # quote
@@ -7,7 +7,7 @@ Endpoints:
 Public market-data endpoints need no key and no account; throttle to
 ~1 req/s per IP. Kraken renames assets (BTC->XBT, DOGE->XDG) and returns
 data under its OWN canonical pair key, so we request exactly one pair and
-read the single result entry — a wrong/unknown pair yields an `error` or an
+read the single result entry - a wrong/unknown pair yields an `error` or an
 empty result, which we surface as SourceUnavailable (anti-mixup guard).
 
 USD-denominated; caller converts to CAD via the FX adapter. Unlike Binance

@@ -5,7 +5,7 @@
 
   Sequence:
     1. Probe the cached WS session directly via the backend service layer
-       (app.services.wealthsimple.restore_session) — no :8000 server needed.
+       (app.services.wealthsimple.restore_session) - no :8000 server needed.
     2. If the session is still valid, report ready and exit.
     3. If expired/missing, run mcp_login.py interactively so you can enter
        the 6-digit MFA code. The refreshed token is cached to
@@ -13,7 +13,7 @@
 
 .NOTES
   Pin a desktop shortcut to this script. No arguments. This is the ONLY
-  step needed to recover from a forced-MFA / expired-session state — the
+  step needed to recover from a forced-MFA / expired-session state - the
   MCP server (spawned on demand by Claude) picks up the new token
   automatically. There is no long-running FastAPI backend in this model.
 #>
@@ -53,13 +53,13 @@ Write-Host '=============================='
 
 if (Test-Session) {
     Write-Host 'WS session: OK (no MFA needed).' -ForegroundColor Green
-    Write-Log 'session healthy — ready'
+    Write-Log 'session healthy - ready'
     exit 0
 }
 
 Write-Host 'WS session: expired/missing. Starting interactive MFA login...' -ForegroundColor Yellow
 Write-Host '(Enter your 6-digit code from email or authenticator when prompted.)'
-Write-Log 'session expired — launching mcp_login.py'
+Write-Log 'session expired - launching mcp_login.py'
 
 Push-Location $Backend
 try {
@@ -77,7 +77,7 @@ if ($code -ne 0) {
 
 if (Test-Session) {
     Write-Host 'WS session: refreshed. Skills ready.' -ForegroundColor Green
-    Write-Log 'session refreshed via login — ready'
+    Write-Log 'session refreshed via login - ready'
     exit 0
 }
 

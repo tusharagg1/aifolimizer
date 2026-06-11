@@ -20,8 +20,8 @@ def test_us_exchanges_strip_to_bare():
 
 def test_dual_listed_disambiguation():
     # the prefix is the only thing distinguishing AT&T from Telus
-    assert _qualify_symbol("NYSE:T") == "T"      # AT&T
-    assert _qualify_symbol("TSX:T") == "T.TO"    # Telus
+    assert _qualify_symbol("NYSE:T") == "T"  # AT&T
+    assert _qualify_symbol("TSX:T") == "T.TO"  # Telus
 
 
 def test_bare_symbol_unchanged():

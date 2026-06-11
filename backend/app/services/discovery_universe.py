@@ -2,7 +2,7 @@
 
 Static lists for S&P 500 + TSX 60 + ETF sector layer. Refreshed
 quarterly by hand (or via backend/scripts/build_universe.py when written).
-Lists below are the highest-weight constituents per index — enough surface
+Lists below are the highest-weight constituents per index - enough surface
 area for nightly discovery scans without needing a live index pull.
 
 Keep this list short. Free yfinance can handle 200-300 names in batch

@@ -1,4 +1,4 @@
-"""EODHD adapter — strong Canadian/TSX coverage, key required.
+"""EODHD adapter - strong Canadian/TSX coverage, key required.
 
 Free tier: 20 calls/day (limited but valuable for TSX where most other
 free providers are weak). Paid plans unlock 100k+/day.

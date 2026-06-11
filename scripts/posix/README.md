@@ -17,7 +17,7 @@ First make the runner executable:
 chmod +x scripts/run-claude-skill.sh
 ```
 
-## macOS — launchd
+## macOS - launchd
 
 ```bash
 sed "s|__REPO__|$PWD|g; s|__HOME__|$HOME|g" \
@@ -27,7 +27,7 @@ launchctl load ~/Library/LaunchAgents/com.aifolimizer.daily-briefing.plist
 launchctl start com.aifolimizer.daily-briefing   # test now
 ```
 
-## Linux — systemd (user)
+## Linux - systemd (user)
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -40,7 +40,7 @@ systemctl --user enable --now aifolimizer-daily-briefing.timer
 systemctl --user start aifolimizer-daily-briefing.service   # test now
 ```
 
-## Either OS — cron one-liner
+## Either OS - cron one-liner
 
 ```cron
 0 7 * * 1-5 /path/to/aifolimizer/scripts/run-claude-skill.sh daily-briefing

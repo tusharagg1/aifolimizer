@@ -1,4 +1,4 @@
-"""User-defined watchlist — persisted to backend/watchlist.json.
+"""User-defined watchlist - persisted to backend/watchlist.json.
 
 Watchlist items are analyzed using the same multi-signal engine as portfolio
 positions but with no held size (weight=0, cost=N/A).
@@ -33,7 +33,7 @@ _LEGACY_PATH = Path(__file__).parent.parent.parent / "watchlist.json"
 def _migrate_legacy() -> None:
     """One-time copy from repo-adjacent watchlist.json to ~/.aifolimizer/.
 
-    Idempotent — runs only when the new path is missing and the legacy file
+    Idempotent - runs only when the new path is missing and the legacy file
     exists. Leaves the legacy file in place; user can delete manually.
     """
     if _WATCHLIST_PATH.exists() or not _LEGACY_PATH.exists():
@@ -48,10 +48,10 @@ def _migrate_legacy() -> None:
         _LOG.warning(f"[watchlist] migration failed: {e}")
 
 
-# Per-symbol rec cache — adding 1 symbol only re-scores that symbol.
+# Per-symbol rec cache - adding 1 symbol only re-scores that symbol.
 _PER_SYM_CACHE: dict[str, tuple[dict, float]] = {}
 _PER_SYM_TTL = 1800
-# Cache shared market_breadth (macro) — same for every symbol
+# Cache shared market_breadth (macro) - same for every symbol
 _MACRO_CACHE: tuple[dict, float] | None = None
 _MACRO_TTL = 3600
 
@@ -212,7 +212,7 @@ def get_watchlist_recommendations() -> list[dict]:
                 ): sym
                 for sym in stale_syms
             }
-            # Per-future timeout — one slow yfinance call can't block others.
+            # Per-future timeout - one slow yfinance call can't block others.
             wait_s = _PER_FETCH_TIMEOUT_S + _SENT_TIMEOUT_S
             for f in concurrent.futures.as_completed(futures, timeout=None):
                 sym = futures[f]

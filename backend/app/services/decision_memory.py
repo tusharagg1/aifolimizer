@@ -1,11 +1,11 @@
 """Per-ticker trade decision log with outcome tracking and reflection injection.
 
 Adapted from TradingAgents (TauricResearch) memory log pattern:
-  Phase A — store decision at time of recommendation
-  Phase B — resolve outcome N days later (hit target / hit stop / still open)
-  Phase C — surface lessons for same-ticker and cross-ticker context injection
+  Phase A - store decision at time of recommendation
+  Phase B - resolve outcome N days later (hit target / hit stop / still open)
+  Phase C - surface lessons for same-ticker and cross-ticker context injection
 
-Stored as JSONL at ~/.aifolimizer/decisions.jsonl — no database required.
+Stored as JSONL at ~/.aifolimizer/decisions.jsonl - no database required.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _load_all() -> list[dict]:
 
 
 def _save_all(records: list[dict]) -> None:
-    """Full rewrite — used only when records are mutated in place
+    """Full rewrite - used only when records are mutated in place
     (resolve_outcomes). For log_decision use _append_one.
     """
     _DECISIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +64,7 @@ def log_decision(
     thesis_summary: str,
     skill_used: str = "",
 ) -> dict:
-    """Phase A — record a new trade decision.
+    """Phase A - record a new trade decision.
 
     conviction: Strong Buy | Buy | Neutral | Sell | Strong Sell
     skill_used: which skill produced this (adversarial-research, cash-deployment, etc.)
@@ -90,7 +90,7 @@ def log_decision(
 
 
 def resolve_outcomes(price_map: dict[str, float], days_expiry: int = 90) -> dict:
-    """Phase B — mark-to-market open decisions using current prices.
+    """Phase B - mark-to-market open decisions using current prices.
 
     price_map: {TICKER: current_price}
     Decisions older than days_expiry with no target/stop hit are marked 'expired'.
@@ -154,7 +154,7 @@ def get_open_decisions() -> list[dict]:
 
 
 def get_ticker_history(ticker: str, max_decisions: int = 5) -> list[dict]:
-    """Phase C — last N decisions for a ticker, newest first.
+    """Phase C - last N decisions for a ticker, newest first.
 
     Returns condensed records suitable for injecting into skill prompts.
     """
@@ -182,9 +182,9 @@ def get_ticker_history(ticker: str, max_decisions: int = 5) -> list[dict]:
 
 
 def get_cross_ticker_lessons(max_lessons: int = 3) -> list[dict]:
-    """Phase C — top resolved decisions across all tickers for cross-ticker lesson injection.
+    """Phase C - top resolved decisions across all tickers for cross-ticker lesson injection.
 
-    Prioritises: target_hit (wins) and stop_hit (losses) — excludes open/expired.
+    Prioritises: target_hit (wins) and stop_hit (losses) - excludes open/expired.
     Returns newest-first, capped at max_lessons each for wins and losses.
     """
     records = _load_all()

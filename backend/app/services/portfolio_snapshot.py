@@ -2,7 +2,7 @@
 
 Single source of truth for the namespaces/keys that mcp_server writes on every
 live portfolio fetch. Background scripts (run_alerts, run_maintenance) read the
-snapshot through here INSTEAD of making their own Wealthsimple round-trip — a
+snapshot through here INSTEAD of making their own Wealthsimple round-trip - a
 bg WS call rotates the shared single-use refresh token and races interactive
 sessions into forced MFA. Reading the snapshot touches no WS token.
 """

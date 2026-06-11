@@ -1,6 +1,6 @@
 """Intraday technical indicators on 5-minute bars.
 
-Separate module from technicals.py — different bar interval, different cache
+Separate module from technicals.py - different bar interval, different cache
 TTL, and a strictly intraday indicator set (VWAP, opening range, RSI(2)
 Connors-style, ATR for stops, volume spike vs 20-bar avg).
 
@@ -9,7 +9,7 @@ Use cases:
 - daily-briefing intraday addendum
 - catalyst-day momentum scans
 
-NOT for swing/position — those stay on daily bars (technicals.py).
+NOT for swing/position - those stay on daily bars (technicals.py).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from app.security import get_logger
 _LOG = get_logger("aifolimizer.services.technicals_intraday")
 
 _cache: dict[str, tuple[dict, float]] = {}
-_CACHE_TTL = 60  # 1 minute — intraday bars stale fast
+_CACHE_TTL = 60  # 1 minute - intraday bars stale fast
 
 # Regular-hours start in US/Eastern for opening-range calc (first 30 min = 9:30-10:00)
 _RTH_OPEN = dtime(9, 30)
@@ -105,7 +105,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
 
         today = _today_session(df)
         if today.empty or len(today) < 3:
-            # Pre-market or first bar — fall back to full df for indicators
+            # Pre-market or first bar - fall back to full df for indicators
             today = df.tail(78)  # ~1 day of 5-min bars in RTH
 
         close = today["Close"].squeeze()
@@ -115,7 +115,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
 
         current_price = _safe(close)
 
-        # VWAP — institutional magnet
+        # VWAP - institutional magnet
         vwap_val = _vwap(today)
         vwap_dist_pct = round((current_price - vwap_val) / vwap_val * 100, 3) if current_price and vwap_val else None
 
@@ -130,7 +130,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             else:
                 or_break = "inside"
 
-        # RSI(2) — Connors short-term mean-reversion
+        # RSI(2) - Connors short-term mean-reversion
         rsi2 = ta.momentum.RSIIndicator(close, window=2).rsi() if len(close) >= 3 else None
         rsi2_val = _safe(rsi2)
         rsi2_signal = (
@@ -145,11 +145,11 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
             else None
         )
 
-        # RSI(14) on 5-min — context
+        # RSI(14) on 5-min - context
         rsi14 = ta.momentum.RSIIndicator(close, window=14).rsi() if len(close) >= 15 else None
         rsi14_val = _safe(rsi14)
 
-        # ATR(14) on 5-min — intraday stop sizing
+        # ATR(14) on 5-min - intraday stop sizing
         atr_series = (
             ta.volatility.AverageTrueRange(high, low, close, window=14).average_true_range()
             if len(close) >= 15
@@ -158,7 +158,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         atr_val = _safe(atr_series)
         atr_pct = round(atr_val / current_price * 100, 4) if atr_val and current_price else None
 
-        # EMA(9/20) — intraday trend
+        # EMA(9/20) - intraday trend
         ema9 = ta.trend.EMAIndicator(close, window=9).ema_indicator() if len(close) >= 10 else None
         ema20 = ta.trend.EMAIndicator(close, window=20).ema_indicator() if len(close) >= 21 else None
         ema9_val = _safe(ema9)
@@ -167,7 +167,7 @@ def _compute_from_df(df: pd.DataFrame) -> dict:
         if ema9_val and ema20_val:
             ema_trend = "uptrend" if ema9_val > ema20_val else "downtrend"
 
-        # Volume spike — current bar vs 20-bar avg
+        # Volume spike - current bar vs 20-bar avg
         vol_sma = volume.rolling(20).mean() if len(volume) >= 20 else None
         vol_avg = _safe(vol_sma)
         cur_vol = float(volume.iloc[-1]) if not volume.empty else None
@@ -280,7 +280,7 @@ def _slice_symbol(data, symbol: str) -> pd.DataFrame | None:
 def get_technicals_intraday(symbols: list[str]) -> dict[str, dict]:
     """Fetch 5-min bar indicators for symbols.
 
-    Yahoo intraday is free, 60-day window for 5m bars. Cached 60s — bars stale fast.
+    Yahoo intraday is free, 60-day window for 5m bars. Cached 60s - bars stale fast.
     """
     now = time.time()
     out: dict[str, dict] = {}

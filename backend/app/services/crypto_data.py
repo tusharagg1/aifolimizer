@@ -27,7 +27,7 @@ _SYMBOL_MAP: dict[str, str] = {
 }
 
 _cache: dict[str, tuple[dict, float]] = {}
-_CACHE_TTL = 300  # 5 minutes — crypto prices move fast
+_CACHE_TTL = 300  # 5 minutes - crypto prices move fast
 
 
 def get_crypto_data(symbols: list[str]) -> dict[str, dict]:

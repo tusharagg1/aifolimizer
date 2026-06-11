@@ -1,5 +1,5 @@
 {
-  "_INSTRUCTIONS": "Fill any subset of these fields and submit via /profile-setup or pass to set_personal_context_bulk. ALL FIELDS OPTIONAL. Leave a field as null (or omit it) to skip. Never put real names, emails, account numbers, or counterparty identities here — use anonymized labels.",
+  "_INSTRUCTIONS": "Fill any subset of these fields and submit via /profile-setup or pass to set_personal_context_bulk. ALL FIELDS OPTIONAL. Leave a field as null (or omit it) to skip. Never put real names, emails, account numbers, or counterparty identities here - use anonymized labels.",
 
   "age": null,
   "province": null,

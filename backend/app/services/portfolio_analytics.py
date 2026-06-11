@@ -1,6 +1,6 @@
 """Portfolio-level analytics: x-ray exposures, tax-loss candidates, sector/asset concentration.
 
-Adapted from ai-portfolio-analyzer/analytics.py — uses our Position/PortfolioResponse models.
+Adapted from ai-portfolio-analyzer/analytics.py - uses our Position/PortfolioResponse models.
 """
 
 from __future__ import annotations

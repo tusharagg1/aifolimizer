@@ -1,7 +1,7 @@
 """Portfolio benchmark comparison service.
 
 Computes portfolio weighted total return vs. XEQT.TO, SPY, QQQ, ^GSPTSE
-for multiple periods. No API key required — yfinance only.
+for multiple periods. No API key required - yfinance only.
 """
 
 from __future__ import annotations

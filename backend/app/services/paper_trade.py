@@ -1,11 +1,11 @@
 """Forward paper-trade logger and scorer.
 
 Two concerns:
-1. Log — append every skill recommendation to recommendations.jsonl with a
+1. Log - append every skill recommendation to recommendations.jsonl with a
    full signal contract: horizon, thesis, invalidation, expected upside/
    downside, confidence source, benchmark prices at entry, model version,
    and the raw feature snapshot used to produce the call.
-2. Score — mark-to-market every open recommendation daily, compute alpha
+2. Score - mark-to-market every open recommendation daily, compute alpha
    vs SPY / QQQ / XEQT.TO (and optional sector ETF), and bucket results by
    action and conviction so a real signal scorecard becomes possible.
 
@@ -298,7 +298,7 @@ def _mirror_closes_to_postgres(closed: list[dict]) -> None:
     Completes the open->closed lifecycle of the PG `recommendations` rows that
     _mirror_to_postgres opened (otherwise they stay status='open' forever and
     PG-backed track-record reads are starved). Same daemon-thread / fresh
-    connection / swallow-errors contract — JSONL stays source of truth.
+    connection / swallow-errors contract - JSONL stays source of truth.
     """
     if not closed:
         return
@@ -324,7 +324,7 @@ def _benchmark_returns(rec: dict, quote_map: dict[str, float] | None = None) -> 
     """Compute current return for each benchmark captured at entry.
 
     If quote_map provided, uses it (batch-prefetched). Otherwise falls back
-    to per-symbol _safe_quote (slow path — kept for callers outside scorer).
+    to per-symbol _safe_quote (slow path - kept for callers outside scorer).
     """
     out: dict[str, float] = {}
     benches = rec.get("benchmarks_entry") or {}
@@ -360,7 +360,7 @@ def score_recommendations(max_age_days: int = 180) -> dict:
     scored: list[dict] = []
     skipped = 0
 
-    # Batch-fetch all quotes (tickers + benchmarks) in one call — replaces
+    # Batch-fetch all quotes (tickers + benchmarks) in one call - replaces
     # N serial data_router.get_quote() calls (~5x faster on N>5 open recs).
     needed_syms: set[str] = set()
     for r in open_recs:
@@ -384,7 +384,7 @@ def score_recommendations(max_age_days: int = 180) -> dict:
         entry = float(rec.get("entry_price") or 0.0)
 
         if action in ("HOLD", "WATCH", "NO_EDGE"):
-            # not actionable — keep in log but no P&L track
+            # not actionable - keep in log but no P&L track
             continue
 
         if entry <= 0:
@@ -471,7 +471,7 @@ def get_track_record(windows: list[int] | None = None) -> dict:
     if windows is None:
         windows = [7, 30, 90, 180]
     if not _SCORED_FILE.exists():
-        return {"error": "no scored_recommendations.jsonl — run score_recommendations first"}
+        return {"error": "no scored_recommendations.jsonl - run score_recommendations first"}
 
     recs = [json.loads(line) for line in _SCORED_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
     now = time.time()

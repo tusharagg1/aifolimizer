@@ -32,7 +32,7 @@ _REGION_FIPS: dict[str, list[str]] = {
 }
 # Note: "CH" appears in both Americas (Chile) and Asia_Pacific (China).
 # In practice GDELT sourcecountry for China is "CH" and Chile is rarely
-# in geopolitical articles — Asia_Pacific match is more likely when ambiguous.
+# in geopolitical articles - Asia_Pacific match is more likely when ambiguous.
 # First region that matches wins.
 
 _REGION_PRIORITY = ["Europe", "Asia_Pacific", "Middle_East", "Americas", "Emerging"]

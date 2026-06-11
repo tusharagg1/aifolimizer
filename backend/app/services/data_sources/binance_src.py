@@ -1,4 +1,4 @@
-"""Binance public spot adapter — crypto, free, no API key.
+"""Binance public spot adapter - crypto, free, no API key.
 
 Endpoints:
   https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT     # quote

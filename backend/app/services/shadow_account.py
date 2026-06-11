@@ -12,7 +12,7 @@ Input format for transactions list:
     "quantity": 10, "date": "2024-01-15T10:30:00"}, ...]
 
 Adapted from Vibe-Trading (HKUDS/Vibe-Trading, MIT License).
-No scikit-learn dependency — numpy-only k-means.
+No scikit-learn dependency - numpy-only k-means.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _fifo_pair(transactions: list[dict]) -> list[dict]:
 
     Earlier impl popped the entire buy lot on the first matching sell, ignoring
     quantity. Scale-in (multiple buys then a single sell) and scale-out (one
-    buy then multiple partial sells) both got mispaired — partial sells
+    buy then multiple partial sells) both got mispaired - partial sells
     consumed whole prior buys and starved later sells of inventory.
 
     Now each buy lot keeps a `remaining_qty`; each sell consumes
@@ -56,7 +56,7 @@ def _fifo_pair(transactions: list[dict]) -> list[dict]:
     roundtrips = []
     for sym, trades in by_symbol.items():
         trades_sorted = sorted(trades, key=lambda x: _parse_date(x["date"]))
-        # buy_queue carries (buy_dict, remaining_qty) — not the raw row,
+        # buy_queue carries (buy_dict, remaining_qty) - not the raw row,
         # because we mutate the qty as sells consume the lot.
         buy_queue: list[tuple[dict, float]] = []
         for t in trades_sorted:
@@ -190,7 +190,7 @@ def _cluster_trades(roundtrips: list[dict], max_k: int = 4) -> list[dict]:
                 "symbols": list({r["symbol"] for r in cluster}),
                 "behavioral_rule": (
                     f"Hold {int(np.median(hold))}d median "
-                    f"(range {min(hold)}–{max(hold)}d); "
+                    f"(range {min(hold)}-{max(hold)}d); "
                     f"enter around hour {int(np.bincount(hours).argmax())}; "
                     f"win-rate {round(sum(1 for r in cluster if r['profitable']) / len(cluster) * 100, 1)}%"
                 ),
@@ -202,7 +202,7 @@ def _cluster_trades(roundtrips: list[dict], max_k: int = 4) -> list[dict]:
 def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
     """Diagnose cognitive trading biases from realized roundtrips.
 
-    Reuses the FIFO-paired data — no extra fetch. Each bias carries its
+    Reuses the FIFO-paired data - no extra fetch. Each bias carries its
     evidence and a flagged bool so a skill can act only on confirmed skew.
     """
     if len(roundtrips) < 4:
@@ -225,7 +225,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
             "median_hold_losers_days": round(loss_hold, 1),
             "loser_to_winner_hold_ratio": round(ratio, 2) if ratio else None,
             "interpretation": (
-                "Holding losers longer than winners — disposition effect "
+                "Holding losers longer than winners - disposition effect "
                 "(cutting winners early, riding losers). Drags returns."
                 if flagged
                 else "No strong disposition skew."
@@ -244,9 +244,9 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
             "avg_loss_pct": round(avg_loss, 2),
             "payoff_ratio": round(payoff, 2) if payoff else None,
             "interpretation": (
-                "Average loss exceeds average gain — letting losers run. Needs >50% win-rate just to break even."
+                "Average loss exceeds average gain - letting losers run. Needs >50% win-rate just to break even."
                 if flagged
-                else "Average gain exceeds average loss — favourable payoff."
+                else "Average gain exceeds average loss - favourable payoff."
             ),
         }
 
@@ -261,7 +261,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
         "roundtrips_per_month": round(per_month, 1),
         "median_holding_days": round(median_hold, 1),
         "interpretation": (
-            "High churn — frequent short-hold roundtrips. Costs and taxes erode edge; tighten entry criteria."
+            "High churn - frequent short-hold roundtrips. Costs and taxes erode edge; tighten entry criteria."
             if flagged
             else "Trade cadence reasonable."
         ),
@@ -283,7 +283,7 @@ def _detect_biases(roundtrips: list[dict]) -> dict[str, Any]:
             "flagged": flagged,
             "entries_near_round_numbers_pct": round(frac * 100, 1),
             "interpretation": (
-                "Over half of entries cluster at round-number prices — anchoring to psychological levels over signal."
+                "Over half of entries cluster at round-number prices - anchoring to psychological levels over signal."
                 if flagged
                 else "Entries not unduly clustered at round numbers."
             ),

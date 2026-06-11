@@ -2,7 +2,7 @@
 
 Stores preferences, insights, and rules as JSON files in ~/.aifolimizer/memory/.
 Keyword scorer (metadata hits 2x body hits) retrieves top-k relevant memories
-each session — no database or external deps required.
+each session - no database or external deps required.
 
 Adapted from Vibe-Trading (HKUDS/Vibe-Trading, MIT License).
 """

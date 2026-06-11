@@ -120,7 +120,7 @@ def lookahead_sentinel(symbol: str, period: str = "2y", tx_cost_bps: float = 5.0
     """Inject a perfect-foresight signal; a correctly-lagged engine can't exploit it.
 
     peek_signal knows tomorrow's direction. The engine shifts signals one bar,
-    so after the shift this becomes "act on yesterday's foresight" — it must NOT
+    so after the shift this becomes "act on yesterday's foresight" - it must NOT
     earn abnormal returns. If peek CAGR dwarfs buy-and-hold, lookahead leaked.
     """
     close = bt._fetch_close(symbol, period)
@@ -142,9 +142,9 @@ def lookahead_sentinel(symbol: str, period: str = "2y", tx_cost_bps: float = 5.0
         "period": period,
         "passed": not leaked,
         "verdict": (
-            "LOOKAHEAD LEAK — foresight signal earned abnormal returns; the backtest engine is peeking at future bars."
+            "LOOKAHEAD LEAK - foresight signal earned abnormal returns; the backtest engine is peeking at future bars."
             if leaked
-            else "PASS — perfect-foresight signal earned no abnormal return; "
+            else "PASS - perfect-foresight signal earned no abnormal return; "
             "signals are correctly lagged, no lookahead detected."
         ),
         "peek_signal_cagr_pct": peek_cagr,

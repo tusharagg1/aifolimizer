@@ -247,7 +247,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             except Exception:
                 _LOG.debug("suppressed exception", exc_info=True)
 
-        # ATR(14) — average true range for volatility/stop sizing
+        # ATR(14) - average true range for volatility/stop sizing
         atr_series = (
             ta.volatility.AverageTrueRange(high_col, low_col, close, window=14).average_true_range()
             if high_col is not None and low_col is not None
@@ -256,7 +256,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
         atr_val = _safe(atr_series)
         atr_pct = round(atr_val / current_price * 100, 3) if atr_val and current_price else None
 
-        # ADX(14) — trend strength; >25 = strong trend
+        # ADX(14) - trend strength; >25 = strong trend
         adx_obj = (
             ta.trend.ADXIndicator(high_col, low_col, close, window=14)
             if high_col is not None and low_col is not None
@@ -269,7 +269,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             else None
         )
 
-        # Stochastic(14,3) — K and D lines
+        # Stochastic(14,3) - K and D lines
         stoch_obj = (
             ta.momentum.StochasticOscillator(high_col, low_col, close, window=14, smooth_window=3)
             if high_col is not None and low_col is not None
@@ -283,7 +283,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
             else None
         )
 
-        # OBV — on-balance volume trend
+        # OBV - on-balance volume trend
         obv_series = ta.volume.OnBalanceVolumeIndicator(close, volume.astype(float)).on_balance_volume()
         obv_val = _safe(obv_series)
         obv_trend: str | None = None
@@ -331,7 +331,7 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
 
         # MAX / lottery-stock reversal (Bali, Cakici & Whitelaw 2011):
         # stocks with an extreme single-day gain in the recent past underperform
-        # (~-1.03%/mo, -1.18% monthly 4-factor alpha). Anti-froth chase guard —
+        # (~-1.03%/mo, -1.18% monthly 4-factor alpha). Anti-froth chase guard -
         # complements the crowding guard. Self-normalize by the name's own daily
         # vol so the flag works for both low-vol ETFs and high-vol single names.
         max_1d_return_21d_pct: float | None = None
@@ -348,12 +348,12 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
         except Exception:
             _LOG.debug("suppressed exception", exc_info=True)
 
-        # OBV pos (already computed above) — wire into score
+        # OBV pos (already computed above) - wire into score
         obv_pos = 1.0 if obv_trend == "rising" else 0.0 if obv_trend == "falling" else 0.5
 
-        # Composite technical score 0-1 — REWEIGHTED 2026-05:
+        # Composite technical score 0-1 - REWEIGHTED 2026-05:
         # Evidence-based: heavier on momentum/RS/volume (Jegadeesh-Titman, Lo-Mamaysky-Wang),
-        # lighter on lagging oscillators (MACD, stoch — Park-Irwin 2007 found marginal edge).
+        # lighter on lagging oscillators (MACD, stoch - Park-Irwin 2007 found marginal edge).
         # minervini(25%) + trend(8%) + RS(12%) + 12-1 mom(10%) + volume(13%) + OBV(7%)
         # + ADX(8%) + RSI(7%) + stoch(2%) + MACD(3%) + crowding-adjacent placeholder(5%)
         mnv = minervini_score / 7
@@ -442,20 +442,20 @@ def _compute_from_df(df: pd.DataFrame, spy_close: pd.Series | None = None) -> di
 
         signal_conflicts: list[str] = []
         if rsi_val is not None and rsi_val > 70 and macd_hist is not None and macd_hist > 0:
-            signal_conflicts.append("RSI extended (overbought) but MACD still rising — potential late entry")
+            signal_conflicts.append("RSI extended (overbought) but MACD still rising - potential late entry")
         if rsi_val is not None and rsi_val < 30 and macd_hist is not None and macd_hist < 0:
-            signal_conflicts.append("RSI oversold but MACD still falling — falling knife risk")
+            signal_conflicts.append("RSI oversold but MACD still falling - falling knife risk")
         if trend == "uptrend" and rs_21d_change_pct is not None and rs_21d_change_pct < -2:
-            signal_conflicts.append("Price uptrend but RS weakening vs SPY — leadership fading")
+            signal_conflicts.append("Price uptrend but RS weakening vs SPY - leadership fading")
         if trend == "downtrend" and mom_12_1_pct is not None and mom_12_1_pct > 15:
-            signal_conflicts.append("12-1mo momentum strong but short-term downtrend — pullback in momentum name")
+            signal_conflicts.append("12-1mo momentum strong but short-term downtrend - pullback in momentum name")
         if obv_trend == "falling" and trend == "uptrend":
-            signal_conflicts.append("Price rising but OBV falling — distribution under price strength")
+            signal_conflicts.append("Price rising but OBV falling - distribution under price strength")
         if minervini_score >= 5 and rs_21d_change_pct is not None and rs_21d_change_pct < -2:
-            signal_conflicts.append("Strong Minervini setup but RS vs SPY deteriorating — relative weakness")
+            signal_conflicts.append("Strong Minervini setup but RS vs SPY deteriorating - relative weakness")
         if lottery_flag:
             signal_conflicts.append(
-                f"Lottery/MAX flag — abnormal {max_1d_return_21d_pct}% single-day spike in last 21d; "
+                f"Lottery/MAX flag - abnormal {max_1d_return_21d_pct}% single-day spike in last 21d; "
                 "Bali-Cakici-Whitelaw: high-MAX names underperform ~1%/mo. Chase risk, avoid/trim."
             )
 

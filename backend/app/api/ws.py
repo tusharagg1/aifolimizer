@@ -44,11 +44,11 @@ _LOG = get_logger("aifolimizer.ws")
 router = APIRouter()
 
 # Short-lived cache so concurrent page-load requests share one WS+yfinance fetch.
-# Key: (session_id, account_id) — "" = aggregate; per-tab caching for free.
+# Key: (session_id, account_id) - "" = aggregate; per-tab caching for free.
 # Invalidated after 10s so data stays fresh on manual refresh.
 _PORTFOLIO_CACHE: dict[tuple[str, str], tuple] = {}
 _PORTFOLIO_CACHE_TTL = 10
-# Per-key lock — concurrent callers wait for one fetch, not a race.
+# Per-key lock - concurrent callers wait for one fetch, not a race.
 _PORTFOLIO_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 # Track previous recommendation actions per session to detect signal changes.
@@ -58,7 +58,7 @@ _PREV_REC_ACTIONS: dict[str, dict[str, str]] = {}
 # Per-(symbol, period) price-history cache. PriceChart fires this on every
 # period toggle; without cache every click round-trips yfinance.
 _PRICE_HISTORY_CACHE: dict[tuple[str, str], tuple[dict, float]] = {}
-_PRICE_HISTORY_TTL = 300  # 5 min — matches market_data quote freshness
+_PRICE_HISTORY_TTL = 300  # 5 min - matches market_data quote freshness
 
 
 async def _get_portfolio(
@@ -73,7 +73,7 @@ async def _get_portfolio(
     Wealthsimple GraphQL on every tick.
 
     account_id="" means aggregate across all accounts.
-    Lock dedupes concurrent callers — dashboard fires 6 parallel endpoints.
+    Lock dedupes concurrent callers - dashboard fires 6 parallel endpoints.
     """
     ttl = _PORTFOLIO_CACHE_TTL if max_age_s is None else max_age_s
     key = (session_id, account_id)
@@ -83,7 +83,7 @@ async def _get_portfolio(
 
     lock = _PORTFOLIO_LOCKS.setdefault(key, asyncio.Lock())
     async with lock:
-        # Double-check — another caller may have populated while we waited.
+        # Double-check - another caller may have populated while we waited.
         entry = _PORTFOLIO_CACHE.get(key)
         if entry and (time.time() - entry[1]) < ttl:
             return entry[0]
@@ -142,7 +142,7 @@ class OtpRequest(BaseModel):
 
 @router.post("/login")
 async def login(req: LoginRequest, request: Request, response: Response):
-    # Per-IP + per-email limits — IP bucket blocks spray attacks, email bucket
+    # Per-IP + per-email limits - IP bucket blocks spray attacks, email bucket
     # protects a targeted account even if the attacker rotates IPs.
     enforce_rate_limit(request, "login_ip", max_hits=10, window_seconds=300)
     enforce_rate_limit(request, "login_email", max_hits=5, window_seconds=900, identity_override=req.email.lower())
@@ -207,7 +207,7 @@ async def get_portfolio(
 ):
     session = wealthsimple.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=401, detail="Session expired — please log in again")
+        raise HTTPException(status_code=401, detail="Session expired - please log in again")
     try:
         return await _get_portfolio(session_id, session, account_id)
     except ValueError as e:
@@ -222,7 +222,7 @@ async def debug_pnl(
     session_id: str = Query(...),
     account_id: str = Query("", description="Empty = aggregate"),
 ):
-    """Diagnostic — dumps raw WS inputs and derived totals.
+    """Diagnostic - dumps raw WS inputs and derived totals.
 
     Gated behind WS_DEBUG=1 so production deployments don't expose internal
     pnl breakdowns + per-account NLV by default. Set the env var only when
@@ -297,7 +297,7 @@ async def debug_pnl(
         "notes": [
             "If `unrealized_pnl_cad` looks wrong, WS API is returning a different metric. Compare with WS app totals.",
             "If `usd_cash_balance` > 0, equity_nlv still contains USD cash "
-            + "(only CAD cash subtracted) — minor inflation of book cost.",
+            + "(only CAD cash subtracted) - minor inflation of book cost.",
             "If `pnl_cad` per-account has mixed signs from positions you no "
             + "longer hold, WS history baseline differs from your mental model.",
         ],
@@ -529,7 +529,7 @@ async def alerts_endpoint(session_id: str = Query(...)):
                             "type": "earnings",
                             "severity": "high" if days <= 7 else "warning",
                             "title": f"{sym} earnings {label}",
-                            "detail": f"Earnings on {ed[:10]} — review position",
+                            "detail": f"Earnings on {ed[:10]} - review position",
                         }
                     )
             except Exception:
@@ -599,7 +599,7 @@ async def recommendations_endpoint(session_id: str = Query(...)):
     positions_dicts = [p.model_dump() for p in portfolio.positions]
     recs = await asyncio.to_thread(get_recommendations, positions_dicts)
 
-    # LLM sanity-check SELL signals that lack high confidence — demote noise to WATCH
+    # LLM sanity-check SELL signals that lack high confidence - demote noise to WATCH
     sell_candidates = [r for r in recs if r["action"] == "SELL" and r.get("confidence") != "high"]
     if sell_candidates and active_provider_names():
         verdicts = await asyncio.gather(*[verify_sell_signal(r) for r in sell_candidates])
@@ -607,7 +607,7 @@ async def recommendations_endpoint(session_id: str = Query(...)):
         if demoted:
             recs = [{**r, "action": "WATCH", "llm_demoted": True} if r["symbol"] in demoted else r for r in recs]
 
-    # Detect action changes vs previous run — surface as signal_changes
+    # Detect action changes vs previous run - surface as signal_changes
     prev = _PREV_REC_ACTIONS.get(session_id, {})
     signal_changes = []
     for r in recs:
@@ -713,7 +713,7 @@ async def benchmark_endpoint(session_id: str = Query(...)):
 
 @router.get("/optimize")
 async def optimize_endpoint(session_id: str = Query(...)):
-    """Efficient Frontier optimization — optimal weights vs current weights."""
+    """Efficient Frontier optimization - optimal weights vs current weights."""
     session = wealthsimple.get_session(session_id)
     if not session:
         raise HTTPException(status_code=401, detail="Session expired")
@@ -1298,7 +1298,7 @@ async def portfolio_stream(
             try:
                 await asyncio.wait_for(websocket.receive_text(), timeout=_STREAM_INTERVAL)
             except asyncio.TimeoutError:
-                pass  # normal — no ping received, just send next frame
+                pass  # normal - no ping received, just send next frame
 
     except WebSocketDisconnect:
         _LOG.debug("suppressed exception", exc_info=True)

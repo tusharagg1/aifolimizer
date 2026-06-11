@@ -9,14 +9,14 @@ description: Analyze employer / equity-plan stock (shares held via an employer e
 
 Decide hold / trim-gradual / trim-now / sell on employer or equity-plan stock,
 treating it as a distinct risk bucket. The core question is long-term:
-**single-employer concentration is undiversified human + financial capital** —
+**single-employer concentration is undiversified human + financial capital** -
 salary AND a chunk of net worth ride the same company. Default skepticism
 toward large employer-stock weights; the burden is on KEEPING it, not selling.
 
 ## Why this is its own skill
 
 `get_profile` only sees Wealthsimple accounts. Employer equity plans live
-OUTSIDE WS — the system is blind to them. So this skill MUST ask the user for
+OUTSIDE WS - the system is blind to them. So this skill MUST ask the user for
 the plan data it cannot fetch.
 
 ## Decision Memory Protocol (load first, log after)
@@ -26,7 +26,7 @@ the plan data it cannot fetch.
 
 **After** output, log the verdict: call `mcp__aifolimizer__log_recommendation` (`skill="employer-stock", ticker, action, conviction, rationale, target_pct, stop_pct`).
 
-## Stage 0 — Gather what the system can't see (ASK)
+## Stage 0 - Gather what the system can't see (ASK)
 
 Request from the user (don't guess):
 - Ticker + shares held in the plan, current plan value
@@ -38,15 +38,15 @@ Request from the user (don't guess):
 - Any blackout windows / trading restrictions / sale-after-vest rules
 
 Then pull the public side:
-- `get_profile` + `get_portfolio` — total invested + whether the same ticker is
+- `get_profile` + `get_portfolio` - total invested + whether the same ticker is
   ALSO held in WS (double-counting the bet)
-- `get_fundamentals` (ticker) — yield, payout, growth, beta, analyst target
-- `get_dividend_calendar` (symbols=[ticker]) — ex-div / pay timing for hold-vs-sell
-- `get_dcf_valuation` (US ticker) — intrinsic-value anchor (most US large-caps qualify)
-- `get_positioning_signals` (symbols=[ticker]) — is the Street crowded / contrarian
-- `get_news_headlines` (ticker) — live catalyst check
+- `get_fundamentals` (ticker) - yield, payout, growth, beta, analyst target
+- `get_dividend_calendar` (symbols=[ticker]) - ex-div / pay timing for hold-vs-sell
+- `get_dcf_valuation` (US ticker) - intrinsic-value anchor (most US large-caps qualify)
+- `get_positioning_signals` (symbols=[ticker]) - is the Street crowded / contrarian
+- `get_news_headlines` (ticker) - live catalyst check
 
-## Stage 1 — Concentration math (the heart of it)
+## Stage 1 - Concentration math (the heart of it)
 
 Compute and state explicitly:
 - **Financial concentration** = employer-stock value ÷ (WS portfolio + plan value).
@@ -54,9 +54,9 @@ Compute and state explicitly:
 - **Total exposure** = include salary. If salary + stock both depend on the
   employer, a 10% portfolio weight understates true risk. Name this.
 - **Overlap**: if WS also holds the same ticker or a sector ETF heavy in it,
-  add that — the real bet is larger than the plan line alone.
+  add that - the real bet is larger than the plan line alone.
 
-## Stage 2 — Keep vs cut (the decision)
+## Stage 2 - Keep vs cut (the decision)
 
 Weigh, long-term lens:
 - **Reasons to KEEP (temporarily)**: large embedded gain in a taxable wrapper
@@ -69,15 +69,15 @@ Weigh, long-term lens:
   (a diversified index ETF). "Is this single name a better 10-yr hold than a diversified index?"
   If not, the bar to keep concentrated is high.
 
-## Stage 3 — Execution shape
+## Stage 3 - Execution shape
 
 - **Trim gradually** (default for big embedded gains): sell on a schedule
   (e.g. every vest, or quarterly) to spread tax + average exit, target a
   concentration cap (e.g. ≤ 10%).
-- **Trim now**: if concentration severe AND fundamentals weak — discipline beats
+- **Trim now**: if concentration severe AND fundamentals weak - discipline beats
   tax optimization when the position can halve.
 - **Sell-at-vest policy**: for future RSU vests, recommend auto-sell-on-vest
-  (no new tax cost — already taxed as income at vest) to stop re-concentrating.
+  (no new tax cost - already taxed as income at vest) to stop re-concentrating.
 - Tax note: vest = ordinary income (already taxed); subsequent gain = cap gain.
   ESPP discount is ordinary income; qualifying dispositions change treatment.
   Canadian taxable account: 50% cap-gains inclusion on the post-vest gain.
@@ -96,8 +96,8 @@ What would change the verdict: <triggers>
 
 ## Rules
 
-- Never fabricate plan data — if the user hasn't given shares/cost/vesting, ASK; do not assume.
+- Never fabricate plan data - if the user hasn't given shares/cost/vesting, ASK; do not assume.
 - Concentration is the headline. A great company at 30% of net worth is still a risk problem.
-- Don't let an embedded tax gain alone justify keeping a severe concentration — name the trade-off, let the user decide.
+- Don't let an embedded tax gain alone justify keeping a severe concentration - name the trade-off, let the user decide.
 - Default long-term framing (the user's stated goal). Intraday/swing logic does not apply to plan stock.
 - US ticker → use `get_dcf_valuation`. Non-US → say DCF unavailable, lean on analyst target + multiples.

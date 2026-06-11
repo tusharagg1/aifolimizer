@@ -4,7 +4,7 @@ Reads predicted-probability + realized-outcome pairs from signal_history
 and computes:
   - Brier score (mean squared error between prob and binary outcome)
   - Reliability bins (predicted bin center vs actual win rate per bin)
-  - Expected Calibration Error (ECE — magnitude of miscalibration)
+  - Expected Calibration Error (ECE - magnitude of miscalibration)
   - Verdict: well_calibrated / overconfident / underconfident
 
 A "well-calibrated" model says 70% and is right 70% of the time. If it
@@ -80,7 +80,7 @@ def compute(
 
     Args:
       pairs: list of (predicted_prob in [0,1], outcome 0/1).
-      horizon_days: stamped in report — informational.
+      horizon_days: stamped in report - informational.
       n_bins: number of reliability bins (default 10 = 10% slices).
 
     Returns:
@@ -164,11 +164,11 @@ async def _fetch_pairs(horizon_days: int) -> list[tuple[float, int]]:
     (`signal_history.score_horizons`): each directional row carries
     `features.win_prob` (the model's predicted P(win) at decision time) and,
     once the H-day window has elapsed, `outcomes["h{H}"]["win"]` (already
-    direction-corrected — SELL/TRIM returns are sign-flipped upstream).
+    direction-corrected - SELL/TRIM returns are sign-flipped upstream).
 
     Pairs only exist at horizons whose window has closed for some signals;
     shorter horizons populate first. Returns [] (→ "no_data" verdict) when no
-    overlapping (win_prob, outcome) rows exist yet — honest, not an error.
+    overlapping (win_prob, outcome) rows exist yet - honest, not an error.
 
     NOTE: this intentionally does NOT read Postgres. The realized-return
     columns on the Postgres `signal_history` table are never populated by this

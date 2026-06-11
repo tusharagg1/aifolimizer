@@ -2,17 +2,17 @@
 Wealthsimple client using the ws-api package (maintained unofficial GraphQL client).
 
 Flow:
-  - login(email, password) — if MFA required raises OTPRequiredException; we cache email/password
+  - login(email, password) - if MFA required raises OTPRequiredException; we cache email/password
     and return {needs_otp: True, session_id}
-  - verify_otp(session_id, otp) — re-call login with otp_answer to complete auth
-  - get_positions(session_id, account_id) — uses authenticated WSAPISession
+  - verify_otp(session_id, otp) - re-call login with otp_answer to complete auth
+  - get_positions(session_id, account_id) - uses authenticated WSAPISession
 
 Active sessions live in server RAM. The WSAPISession token is also persisted
 to ~/.aifolimizer/ws_session.json (mode 0600) so a backend restart can resume
 without prompting for credentials + OTP again. Password is never persisted.
 
 Logs that previously echoed account IDs, balances, and P&L values to stdout are
-now gated behind WS_DEBUG=1 — default-off matches the project's PII rule.
+now gated behind WS_DEBUG=1 - default-off matches the project's PII rule.
 """
 
 import json
@@ -43,7 +43,7 @@ WealthsimpleAPI.set_user_agent(_WS_USER_AGENT)
 # ws-api (0.33.0) calls requests.request(...) with NO timeout (wealthsimple_api.py
 # _send), so requests defaults to timeout=None = block forever. When WS/Cloudflare
 # accepts the socket but stalls the response, every WS call (login, refresh-token,
-# restore_session validation, get_positions) hangs indefinitely — surfacing as the
+# restore_session validation, get_positions) hangs indefinitely - surfacing as the
 # MCP tool "sticking" and, because restore_session can't finish validating the
 # cached token, an endless forced-MFA loop. ws-api resolves `requests.request` on
 # the module per call, so patching it here injects a default timeout into every WS
@@ -103,7 +103,7 @@ _last_email: Optional[str] = None
 _LAST_CLEANUP_TIME = 0
 _CLEANUP_INTERVAL_SECONDS = 3600  # Clean up every hour
 
-# Disk persistence — restores the authenticated session across backend restarts.
+# Disk persistence - restores the authenticated session across backend restarts.
 _PERSIST_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 # Cross-process lock guarding token refresh/rotation+persist. Sidecar file so it
 # never collides with the atomic-rename writer on _PERSIST_FILE itself. All
@@ -112,7 +112,7 @@ _PERSIST_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 _PERSIST_FILE.parent.mkdir(parents=True, exist_ok=True)
 _PERSIST_LOCK = FileLock(str(_PERSIST_FILE) + ".lock")
 # Critical section guarded by this lock is now only a sub-millisecond disk read
-# (get_accounts runs lock-free — see _finalize_session), so the acquire timeout
+# (get_accounts runs lock-free - see _finalize_session), so the acquire timeout
 # is small: a wait beyond a few seconds means a stale/abnormal holder, and we'd
 # rather proceed with the current token than stall. Env-overridable.
 _PERSIST_LOCK_TIMEOUT_S = float(os.environ.get("WS_PERSIST_LOCK_TIMEOUT_S", "5") or 5)
@@ -153,15 +153,15 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 def _persist_session(session: "WSAPISession | str", email: Optional[str] = None) -> None:
     """Write the live WSAPISession to disk so a backend restart can resume.
 
-    File mode is set to 0600 (owner read/write only). Password is never persisted —
+    File mode is set to 0600 (owner read/write only). Password is never persisted -
     only the access token, which already has WS's own server-side expiry.
     Called by ws-api whenever the access token is refreshed.
 
-    ws-api invokes this with ``self.session.to_json()`` — i.e. the first arg is
+    ws-api invokes this with ``self.session.to_json()`` - i.e. the first arg is
     already a JSON *string*, not a WSAPISession. (See check_oauth_token /
     login_internal in ws_api.wealthsimple_api.) Previously this assumed an
     object and called ``.to_json()`` on the str, raising AttributeError that was
-    swallowed — so refreshed tokens were NEVER persisted and every restart
+    swallowed - so refreshed tokens were NEVER persisted and every restart
     reused the dead access token, forcing avoidable MFA. Accept both forms.
 
     ws-api's auto-refresh path calls this WITHOUT a username (email is None).
@@ -220,7 +220,7 @@ def restore_session() -> Optional[str]:
     # FastAPI + all cron scripts, so a delete-on-first-failure (the prior
     # behaviour) let one unreadable blip unlink the session for the WHOLE fleet,
     # cascading every process into forced MFA. Retry first; never delete on a
-    # read/parse failure — a real re-login overwrites the file anyway, so
+    # read/parse failure - a real re-login overwrites the file anyway, so
     # keeping a possibly-transient file is strictly safer than removing it.
     payload = None
     last_err: Exception | None = None
@@ -252,7 +252,7 @@ def restore_session() -> Optional[str]:
     # Force the OAuth refresh-token grant. ws-api's check_oauth_token only
     # auto-refreshes when its probe returns the exact message "Not Authorized.";
     # an expired-token GraphQL response surfaces as {"errors":[...]} with no
-    # top-level "message", so ws-api re-raises instead of refreshing — and the
+    # top-level "message", so ws-api re-raises instead of refreshing - and the
     # session dies at WS's server-side access-token life (~hours), far short of
     # our 14d ceiling, forcing needless MFA. Blanking access_token makes
     # check_oauth_token skip the probe and mint a fresh access token straight
@@ -409,7 +409,7 @@ def _nested(data: Any, *keys: str) -> Any:
 
 
 def login(email: str, password: str) -> dict:
-    """Synchronous — ws-api is a sync library. Called from async route via run_in_executor implicit (FastAPI threadpool)."""
+    """Synchronous - ws-api is a sync library. Called from async route via run_in_executor implicit (FastAPI threadpool)."""
     email = email.strip()
     if not email or not password:
         raise ValueError("Email and password are required")
@@ -440,16 +440,16 @@ def verify_otp(session_id: str, otp: str) -> dict:
     pending = _sessions.get(session_id)
     if not pending or pending.get("state") != "pending":
         raise ValueError("Invalid or expired session")
-    # Pending TTL — abandon any half-finished OTP flow older than 5 minutes
+    # Pending TTL - abandon any half-finished OTP flow older than 5 minutes
     if time.time() - pending.get("pending_started", 0) > _PENDING_TTL_SECONDS:
         _sessions.pop(session_id, None)
-        raise ValueError("OTP timed out — start login again")
+        raise ValueError("OTP timed out - start login again")
 
     email = pending.get("email")
     password = pending.get("password")
     if not email or not password:
         _sessions.pop(session_id, None)
-        raise ValueError("Session state lost — start login again")
+        raise ValueError("Session state lost - start login again")
 
     try:
         session: WSAPISession = WealthsimpleAPI.login(
@@ -459,7 +459,7 @@ def verify_otp(session_id: str, otp: str) -> dict:
             persist_session_fct=_persist_session,
         )
     except OTPRequiredException:
-        raise ValueError("OTP code rejected — try again")
+        raise ValueError("OTP code rejected - try again")
     except LoginFailedException as e:
         _sessions.pop(session_id, None)
         raise ValueError(f"Login failed: {e}")
@@ -478,7 +478,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
     Multiple aifolimizer processes (several Claude-Code MCP servers, the FastAPI
     backend, scheduled scripts) share ONE ws_session.json holding a single-use,
     rotating refresh_token. We hold the cross-process _PERSIST_LOCK only long
-    enough to read the freshest token from disk — NOT across the WS get_accounts()
+    enough to read the freshest token from disk - NOT across the WS get_accounts()
     round-trip.
 
     Wrapping get_accounts() in the lock (the prior behaviour) made concurrent
@@ -487,7 +487,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
     ceiling → establish raised → get_profile returned an error after ~90s. The
     token read is sub-millisecond, so serialize only that. The validate/refresh
     runs lock-free, exactly like the _run_ws read path; the rare simultaneous-
-    refresh race fails one call and self-heals on the next reload — far cheaper
+    refresh race fails one call and self-heals on the next reload - far cheaper
     than a guaranteed convoy. A lock-busy timeout no longer fails the establish:
     we proceed with the token we already have (the read path's self-healing
     refresh tolerates a slightly-stale token).
@@ -505,7 +505,7 @@ def _finalize_session(session: WSAPISession, email: str, session_id: Optional[st
 def _reload_session_from_disk() -> tuple[Optional[WSAPISession], Optional[str]]:
     """Read the latest persisted token from disk (called while holding the
     lock, so a peer mid-rotation has already finished). Returns (None, None)
-    when the file is absent/unreadable — caller keeps its in-memory session."""
+    when the file is absent/unreadable - caller keeps its in-memory session."""
     try:
         payload = json.loads(_PERSIST_FILE.read_text(encoding="utf-8"))
         return WSAPISession.from_json(payload["session_json"]), payload.get("email")
@@ -519,25 +519,25 @@ def _run_ws(email: str, fn):
 
     The read paths previously passed _noop_persist, so a mid-call access-token
     refresh rotated the single-use refresh token server-side but the rotation
-    was discarded — killing the shared on-disk token on the next expiry. Two
+    was discarded - killing the shared on-disk token on the next expiry. Two
     fixes apply here: (1) reload the latest token from disk before each call so
     we never run on a copy a peer just rotated, and (2) persist via
     _persist_session so our own rotations are saved.
 
     We do NOT hold _PERSIST_LOCK around the HTTP fetch. Wrapping every read in
-    the cross-process lock serialized all WS calls across all Claude sessions —
+    the cross-process lock serialized all WS calls across all Claude sessions -
     one slow call wedged every other behind a 45s timeout (head-of-line convoy
     -> the tool "sticks"). Rotation conflicts only occur during the ~1s refresh
     when the access token has expired (~every 30 min), not on normal fetches
     with a valid token, and the disk writer uses atomic rename so the reload is
     torn-read safe without a lock. The rare simultaneous-refresh race fails a
-    single call with WSApiException and self-heals on the next reload — far
+    single call with WSApiException and self-heals on the next reload - far
     cheaper than a guaranteed convoy. Session establishment (_finalize_session)
     still serializes under the lock; that path is infrequent.
     """
     disk_session, disk_email = _reload_session_from_disk()
     if disk_session is None:
-        raise ValueError("No persisted Wealthsimple session — run mcp_login.py to re-authenticate")
+        raise ValueError("No persisted Wealthsimple session - run mcp_login.py to re-authenticate")
     ws = WealthsimpleAPI.from_token(disk_session, persist_session_fct=_persist_session, username=disk_email or email)
     return fn(ws)
 
@@ -561,13 +561,13 @@ def _finalize_session_inner(session: WSAPISession, email: str, session_id: Optio
 
     # Enrich accounts with cash + unrealized P&L from per-account API calls.
     # Each account needs `get_account_balances` + `get_account_unrealized_pnl`
-    # — independent HTTPs, ~200ms each. Run them in a small pool so total
+    # - independent HTTPs, ~200ms each. Run them in a small pool so total
     # cost is roughly one account's latency rather than N sequential calls.
     investment_accounts = [
         acc for acc in accounts_raw if isinstance(acc, dict) and _is_investment_account(acc) and acc.get("id")
     ]
 
-    # Hoist FX out of the per-account loop — FX cache is process-wide; calling
+    # Hoist FX out of the per-account loop - FX cache is process-wide; calling
     # it once here avoids repeating the lookup if multiple accounts hold USD.
     cad_per_usd: float | None = None
 
@@ -628,7 +628,7 @@ def _finalize_session_inner(session: WSAPISession, email: str, session_id: Optio
     _debug(f"[WS] total_unrealized_pnl_cad={total_unrealized_pnl_cad}")
 
     # Identity-level lifetime net deposits + simple return (account-wide P&L
-    # incl. cash interest, dividends, realized gains — NOT just unrealized).
+    # incl. cash interest, dividends, realized gains - NOT just unrealized).
     net_deposits_cad = 0.0
     simple_return_pct = None
     try:
@@ -694,7 +694,7 @@ def get_positions(session_id: str, account_id: str) -> list[dict]:
     """Returns positions for a single account (filters identity-level positions)."""
     session = get_session(session_id)
     if not session or session.get("state") != "authed":
-        raise ValueError("Session expired — please log in again")
+        raise ValueError("Session expired - please log in again")
 
     email = session["email"]
     accounts_raw: list[dict] = session.get("accounts_raw", [])
@@ -715,7 +715,7 @@ def _position_account_id(pos: dict) -> str:
     # WS FetchIdentityPositions returns account membership under `accounts`
     # (a list of {id, __typename}). Reading the older singular `account`
     # shape returned "" for every node, so per-account filtering dropped all
-    # holdings — single-account views came back empty while totals (from NLV)
+    # holdings - single-account views came back empty while totals (from NLV)
     # still looked right.
     accts = pos.get("accounts")
     if isinstance(accts, list) and accts:
@@ -784,7 +784,7 @@ def _extract_currency(raw: Any, default: str = "CAD") -> str:
 
 # WS prefixes each symbol with its listing exchange (e.g. "TSX:XEQT",
 # "NYSE:T", "NASDAQ:MSFT", "NEO:HBND", "CSE:XYZ"). That prefix is the
-# authoritative market info — it is what disambiguates dual-listed tickers
+# authoritative market info - it is what disambiguates dual-listed tickers
 # (TSX:T = Telus -> T.TO  vs  NYSE:T = AT&T -> T). Map it to the Yahoo suffix
 # once, at ingestion, so downstream resolution never needs a live WS session.
 _EXCHANGE_SUFFIX = {
@@ -859,7 +859,7 @@ def _to_position_dict(item: dict) -> dict:
         quantity = 0.0
 
     # WS reports per-holding money (totalValue, bookValue, averagePrice) in the
-    # ACCOUNT base currency (CAD) regardless of where the security trades — even
+    # ACCOUNT base currency (CAD) regardless of where the security trades - even
     # the money "currency" tag reads CAD for a NYSE/USD stock. The security
     # node's own `currency` is the authoritative native trading currency. Skills
     # do per-holding analysis (valuation, price levels) that needs the native
@@ -912,7 +912,7 @@ def get_all_positions(session_id: str) -> list[dict]:
     """Return all positions across investment accounts in one GraphQL call."""
     session = get_session(session_id)
     if not session or session.get("state") != "authed":
-        raise ValueError("Session expired — please log in again")
+        raise ValueError("Session expired - please log in again")
 
     email = session["email"]
     accounts_raw: list[dict] = session.get("accounts_raw", [])

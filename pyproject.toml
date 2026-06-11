@@ -1,5 +1,5 @@
 # Python project metadata. The `dependencies` list below MIRRORS backend/requirements.txt
-# (kept in sync by hand) so `uv run` can build the runtime env directly from this file —
+# (kept in sync by hand) so `uv run` can build the runtime env directly from this file -
 # that is what the Claude Code plugin (.claude-plugin/plugin.json) launches the MCP server with.
 # backend/requirements.txt remains the source for the setup.sh/setup.ps1 venv path. pip install -e .[dev] for development.
 
@@ -10,30 +10,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aifolimizer"
 version = "0.2.0"
-description = "Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 102 analysis tools across 15 data adapters, and ships 25 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies."
+description = "Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 107 analysis tools across 15 data adapters, and ships 28 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies."
 license = {text = "MIT"}
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 authors = [{name = "Tushar Aggarwal"}]
 readme = "README.md"
-# MIRROR of backend/requirements.txt — keep the two lists identical.
+# MIRROR of backend/requirements.txt - keep the two lists identical.
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.6",
-    "pydantic>=2.8.2",
+    "pydantic>=2.13.4",
     "pydantic-settings>=2.6.1",
     "httpx>=0.27.2",
-    "yfinance>=0.2.43",
+    "yfinance>=1.4.1",
     "pandas>=2.2.2",
     "numpy>=1.26.0",
     "ta>=0.11.0",
+    "pyportfolioopt>=1.5.5",
     "python-dotenv>=1.0.1",
     "mcp>=1.2.0",
-    "ws-api>=0.33.0",
+    "ws-api>=0.35.0",
     "diskcache>=5.6.0",
     "filelock>=3.12.0",
     "asyncpg>=0.29.0",
-    "redis>=5.0.0",
-    "rq>=2.0.0",
+    "redis>=8.0.0",
+    "rq>=2.9.0",
     "sentry-sdk[fastapi]>=2.0.0",
     "pytrends>=4.9.2",
     "curl_cffi>=0.7.0",
@@ -69,5 +70,5 @@ line-length = 120
 testpaths = ["backend/tests"]
 
 [tool.pyright]
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 reportMissingImports = "error"

@@ -10,7 +10,7 @@ caller.
 - push(...): settings-aware; no-op when creds unset.
 
 main.py's bespoke plain-text "online" ping (with its own 30-min marker) and the
-standalone scripts keep their own minimal senders — different message shapes,
+standalone scripts keep their own minimal senders - different message shapes,
 separate processes.
 """
 

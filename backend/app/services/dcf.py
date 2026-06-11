@@ -8,7 +8,7 @@ Gives price targets a quantitative spine instead of a free-hand LLM estimate.
 US-listed symbols only (EDGAR has no .TO filings). No API key required.
 
 Assumptions are explicit and conservative; this is one valuation lens, not a
-verdict. Equity value approximated as enterprise value (net debt ignored) —
+verdict. Equity value approximated as enterprise value (net debt ignored) -
 treat the per-share number as an unlevered FCFF anchor, not a precise target.
 """
 
@@ -64,7 +64,7 @@ def dcf_valuation(symbol: str) -> dict:
             "error": "negative_fcf",
             "symbol": symbol,
             "latest_fcf": fcf0,
-            "note": "Latest free cash flow is negative — DCF is unreliable; use a "
+            "note": "Latest free cash flow is negative - DCF is unreliable; use a "
             "revenue-multiple or scenario approach instead.",
         }
 
@@ -127,7 +127,7 @@ def dcf_valuation(symbol: str) -> dict:
         "sensitivity": grid,
         "fcf_history": fcf_series,
         "caveats": [
-            "Net debt ignored — fair value approximates enterprise value per share.",
+            "Net debt ignored - fair value approximates enterprise value per share.",
             "Discount = CAPM cost of equity (rf 4.5% + beta×5% ERP), clamped 7-15%.",
             "FCF growth clamped to [-5%, 20%]; one lens, not a verdict.",
         ],

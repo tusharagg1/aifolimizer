@@ -24,7 +24,7 @@ jobs:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
@@ -69,7 +69,7 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -100,7 +100,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Forbid placeholder addresses in SECURITY.md / CODEOWNERS
+      - name: Forbid placeholder addresses in SECURITY.md / TRACK_RECORD.md
         run: |
           if grep -RIn "example\.invalid\|<CITE_URL_HERE>\|<DATE>" SECURITY.md TRACK_RECORD.md 2>/dev/null; then
             echo "::error::Found placeholder strings in published docs"

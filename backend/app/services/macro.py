@@ -40,7 +40,7 @@ _SERIES = {
     "canada_housing_prices": "QCAR628BIS",  # Canada residential property prices (BIS, quarterly)
     # Global rates
     "ecb_rate": "ECBDFR",  # ECB deposit facility rate
-    # Commodities (FRED — slight lag; supplemented by yfinance real-time below)
+    # Commodities (FRED - slight lag; supplemented by yfinance real-time below)
     "gold_usd": "GOLDAMGBD228NLBM",  # Gold London AM fix USD/troy oz
     "wti_crude_usd": "DCOILWTICO",  # WTI crude USD/barrel
     "copper_usd_lb": "PCOPPUSDM",  # Copper USD/metric ton (World Bank, monthly)
@@ -75,7 +75,7 @@ def _fred_csv(series_id: str) -> tuple[str, float] | None:
     return None
 
 
-_COMMODITY_TTL = 300  # 5 min — real-time prices
+_COMMODITY_TTL = 300  # 5 min - real-time prices
 _commodity_cache: tuple[float, dict] | None = None
 
 _COMMODITY_TICKERS = {
@@ -128,7 +128,7 @@ def _commodity_snapshot() -> dict[str, Any]:
 def macro_snapshot() -> dict[str, Any]:
     """FRED macro series + real-time commodity/FX spot prices.
 
-    Series fetched in parallel — _fred_csv() is HTTP-bound and each call has a
+    Series fetched in parallel - _fred_csv() is HTTP-bound and each call has a
     10s timeout, so 15 serial reads can take ~15s on a cold L1 cache.
     """
     out: dict[str, Any] = {}
@@ -152,7 +152,7 @@ def macro_snapshot() -> dict[str, Any]:
     return out
 
 
-_BREADTH_TTL = 3600  # 1h — market data changes more than FRED
+_BREADTH_TTL = 3600  # 1h - market data changes more than FRED
 _breadth_cache: tuple[float, dict] | None = None
 
 _FG_TTL = 3600  # 1h
@@ -199,7 +199,7 @@ def market_breadth() -> dict[str, Any]:
 
     out: dict[str, Any] = {}
 
-    # VIX — fear gauge
+    # VIX - fear gauge
     try:
         vix_info = yf.Ticker("^VIX").info
         vix = vix_info.get("regularMarketPrice") or vix_info.get("previousClose")
@@ -244,28 +244,28 @@ def market_breadth() -> dict[str, Any]:
         logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # Composite regime signal. SPY direction is the dominant input; if its fetch
-    # failed (key absent), do NOT assume bull — that fail-open silently stamped
+    # failed (key absent), do NOT assume bull - that fail-open silently stamped
     # bull_low_fear on every rec and let BUYs through unguarded. Emit "unknown"
     # so downstream gates can treat an unconfirmed regime as risk-off.
     vix_regime = out.get("vix_regime", "normal")
     spy_regime = out.get("spy_regime")
     if spy_regime is None:
         out["market_regime"] = "unknown"
-        out["regime_signal"] = "Market regime unavailable (SPY/VIX fetch failed) — treat as risk-off for new entries."
+        out["regime_signal"] = "Market regime unavailable (SPY/VIX fetch failed) - treat as risk-off for new entries."
     elif spy_regime == "bull" and vix_regime in ("normal", "low"):
         out["market_regime"] = "bull_low_fear"
         out["regime_signal"] = "Risk-on. Momentum and growth strategies favored."
     elif spy_regime == "bull" and vix_regime == "elevated":
         out["market_regime"] = "bull_high_fear"
-        out["regime_signal"] = "Bull trend intact but fear elevated — potential pullback or buying opportunity."
+        out["regime_signal"] = "Bull trend intact but fear elevated - potential pullback or buying opportunity."
     elif spy_regime == "bear" and vix_regime == "elevated":
         out["market_regime"] = "bear_high_fear"
-        out["regime_signal"] = "Bear market with elevated fear — defensive positioning recommended."
+        out["regime_signal"] = "Bear market with elevated fear - defensive positioning recommended."
     else:
         out["market_regime"] = "bear_low_fear"
-        out["regime_signal"] = "Complacent bear — caution, volatility expansion risk."
+        out["regime_signal"] = "Complacent bear - caution, volatility expansion risk."
 
-    # Yield curve: 2Y/10Y spread — strongest free recession predictor
+    # Yield curve: 2Y/10Y spread - strongest free recession predictor
     try:
         r10 = _fred_csv("DGS10")
         r2 = _fred_csv("DGS2")
@@ -293,7 +293,7 @@ def market_breadth() -> dict[str, Any]:
         logging.getLogger(__name__).debug("suppressed exception", exc_info=True)
 
     # ── Portfolio-level defensive signal ──────────────────────────────────────
-    # Fires when multiple macro risk factors align — tells you to raise cash
+    # Fires when multiple macro risk factors align - tells you to raise cash
     # before individual position signals can update.
     risk_count = 0
     risk_reasons = []
@@ -308,13 +308,13 @@ def market_breadth() -> dict[str, Any]:
         risk_reasons.append(f"Market in {regime.replace('_', ' ')} regime")
     if vix_val and vix_val > 25:
         risk_count += 1
-        risk_reasons.append(f"VIX {vix_val:.0f} — elevated volatility")
+        risk_reasons.append(f"VIX {vix_val:.0f} - elevated volatility")
     if yc in ("deeply_inverted", "inverted"):
         risk_count += 1
-        risk_reasons.append(f"Yield curve {yc.replace('_', ' ')} — recession signal active")
+        risk_reasons.append(f"Yield curve {yc.replace('_', ' ')} - recession signal active")
     if fg is not None and fg >= 80:
         risk_count += 1
-        risk_reasons.append(f"Fear & Greed {fg:.0f} — extreme greed, euphoria risk")
+        risk_reasons.append(f"Fear & Greed {fg:.0f} - extreme greed, euphoria risk")
 
     if risk_count >= 3:
         out["portfolio_signal"] = "raise_cash"

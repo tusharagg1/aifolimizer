@@ -1,4 +1,4 @@
-# signal_history JSONL→PG port — implementation plan
+# signal_history JSONL→PG port - implementation plan
 
 Status: in progress (2026-06-11). Author decision: docker-always-on, single-user.
 Goal: make Postgres `signal_history` the single source of truth for BOTH signal
@@ -16,7 +16,7 @@ snapshots AND realized returns, then retire the parallel JSONL store.
      fns → 6 MCP tools.
 2. **PG `realized_return_{1,5,21,63}d` are NEVER filled.** `backfill_realized_returns`
    returns candidate rows only; no caller computes/writes returns. Confirmed in
-   changes.md:29 — calibration.py was deliberately pointed back at JSONL for this.
+   changes.md:29 - calibration.py was deliberately pointed back at JSONL for this.
    ⇒ JSONL `score_horizons` (fetches bars, computes returns) is the ONLY real
    realized-outcome source. PG analytics (continuous aggregate, weights_tuner
    attribution_by_source) are starved/null today.
@@ -41,7 +41,7 @@ snapshots AND realized returns, then retire the parallel JSONL store.
 - `... ADD COLUMN IF NOT EXISTS realized_return_3d NUMERIC;` (+10d, +42d)
 - Extend the `{realized_return_1d,5d,21d,63d}` allow-sets in signals_repo
   (`backfill_realized_returns`, `attribution_by_source`) to include 3/10/42.
-- Idempotent — safe re-run on container init.
+- Idempotent - safe re-run on container init.
 
 ### 2. Scheduler persists entry_price
 - `_persist_integrated_signals`: pass `entry_price=rec.get("current_price")`.
@@ -68,7 +68,7 @@ New service `signal_backfill.py` (pure-ish orchestrator):
 Rewrite to query PG (new `signals_repo` read fns returning rows with
 realized_return_* + features), keeping the SAME return shape:
 - `accuracy_report` (get_signal_accuracy)
-- `signal_decay_curve` (get_signal_decay_curve) — needs all 7 cols
+- `signal_decay_curve` (get_signal_decay_curve) - needs all 7 cols
 - `per_signal_source_attribution` (get_signal_source_attribution)
 - `calibrate_confidence` (calibrate_confidence_labels)
 - `calibrate_thresholds` (calibrate_signal_thresholds)
@@ -89,7 +89,7 @@ Extend `import_signal_history`: also carry `entry_price` and map
 ### 9. Tests + quality gates
 - `compute_return` pure unit tests (long win/loss, short sign-flip).
 - backfill orchestrator with monkeypatched `get_history` + fake repo (pattern
-  from test_weights_tuner.py — monkeypatch repo fns; no live PG needed).
+  from test_weights_tuner.py - monkeypatch repo fns; no live PG needed).
 - analytics-over-PG with a fake pool / injected rows.
 - `pytest` (from repo root) + `ruff check .` + `pyright`. Import-check
   mcp_server + scheduler. Exercise backfill compute with real-ish bars.

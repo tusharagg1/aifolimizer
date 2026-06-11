@@ -3,7 +3,7 @@
 Answers "is this backtest result statistically meaningful, or just lucky?".
 
 History: earlier code used a return-order permutation test for significance.
-That was statistically void — Sharpe = mean/std·sqrt(252) is invariant under
+That was statistically void - Sharpe = mean/std·sqrt(252) is invariant under
 permutation (reshuffling order changes neither mean nor std), so its p-value
 sat at ~0.5 and could never reject the null. Kept below only as
 ``order_dependence_check`` for diagnostic transparency; significance now comes
@@ -67,9 +67,9 @@ def block_bootstrap_significance(
     a single boolean cannot:
       - ``positive_edge``  : significant_at_05 is True (p_value < 0.05).
       - ``negative_edge``  : observed Sharpe is below 5th percentile of null
-                             — strategy is a confirmed loser, not just
+                             - strategy is a confirmed loser, not just
                              "consistent with no edge".
-      - ``no_edge``        : observed Sharpe sits inside the null —
+      - ``no_edge``        : observed Sharpe sits inside the null -
                              indistinguishable from luck.
 
     Block size is clamped to max(1, min(block, n // 4)) so a degenerate
@@ -121,7 +121,7 @@ def order_dependence_check(
     n_sims: int = _N_SIMS,
     seed: int = _RNG_SEED,
 ) -> dict:
-    """Diagnostic ONLY — measures sensitivity of Sharpe to return ordering.
+    """Diagnostic ONLY - measures sensitivity of Sharpe to return ordering.
 
     Permutes the return order and recomputes Sharpe. Because Sharpe depends only
     on mean/std (both order-invariant), the permuted Sharpe ≈ observed Sharpe by
@@ -144,7 +144,7 @@ def order_dependence_check(
     return {
         "observed_sharpe": round(observed, 3),
         "permuted_sharpe_std": round(float(permuted.std()), 6),
-        "note": ("diagnostic only — not a significance test; Sharpe is order-invariant by construction."),
+        "note": ("diagnostic only - not a significance test; Sharpe is order-invariant by construction."),
     }
 
 
@@ -157,7 +157,7 @@ def bootstrap_sharpe_ci(
     """Resample daily returns with replacement; return CI bounds on Sharpe.
 
     prob_positive_sharpe: probability strategy has positive Sharpe in a new
-    unseen period — the key number for forward-looking edge assessment.
+    unseen period - the key number for forward-looking edge assessment.
     """
     if len(daily_returns) < _MIN_N:
         return {
@@ -185,7 +185,7 @@ def run_validation(daily_returns: np.ndarray) -> dict:
     """Full validation suite: block-bootstrap significance + Sharpe CI.
 
     ``significance`` is the headline verdict. ``order_dependence_check`` is a
-    kept diagnostic (the retired permutation test) — never read as edge.
+    kept diagnostic (the retired permutation test) - never read as edge.
     """
     arr = np.asarray(daily_returns, dtype=float)
     arr = arr[np.isfinite(arr)]

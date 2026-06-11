@@ -1,4 +1,4 @@
-"""Sentry issue digest — pull top errors for self-learn loop.
+"""Sentry issue digest - pull top errors for self-learn loop.
 
 Read-only Sentry API client. Resolves recent unresolved issues with
 counts, last-seen, stack frames. Used by:
@@ -109,7 +109,7 @@ def get_latest_event(issue_id: str) -> dict[str, Any]:
 
 
 def extract_stack_summary(event: dict[str, Any], max_frames: int = 8) -> list[dict[str, Any]]:
-    """Pull just the in-app frames from an event — what Claude needs to reason."""
+    """Pull just the in-app frames from an event - what Claude needs to reason."""
     exc = event.get("entries", [])
     for entry in exc:
         if entry.get("type") != "exception":

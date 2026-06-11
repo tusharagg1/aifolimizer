@@ -13,8 +13,8 @@ from typing import Any
 
 import yfinance as yf
 
-_CHAIN_TTL = 900  # 15 min — option prices move but not tick-by-tick
-_SCREEN_TTL = 1800  # 30 min — screener results
+_CHAIN_TTL = 900  # 15 min - option prices move but not tick-by-tick
+_SCREEN_TTL = 1800  # 30 min - screener results
 
 _chain_cache: dict[str, tuple[float, dict]] = {}
 _screen_cache: dict[str, tuple[float, dict]] = {}

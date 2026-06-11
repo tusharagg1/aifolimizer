@@ -13,13 +13,13 @@ A router, not a new analysis. It picks the cheapest sufficient analysis per hold
 - **Single ticker** ("review my NVDA position"): route + verdict for that one name.
 - **Sweep** ("review my holdings" / automated nightly): take top-N holdings by weight (default 6) and route each. Keep total output tight.
 
-## Stage 0 — Decision Memory (load FIRST)
+## Stage 0 - Decision Memory (load FIRST)
 
 Before routing, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 - For each name reviewed, load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## How to run
 Call `get_profile` FIRST. Then gather routing signals (parallel):
@@ -44,7 +44,7 @@ After the routed analysis yields a lean, cross-check exits:
 
 Once the verdict is set, get concrete levels from `mcp__aifolimizer__get_trade_ticket` (`ticker`, `action=<verdict: HOLD|TRIM|SELL>`, `conviction`). It pulls cost basis + held quantity from the live session, so:
 - **HOLD** → `exit_ladder` (T1/T2/T3 profit-taking from current price) + `stop_loss_price` + `position.stop_below_cost`. This is the "where do I take profit / cut loss" plan.
-- **TRIM/SELL** → market-exit ticket (no ladder by design — show `stop_loss_price` only).
+- **TRIM/SELL** → market-exit ticket (no ladder by design - show `stop_loss_price` only).
 Render these instead of hand-computing stop/target.
 
 ## Subagent-nesting constraint (important for the sweep)
@@ -66,8 +66,8 @@ TICKER · weight X% · VERDICT: HOLD / TRIM / SELL · conviction
 Sweep mode: lead with a one-line roster (`HOLD x4 · TRIM x1 · SELL x1`), then the blocks, worst-conviction-holds and all SELL/TRIM first.
 
 ## After output - log decisions
-For each name log the verdict (this feeds the forward win-rate / track-record loop). Pick ONE tool — they take different params:
-- **Default path → `mcp__aifolimizer__log_recommendation`**: `skill="position-review"`, action, conviction, rationale, and levels as `target_pct` + `stop_pct` (PERCENT from entry; entry is captured live at call time — do NOT pass absolute prices).
+For each name log the verdict (this feeds the forward win-rate / track-record loop). Pick ONE tool - they take different params:
+- **Default path → `mcp__aifolimizer__log_recommendation`**: `skill="position-review"`, action, conviction, rationale, and levels as `target_pct` + `stop_pct` (PERCENT from entry; entry is captured live at call time - do NOT pass absolute prices).
 - **Adversarial route ran → `mcp__aifolimizer__log_trade_decision`**: `skill_used="position-review"`, action, conviction, `entry_price` / `target_price` / `stop_price` (ABSOLUTE prices), thesis_summary.
 
 ## Rules

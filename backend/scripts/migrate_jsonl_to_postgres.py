@@ -1,6 +1,6 @@
 """One-shot migration: import existing .jsonl history into TimescaleDB.
 
-Idempotent — relies on UNIQUE constraints + ON CONFLICT DO NOTHING.
+Idempotent - relies on UNIQUE constraints + ON CONFLICT DO NOTHING.
 
 Source files (all gitignored, may not exist on every machine):
   .claude/context/recommendations.jsonl       → recommendations

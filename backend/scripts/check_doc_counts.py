@@ -13,7 +13,7 @@ Scope:
     were outside this guard)
 
 Excluded by design:
-  - .claude/context/changes.md — historical change log; numbers describe
+  - .claude/context/changes.md - historical change log; numbers describe
     state at a particular date and SHOULD NOT be retroactively edited.
 
 Run locally:    python backend/scripts/check_doc_counts.py
@@ -23,8 +23,8 @@ Exits 0 when everything matches, 1 with a diff report otherwise.
 
 Why: an external code review caught these counts drifting (CLAUDE.md said
 14/32 tools and 13/16 skills while the code already had 80 tools and 21
-skills). A second adversarial review caught even more drift forms — lowercase
-headings, code-comment counts, 'All N skills' phrasings — that the first
+skills). A second adversarial review caught even more drift forms - lowercase
+headings, code-comment counts, 'All N skills' phrasings - that the first
 guard missed. Regexes below have since been broadened to cover those.
 """
 
@@ -48,7 +48,7 @@ _ADAPTERS_DIR = _ROOT / "backend" / "app" / "services" / "data_sources"
 _TOOL_PATTERNS: list[str] = [
     # bold: **80 MCP tools**
     r"\*\*(\d+)\s+MCP\s+tools?\*\*",
-    # FastMCP — 80 tools / FastMCP, 80 tools / (FastMCP, 80 tools)
+    # FastMCP - 80 tools / FastMCP, 80 tools / (FastMCP, 80 tools)
     r"FastMCP[^\d\n]{0,12}(\d+)\s+tools?",
     # heading or bare: '## MCP tools (80)' / '## MCP Tools (80 total ...)'
     r"##\s*MCP\s+tools?\s*\((\d+)",
@@ -59,7 +59,7 @@ _TOOL_PATTERNS: list[str] = [
     # plugin manifest prose: '103 analysis tools across ...' / '103 analysis tools +'
     r"(\d+)\s+analysis\s+tools?",
     # docstring form: '"""... 80 institutional analysis frameworks'
-    # NOT a tool count by itself — but mcp_server.py used "13 institutional
+    # NOT a tool count by itself - but mcp_server.py used "13 institutional
     # analysis frameworks" when it should match skills, handled below.
 ]
 
@@ -77,11 +77,11 @@ _SKILL_PATTERNS: list[str] = [
     r"\((\d+)\s+institutional\s+analysis\s+skills?\)",
     # comment: # 21 institutional analysis skills
     r"#\s*(\d+)\s+institutional\s+analysis\s+skills?",
-    # heading: '## Analysis Skills (21 ...)' — but tolerates "(21 in ...)"
+    # heading: '## Analysis Skills (21 ...)' - but tolerates "(21 in ...)"
     r"##\s*Analysis\s+Skills\s*\((\d+)\s",
-    # AGENTS.md: '`.claude/skills/` — 21 analysis skills'
-    r"\.claude/skills/`?\s*[—\-]\s*(\d+)\s+analysis\s+skills?",
-    # 'All N skills' (table cell, README/CLAUDE) — must NOT be 'core' / 'core N'
+    # AGENTS.md: '`.claude/skills/` - 21 analysis skills'
+    r"\.claude/skills/`?\s*[-\-]\s*(\d+)\s+analysis\s+skills?",
+    # 'All N skills' (table cell, README/CLAUDE) - must NOT be 'core' / 'core N'
     r"(?<!core\s)\bAll\s+(\d+)\s+skills?\b",
     # architecture.md file-index row '.claude/skills/*/SKILL.md | 21 skills'
     r"SKILL\.md`?\s*\|\s*(\d+)\s+skills?",
@@ -116,11 +116,11 @@ for filename in (
 
 # Allow-list: prefixes that, when they appear immediately before THIS captured
 # number, mean the number is intentionally NOT the live total. We check the
-# 24 chars preceding the match — earlier "core 13" mentions on the same line
+# 24 chars preceding the match - earlier "core 13" mentions on the same line
 # don't shadow a fresh drift later in the line. Examples that pass:
-#   "core 13 of 21"            — explicit subset disclosure
-#   "highlights core 13"        — table-curation disclosure
-#   "Backtest 13 codified-rule" — describes the rule subset
+#   "core 13 of 21"            - explicit subset disclosure
+#   "highlights core 13"        - table-curation disclosure
+#   "Backtest 13 codified-rule" - describes the rule subset
 _ALLOWLIST_PREFIX_TOKENS = (
     "core ",
     "codified-rule ",
@@ -176,7 +176,7 @@ def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
-        # Non-reconfigurable stream (redirected/wrapped) — keep default encoding.
+        # Non-reconfigurable stream (redirected/wrapped) - keep default encoding.
         pass
     actual = {
         "tools": count_mcp_tools(),
@@ -215,18 +215,18 @@ def main() -> int:
             )
 
     if failures:
-        print("DRIFT DETECTED — doc counts do not match source of truth:")
+        print("DRIFT DETECTED - doc counts do not match source of truth:")
         for f in failures:
             print(f)
         print(
             "\nFix: update each line above to the actual count, "
-            "or — if the number is an intentional subset — preface it "
+            "or - if the number is an intentional subset - preface it "
             "with 'core' or 'codified-rule' so the guard skips it. "
             "Re-run `python backend/scripts/check_doc_counts.py`."
         )
         return 1
 
-    print("OK — all doc tool/skill counts match source of truth.")
+    print("OK - all doc tool/skill counts match source of truth.")
     return 0
 
 

@@ -44,7 +44,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CTX_DIR = _REPO_ROOT / ".claude" / "context"
 _HISTORY_FILE = _CTX_DIR / "crowding_history.jsonl"
 
-# Crowding score weights — empirical, not derived. Tune as data accumulates.
+# Crowding score weights - empirical, not derived. Tune as data accumulates.
 _W_INST = 0.35  # high inst ownership = consensus institutional pile-in
 _W_SHORT = 0.20  # low short interest = bears already covered = consensus long
 _W_ANALYST = 0.20  # high analyst coverage = consensus name
@@ -189,7 +189,7 @@ def get_positioning(symbols: list[str]) -> dict[str, dict]:
         if entry and (now - entry[1]) < _CACHE_TTL:
             out[sym] = entry[0]
             continue
-        # L2 — populate L1 on hit
+        # L2 - populate L1 on hit
         l2 = cache_layer.cache_get(_L2_NAMESPACE, sym)
         if l2:
             _cache[sym] = (l2, now)

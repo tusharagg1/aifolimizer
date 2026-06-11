@@ -1,6 +1,6 @@
 """User personal-finance context model.
 
-Separate from the WS-account `UserContext` in portfolio.py — that one holds
+Separate from the WS-account `UserContext` in portfolio.py - that one holds
 live brokerage data; this one holds life context (salary, age, room,
 expenses, ESPP, etc.) that a user enters once and reuses across skills.
 

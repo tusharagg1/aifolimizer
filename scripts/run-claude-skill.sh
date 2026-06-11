@@ -2,7 +2,7 @@
 #
 # Run an aifolimizer analysis skill headlessly via Claude and push the result
 # to Telegram. Falls back to the free-LLM backend runner when Claude is
-# unavailable (Pro lost / not logged in / no API key). Skill-agnostic — one
+# unavailable (Pro lost / not logged in / no API key). Skill-agnostic - one
 # entry per skill in cron/launchd/systemd, no per-skill code.
 #
 # POSIX twin of scripts/run-claude-skill.ps1. Same exit codes:
@@ -28,14 +28,14 @@ mkdir -p "$(dirname "$LOG")"
 log()  { printf '%s [%s] %s\n' "$STAMP" "$SKILL" "$1" >>"$LOG"; }
 send() { printf '%s' "$1" | "$PY" "$SEND" --title "$2" >/dev/null 2>&1 || true; }
 
-# 1. Preflight — WS session must exist + parse, else tell user to re-auth.
+# 1. Preflight - WS session must exist + parse, else tell user to re-auth.
 if [ ! -r "$SESSION" ]; then
-  log 'no WS session file — re-auth needed'
+  log 'no WS session file - re-auth needed'
   send 'WS session missing. Run: cd backend && .venv/bin/python mcp_login.py (enter MFA).' 'aifolimizer · re-auth needed'
   exit 2
 fi
 if ! "$PY" -c 'import json,sys; json.load(open(sys.argv[1]))' "$SESSION" >/dev/null 2>&1; then
-  log 'WS session file unparseable — re-auth needed'
+  log 'WS session file unparseable - re-auth needed'
   send 'WS session corrupt. Re-run mcp_login.py (enter MFA).' 'aifolimizer · re-auth needed'
   exit 2
 fi
@@ -43,7 +43,7 @@ fi
 QUOTA_RE='usage limit|limit reached|reset at|out of (credits|tokens)|rate.?limit|429|529|quota|overloaded|5-?hour limit|weekly limit'
 AUTH_RE='not logged in|unauthorized|authentication failed|invalid api key|please (run )?/?login|session expired|subscription required'
 
-# 2. Primary tier — Claude headless (JSON output for reliable failure detection).
+# 2. Primary tier - Claude headless (JSON output for reliable failure detection).
 out=''
 tier='claude'
 ok=0
@@ -83,14 +83,14 @@ except Exception:
     if   printf '%s' "$diag" | grep -Eqi "$AUTH_RE";  then fail_reason='auth'
     elif printf '%s' "$diag" | grep -Eqi "$QUOTA_RE"; then fail_reason='quota'
     else fail_reason='other'; fi
-    log "claude failed exit=$exit_code is_error=$is_err reason=$fail_reason — falling back"
+    log "claude failed exit=$exit_code is_error=$is_err reason=$fail_reason - falling back"
   fi
 else
   fail_reason='absent'
-  log 'claude not found on PATH — falling back'
+  log 'claude not found on PATH - falling back'
 fi
 
-# 3. Fallback tier — free-LLM backend runner (degraded, keeps the brief flowing).
+# 3. Fallback tier - free-LLM backend runner (degraded, keeps the brief flowing).
 if [ "$ok" -ne 1 ]; then
   fb="$( "$PY" "$FALLBACK" "$SKILL" 2>/dev/null )" && fb_rc=0 || fb_rc=$?
   if [ "${fb_rc:-1}" -eq 0 ] && [ -n "$(printf '%s' "$fb" | tr -d '[:space:]')" ]; then

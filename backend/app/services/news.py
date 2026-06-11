@@ -1,4 +1,4 @@
-"""Multi-source news headlines — asset-aware fallback chain.
+"""Multi-source news headlines - asset-aware fallback chain.
 
 Mirrors data_router's design for the news layer, which used to be a single
 flaky yfinance scrape:
@@ -6,7 +6,7 @@ flaky yfinance scrape:
   - Per-asset source priority (see `_news_chain`). First source returning
     a NON-EMPTY result wins; sources are tried in quality/quota order.
   - Cross-process L2 cache via data_cache (SQLite). The old in-process dict
-    meant each MCP/cron process re-hit Yahoo independently — 3-4x the load
+    meant each MCP/cron process re-hit Yahoo independently - 3-4x the load
     and rate-limiting. Now they share one 30-min cache.
   - Per-source circuit breaker (shared with data_router) so a rate-limited
     provider is skipped instead of hammered.
@@ -17,7 +17,7 @@ Provider notes:
   - finnhub  : free 60/min, reliable, real-time US company-news. Primary US.
   - yfinance : free but flaky/laggy Yahoo scrape. Best TSX + crypto coverage.
   - eodhd    : strong intl/TSX, but free tier is 20 calls/day SHARED with
-               price/fundamentals quota — so it is always LAST resort.
+               price/fundamentals quota - so it is always LAST resort.
 
 Normalized article shape: {title, publisher, published, url, source}.
 """
@@ -182,7 +182,7 @@ def _news_chain(symbol: str) -> list[str]:
         return ["yfinance", "finnhub"]
     if ac in ("uk_equity", "eu_equity"):
         return ["yfinance", "eodhd"]
-    # index / fx / unknown — only yfinance carries general headlines
+    # index / fx / unknown - only yfinance carries general headlines
     return ["yfinance"]
 
 

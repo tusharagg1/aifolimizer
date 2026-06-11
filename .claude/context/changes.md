@@ -2,6 +2,17 @@
 
 Append-only. Most recent at top.
 
+## 2026-06-11 - Repo freshness + cleanup sweep (docs, deps, dead code, config, CI)
+
+- Deps (bug fix): pyportfolioopt was imported by portfolio_optimizer.py and exposed via the optimize_portfolio tool, but it was absent from requirements.txt, pyproject.toml, and requirements.lock, so a fresh clone crashed on the first optimize_portfolio call. Added pyportfolioopt>=1.5.5 to both dependency lists and regenerated requirements.lock (now hash-locks pypfopt, cvxpy, scipy). Re-synced the drifted pyproject.toml dependency floors to requirements.txt (pydantic 2.13.4, yfinance 1.4.1, ws-api 0.35.0, redis 8.0.0, rq 2.9.0).
+- Python: requires-python upper bound <3.14 to <3.15 (the repo uses ta, not pandas-ta, so the old bound was stale); pyright.pythonVersion 3.12 to 3.13. CI and the lockfile still target 3.12.
+- Dead code removed: app/models/analysis.py (orphaned Pydantic models from a removed REST route) and app/services/shadow_recs.py (unused placeholder; analyze_shadow_account uses the separate shadow_account.py). Stale mfa_relay.cpython-314.pyc removed. Unused _LOG global and logging import dropped from signal_backfill.py.
+- Stale docs removed: docs/mcp-servers-pr-draft.md and .github/release-notes-v0.1.0.md (already a published GitHub Release).
+- Docs: fixed stale tool/skill counts (103/27 to 107/28) across README, CLAUDE.md, AGENTS.md, architecture.md, and the plugin/marketplace manifests; trimmed wordy and marketing-flavoured prose; removed em dashes; standardized the test command to repo-root pytest; documented send_daily_briefing.py and run_maintenance.py in AUTOMATION.md; corrected the portfolio-bearing tool count in FAQ; added a free-data positioning line to the README.
+- Config: gitignore .code-review-graph/ and plan-*.md, dropped stale frontend_run.log; ci.yml checkout v4 to v6; settings.example.json stale frontend permissions removed.
+- llm_router: narrative-provider failures now log through the redaction logger instead of bare print.
+- PG repos: the 4 unwired repos (alerts, crowding, equity, recommendations) were reviewed and left dormant. Wiring them needs a legacy-vs-session tenant_hash unification and the asyncpg loop-binding constraint respected, which require a live Postgres to verify. The portfolio_equity write gap that starves get_live_kpis on PG deployments is the next step (see lessons.md).
+
 ## 2026-06-11 - cleanup: news.py sink redaction + tiingo through fetch_json (post-eed3528 /simplify)
 - news._fetch_chain: redaction moved from producer-only to the recording SINK. Both drains (cache.log_source_call + errors.append/_LOG.warning) now wrap str(e) in redact_secrets via a shared safe_err. U4a (eed3528) only redacted because the two keyed fetchers route through fetch_json; this hardens the layer that RECORDS, so any future news source doing its own httpx.get (the original leak pattern) can't leak through the unchanged raw str(e) sink.
 - tiingo_src.get_history: converted hand-rolled httpx.get/raise_for_status/json block to base.fetch_json(name="tiingo", symbol=..., default=[]) - closes the last U1 reuse residual. Dropped httpx import. NOT a security fix (tiingo's key is in the Authorization header, never in httpx error strings) - reuse/consistency + defense-in-depth. Behavior preserved: error msg format `tiingo http {symbol}: ...` unchanged, `resp.json() or []` -> default=[] equivalent.
@@ -14,9 +25,9 @@ Append-only. Most recent at top.
 
 Adversarial review (multi-agent) of the uncommitted signal_history JSONL→Postgres port found 3 real defects; all fixed.
 
-- **recommendations.py / scheduler.py — signal loss (must-fix).** The `if not postgres_dsn:` gate around `log_signal` dropped JSONL logging for EVERY `get_recommendations` caller when PG configured, but PG only receives per-holding rows from the scheduler. Discovery scans, watchlist, REST, and skill_runner signals reached neither store → lost from the forward-audit corpus. `get_recommendations` is sync + tenant-less, so PG-insert from there is wrong (needs tenant_hash). Fix: added `log_jsonl: bool = True` param; ad-hoc callers keep JSONL (their only store); scheduler passes `log_jsonl=not postgres_dsn` so holdings go to PG only when PG is live (no double-write, no loss when no PG).
-- **signal_backfill.py — stale-bar corruption (should-fix).** Port dropped the legacy 365d age cap. Bars span only ~1y, so a signal older than the earliest bar anchored both entry and exit to `bars[0]` via `_close_at_offset`, writing a wrong realized_return to the PG source-of-truth table. Fix: `_earliest_bar_date()` helper + skip (`skipped_data`) any candidate whose `ts.date()` predates the earliest bar — guard tied to actual coverage, not a hardcoded number.
-- **mcp_server.py — provenance ambiguity (nit).** `_pg_or_jsonl_analytics` fell through to JSONL on empty PG with no way to tell which store served. Fix: `result["_source"]` = `postgres` | `jsonl`. (NOTE: live only after MCP server restart — persistent process.)
+- **recommendations.py / scheduler.py - signal loss (must-fix).** The `if not postgres_dsn:` gate around `log_signal` dropped JSONL logging for EVERY `get_recommendations` caller when PG configured, but PG only receives per-holding rows from the scheduler. Discovery scans, watchlist, REST, and skill_runner signals reached neither store → lost from the forward-audit corpus. `get_recommendations` is sync + tenant-less, so PG-insert from there is wrong (needs tenant_hash). Fix: added `log_jsonl: bool = True` param; ad-hoc callers keep JSONL (their only store); scheduler passes `log_jsonl=not postgres_dsn` so holdings go to PG only when PG is live (no double-write, no loss when no PG).
+- **signal_backfill.py - stale-bar corruption (should-fix).** Port dropped the legacy 365d age cap. Bars span only ~1y, so a signal older than the earliest bar anchored both entry and exit to `bars[0]` via `_close_at_offset`, writing a wrong realized_return to the PG source-of-truth table. Fix: `_earliest_bar_date()` helper + skip (`skipped_data`) any candidate whose `ts.date()` predates the earliest bar - guard tied to actual coverage, not a hardcoded number.
+- **mcp_server.py - provenance ambiguity (nit).** `_pg_or_jsonl_analytics` fell through to JSONL on empty PG with no way to tell which store served. Fix: `result["_source"]` = `postgres` | `jsonl`. (NOTE: live only after MCP server restart - persistent process.)
 - Preserved a concurrent fix that removed `close_pool()` from the helper (closing the shared global pool mid-flight nulled it for the running backfill).
 
 Verified: ruff clean on 4 files; 10/10 signal_backfill+analytics tests; log_jsonl gate (False→0 / True→1 log calls); age guard skips a synthetic 400d-old row without writing; `_source` marker on both paths in-process; live MCP PG read still n=256 @ h5.
@@ -25,7 +36,7 @@ Verified: ruff clean on 4 files; 10/10 signal_backfill+analytics tests; log_json
 
 ## 2026-06-10 - Data-source resilience: multi-source news + remove single-source yfinance gaps
 
-Problem: `get_news_headlines` was single-source `yfinance.Ticker().news` — flaky/laggy/often empty, no fallback, in-process-only cache (3-4x Yahoo hits across MCP/cron processes). Two other paths reused the same broken scrape or had no fallback.
+Problem: `get_news_headlines` was single-source `yfinance.Ticker().news` - flaky/laggy/often empty, no fallback, in-process-only cache (3-4x Yahoo hits across MCP/cron processes). Two other paths reused the same broken scrape or had no fallback.
 
 Fixes:
 - **news.py** rewritten: asset-aware multi-source chain. US `finnhub→yfinance→eodhd`; CA `yfinance→finnhub→eodhd`; crypto `yfinance→finnhub`; intl `yfinance→eodhd`. First non-empty wins. Shared circuit breaker (`default_breaker`) + drift logging (`source_stats` as `news:<src>`) + cross-process L2 cache. EODHD always LAST (free tier 20/day shared with price quota). No new keys (finnhub/eodhd already configured). Normalized article adds `published_ts` epoch.
@@ -33,7 +44,7 @@ Fixes:
 - **positioning.py** `_news_velocity`: was the SAME flaky `yf.Ticker().news` scrape → now `news.recent_headlines()` (multi-source, timestamped). Yahoo outage no longer zeroes crowding headline-velocity.
 - **technicals.py**: added `_router_history_df()` last-resort fallback when both Massive + yfinance batch fail for a symbol → routes through `data_router.get_history` (twelve_data/tiingo/eodhd/stooq) + shared L2. Gives TSX names a fallback they lacked; preserves the fast batch path for the happy case.
 
-Untouched (no better free source / correct as-is): options chains (yfinance-only, 15m cache), market_data sector tags (yfinance-only, L2 cached), macro (FRED 12h — slow-moving), fundamentals/earnings/insider (long cache correct). Quote/history/fundamentals router already robust.
+Untouched (no better free source / correct as-is): options chains (yfinance-only, 15m cache), market_data sector tags (yfinance-only, L2 cached), macro (FRED 12h - slow-moving), fundamentals/earnings/insider (long cache correct). Quote/history/fundamentals router already robust.
 
 Verified: ruff clean; 340 passed / 3 skipped; live AAPL→finnhub today's headlines, SHOP.TO/BTC→yfinance, cache hit 0ms; velocity ratio computed from 50 timestamped articles; router-fallback df → rsi/sma/trend computed.
 
@@ -45,13 +56,13 @@ Goal: stop verdicts contradicting prior sessions, and make `get_calibration_repo
 
 ### Changed
 - **All 23 verdict-emitting skills** (`.claude/skills/*/SKILL.md`) now carry a decision-memory protocol: **load** `get_ticker_decision_history` + `get_ticker_reflection` (per-ticker) or `get_cross_ticker_lessons` (portfolio-level) BEFORE forming a view, with a reconcile-don't-silently-flip rule; **log** every actionable verdict via `log_recommendation` (and `log_trade_decision` where applicable) AFTER. Was 3 load / 14 log → 23/23. Template: `adversarial-research` Stage 0 + Layer 5. Non-investment utilities (profile-setup/health-check/perf-optimizer) excluded.
-- **`backend/app/services/calibration.py`** — `_fetch_pairs` now reads the live JSONL source of truth (`signal_history._load_history`), pairing `features.win_prob` with `outcomes["h{H}"]["win"]`, instead of a Postgres `realized_return_*d` column that the scorer never fills. `compute()` (pure, test-covered) untouched.
-- **`backend/mcp_server.py`** — `get_calibration_report` computes live via `calibration_verdict` instead of reading the never-populated Postgres `calibration_reports` table; honest "windows not elapsed" reason per horizon.
-- **`.claude/context/lessons.md`** — added Skills/decision-memory rules (load-prior+log-after; HIGH conviction is anti-predictive — never size up on it).
+- **`backend/app/services/calibration.py`** - `_fetch_pairs` now reads the live JSONL source of truth (`signal_history._load_history`), pairing `features.win_prob` with `outcomes["h{H}"]["win"]`, instead of a Postgres `realized_return_*d` column that the scorer never fills. `compute()` (pure, test-covered) untouched.
+- **`backend/mcp_server.py`** - `get_calibration_report` computes live via `calibration_verdict` instead of reading the never-populated Postgres `calibration_reports` table; honest "windows not elapsed" reason per horizon.
+- **`.claude/context/lessons.md`** - added Skills/decision-memory rules (load-prior+log-after; HIGH conviction is anti-predictive - never size up on it).
 
 ### Verified
 - `pytest tests/test_calibration.py` 10/10 pass (compute untouched).
-- `get_calibration_report` now returns real Brier/ECE: h5 n=188 verdict=overconfident (Brier 0.29, ECE 0.227), h10 n=59 underconfident (ECE 0.158), h21 n=0 no_data (legitimate — 21-trading-day window closes ~Jun 18; oldest signals ~May 20). "overconfident" corroborates HIGH-conviction-anti-predictive (HIGH 22% win vs MED 63% over 411 scored recs).
+- `get_calibration_report` now returns real Brier/ECE: h5 n=188 verdict=overconfident (Brier 0.29, ECE 0.227), h10 n=59 underconfident (ECE 0.158), h21 n=0 no_data (legitimate - 21-trading-day window closes ~Jun 18; oldest signals ~May 20). "overconfident" corroborates HIGH-conviction-anti-predictive (HIGH 22% win vs MED 63% over 411 scored recs).
 - `grep` coverage: load tools 3→23 skills, log tools 14→23 skills (same set).
 - Markdown-only skill edits; backend changes import-clean. Running MCP server should be restarted to serve new calibration code.
 
@@ -62,24 +73,24 @@ Goal: stop verdicts contradicting prior sessions, and make `get_calibration_repo
 
 ## 2026-06-04 - Onboarding: one-command setup + doctor + POSIX automation
 
-Goal: a second technical user clones and runs it without tribal knowledge. Closed the "setup needs a developer" gap. No app-logic change — packaging + docs + portability.
+Goal: a second technical user clones and runs it without tribal knowledge. Closed the "setup needs a developer" gap. No app-logic change - packaging + docs + portability.
 
 ### New
-- **`setup.sh` + `setup.ps1`** (repo root) — idempotent one-command bootstrap: create venv, install deps, seed `backend/.env`, generate `.mcp.json` with this-machine absolute paths, register MCP with Claude (if CLI present), run doctor. `.mcp.json` emitted via venv-python `json.dump` so Windows backslash paths escape correctly with zero hand-editing. setup.sh resolves venv python at `bin/python` (POSIX) **or** `Scripts/python.exe` (Git-Bash on native Windows).
-- **`scripts/run-claude-skill.sh`** — POSIX twin of `run-claude-skill.ps1` (claude → free-LLM fallback → Telegram; same exit codes 0/1/2).
-- **`scripts/posix/`** — ready-to-edit launchd plist + systemd `.service`/`.timer` + README (`__REPO__`/`__HOME__` placeholders, `sed`-install one-liners).
-- **`.gitattributes`** — force LF on `*.sh`/`*.service`/`*.timer`/`*.plist` (CRLF breaks shebang + systemd on POSIX); CRLF on `*.ps1`. Exec bit (`100755`) set on both `.sh`.
+- **`setup.sh` + `setup.ps1`** (repo root) - idempotent one-command bootstrap: create venv, install deps, seed `backend/.env`, generate `.mcp.json` with this-machine absolute paths, register MCP with Claude (if CLI present), run doctor. `.mcp.json` emitted via venv-python `json.dump` so Windows backslash paths escape correctly with zero hand-editing. setup.sh resolves venv python at `bin/python` (POSIX) **or** `Scripts/python.exe` (Git-Bash on native Windows).
+- **`scripts/run-claude-skill.sh`** - POSIX twin of `run-claude-skill.ps1` (claude → free-LLM fallback → Telegram; same exit codes 0/1/2).
+- **`scripts/posix/`** - ready-to-edit launchd plist + systemd `.service`/`.timer` + README (`__REPO__`/`__HOME__` placeholders, `sed`-install one-liners).
+- **`.gitattributes`** - force LF on `*.sh`/`*.service`/`*.timer`/`*.plist` (CRLF breaks shebang + systemd on POSIX); CRLF on `*.ps1`. Exec bit (`100755`) set on both `.sh`.
 
 ### Changed
-- **`backend/scripts/health_check.py`** — doctor +2 checks: `env_file` (backend/.env present, WS_EMAIL not placeholder) and `mcp_registered` (`claude mcp list` contains aifolimizer). Fixed crash: `claude mcp list` emits non-cp1252 bytes → forced `encoding="utf-8", errors="replace"`, default `""`.
-- **`README.md`** — one-command fast-path at top of Quick start (scripts were undiscoverable otherwise); layout + docs refs.
-- **`docs/SETUP.md`**, **`scripts/AUTOMATION.md`** — pointed at the shipped scripts; removed stale "no POSIX twin yet" claim.
+- **`backend/scripts/health_check.py`** - doctor +2 checks: `env_file` (backend/.env present, WS_EMAIL not placeholder) and `mcp_registered` (`claude mcp list` contains aifolimizer). Fixed crash: `claude mcp list` emits non-cp1252 bytes → forced `encoding="utf-8", errors="replace"`, default `""`.
+- **`README.md`** - one-command fast-path at top of Quick start (scripts were undiscoverable otherwise); layout + docs refs.
+- **`docs/SETUP.md`**, **`scripts/AUTOMATION.md`** - pointed at the shipped scripts; removed stale "no POSIX twin yet" claim.
 
 ### Verified
-- Full fresh-tree e2e (copied working tree, fake-`claude` shim so real MCP config untouched): `setup.sh` exit 0 → venv (Scripts/ branch) + full pip install clean + `.env` + `.mcp.json` (escaped paths) + doctor 8/8 PASS. Real global MCP registration confirmed intact (`✓ Connected`). `setup.ps1` parse-checked (not executed — would mutate live config). `bash -n` + ruff clean.
+- Full fresh-tree e2e (copied working tree, fake-`claude` shim so real MCP config untouched): `setup.sh` exit 0 → venv (Scripts/ branch) + full pip install clean + `.env` + `.mcp.json` (escaped paths) + doctor 8/8 PASS. Real global MCP registration confirmed intact (`✓ Connected`). `setup.ps1` parse-checked (not executed - would mutate live config). `bash -n` + ruff clean.
 
 ### Dropped (not worth it)
-- **Tiering 102 tools behind `AIFOLIMIZER_ADVANCED` flag** — cosmetic gain; touches import-critical `mcp_server.py` (102 `@mcp.tool()` decorators), depends on a FastMCP `remove_tool` API that may not exist in the bundled server, and fights the `check_doc_counts.py` CI guard. Risk of MCP-dead-for-everyone outweighs "fewer tools shown."
+- **Tiering 102 tools behind `AIFOLIMIZER_ADVANCED` flag** - cosmetic gain; touches import-critical `mcp_server.py` (102 `@mcp.tool()` decorators), depends on a FastMCP `remove_tool` API that may not exist in the bundled server, and fights the `check_doc_counts.py` CI guard. Risk of MCP-dead-for-everyone outweighs "fewer tools shown."
 
 ---
 
@@ -88,30 +99,30 @@ Goal: a second technical user clones and runs it without tribal knowledge. Close
 6 new MCP tools (DCF, backtest CI, sentinel, 3× hypothesis registry). Doc counts synced 84→98 tools, 22→25 skills (concurrent data-integration work added the rest).
 
 ### New services + tools (`backend/`)
-- **`dcf.py`** → `get_dcf_valuation` — deterministic 5y FCF + Gordon terminal DCF, CAPM discount, sensitivity grid. Anchored to SEC EDGAR FCF (refactored `fundamentals._fetch_facts` + new `get_sec_cashflow`). US-only, net-debt-ignored, negative-FCF guard. Gives price targets a quantitative spine.
+- **`dcf.py`** → `get_dcf_valuation` - deterministic 5y FCF + Gordon terminal DCF, CAPM discount, sensitivity grid. Anchored to SEC EDGAR FCF (refactored `fundamentals._fetch_facts` + new `get_sec_cashflow`). US-only, net-debt-ignored, negative-FCF guard. Gives price targets a quantitative spine.
 - **`backtest_stats.py`** → `get_backtest_confidence` (moving-block bootstrap CI on total-return/CAGR/maxDD + order-shuffle MC drawdown-risk) and `run_lookahead_sentinel` (perfect-foresight signal must NOT earn abnormal return → leak detector). Reuse backtest engine `_fetch_close`/`_run_signal`/`_run_buy_hold`.
-- **`hypotheses.py`** → `log_hypothesis`/`list_hypotheses`/`resolve_hypothesis` — durable thesis registry (open→confirmed/refuted/expired) at `~/.aifolimizer/hypotheses.jsonl`. Covers un-executed/in-flight ideas (decision_memory only covers executed trades).
+- **`hypotheses.py`** → `log_hypothesis`/`list_hypotheses`/`resolve_hypothesis` - durable thesis registry (open→confirmed/refuted/expired) at `~/.aifolimizer/hypotheses.jsonl`. Covers un-executed/in-flight ideas (decision_memory only covers executed trades).
 
 ### Skills
-- **`trading-desk`** (project) — chained meta-skill: adversarial-research → risk gate → crowding/concentration → pre-trade-check → PM approve/reject gate → ticket. Hard veto blocks ticket emission.
-- **`optimize-allocation`** (project) — already logged batch 1; max-Sharpe reweighting.
-- **`health-check`** (project) + `backend/scripts/health_check.py` — diagnostic: mcp import + tool count, core-service imports, WS token freshness, settings hooks. PASS/WARN/FAIL.
-- **`premortem`** (global `~/.claude/skills/`) — pre-action failure-mode gate for irreversible trades/code; blocks on HIGH-severity unmitigated.
+- **`trading-desk`** (project) - chained meta-skill: adversarial-research → risk gate → crowding/concentration → pre-trade-check → PM approve/reject gate → ticket. Hard veto blocks ticket emission.
+- **`optimize-allocation`** (project) - already logged batch 1; max-Sharpe reweighting.
+- **`health-check`** (project) + `backend/scripts/health_check.py` - diagnostic: mcp import + tool count, core-service imports, WS token freshness, settings hooks. PASS/WARN/FAIL.
+- **`premortem`** (global `~/.claude/skills/`) - pre-action failure-mode gate for irreversible trades/code; blocks on HIGH-severity unmitigated.
 - Data-grounding anti-hallucination contract added to `stock-analysis` + `adversarial-research` (cite only fetched numbers).
 
 ### Global config (`~/.claude/`)
 - `CLAUDE.md`: Context-Budget golden rules (70% precision threshold, new-task=new-session, delegate fan-out, lean memory files).
-- `scripts/lint_edited.py` (PostToolUse ruff-on-edit) + `scripts/precompact_snapshot.py` (PreCompact recovery dump) — scripts written + tested; **hook registration pending user approval** (auto-mode classifier blocked settings.json self-edit).
+- `scripts/lint_edited.py` (PostToolUse ruff-on-edit) + `scripts/precompact_snapshot.py` (PreCompact recovery dump) - scripts written + tested; **hook registration pending user approval** (auto-mode classifier blocked settings.json self-edit).
 
 ### Notes
 - Skipped (not worth it): alpha-factor library (high effort/cross-sectional infra), devcontainer (modest solo value), mobile Cloudflare tunnel (infra + outward exposure), cost/cache dashboard (no per-token bill on Pro), CLAUDE.md table-extraction split (CI-fragile vs check_doc_counts for modest gain).
-- `health_check.py` confirms venv is Python 3.14 and runs clean — the CLAUDE.md `<3.14` pin note is stale (project uses `ta`, not pandas-ta).
+- `health_check.py` confirms venv is Python 3.14 and runs clean - the CLAUDE.md `<3.14` pin note is stale (project uses `ta`, not pandas-ta).
 
 ---
 
 ## 2026-06-04 - Wire new free-data tools into 9 skills
 
-Surfaced the 11 session-added tools inside the skills that consume them (research skills stay PII-free — public data only). No new tools; instruction-only edits to `.claude/skills/*/SKILL.md`.
+Surfaced the 11 session-added tools inside the skills that consume them (research skills stay PII-free - public data only). No new tools; instruction-only edits to `.claude/skills/*/SKILL.md`.
 
 - **macro-impact**: + `get_boc_snapshot`, `get_statcan_snapshot` (official CA, prefer over FRED mirror), `get_factor_snapshot` (factor leadership feeds sector call). Gotchas added.
 - **risk-assessment**: + `get_factor_exposure` (top 3-5 holdings) + `get_factor_snapshot` → new output item "Factor concentration" (shared loadings = hidden factor bet). US-factor/low-R² caveat.
@@ -120,7 +131,7 @@ Surfaced the 11 session-added tools inside the skills that consume them (researc
 - **daily-briefing**: + `get_boc_snapshot` (cheap, curve_signal) always; `get_crypto_fear_greed`+`get_crypto_macro` only if crypto held (token-budget respected). Risk-radar lines added.
 - **sector-rotation**: + `get_factor_snapshot` (value/growth/quality leadership → sector tilt).
 - **earnings-analyzer**: + `get_recent_filings(8-K)` pre-earnings events + `get_finnhub_news` positioning-into-print.
-- **earnings-postmortem**: + `get_recent_filings(8-K,10-Q,10-K)` — primary-source filing + EDGAR link.
+- **earnings-postmortem**: + `get_recent_filings(8-K,10-Q,10-K)` - primary-source filing + EDGAR link.
 - **momentum-scanner**: + `get_factor_snapshot` (Mom regime gate) + `get_search_interest` (retail-demand confirm); parallel step range updated.
 
 ---
@@ -130,7 +141,7 @@ Surfaced the 11 session-added tools inside the skills that consume them (researc
 4 new MCP tools (total 98→102). All public data, no key, no PII. Congressional-trades skipped (free sources need keys / PDF-scraping; 45-day disclosure lag = arbed; novelty > edge for retail).
 
 ### New services (`backend/app/services/`)
-- **`fama_french.py`** → `get_factor_snapshot` (latest + trailing 21d/252d FF5+Mom returns) and `get_factor_exposure(ticker, lookback_days)` — OLS regress ticker excess returns on Mkt-RF/SMB/HML/RMW/CMA/Mom → factor betas + annualized alpha + R² (numpy lstsq, no statsmodels). yfinance prices + Ken French Data Library zips (24h cache). Verified: AAPL market β1.22, profitability +0.55, alpha 3.45%/yr, R²0.34. Upgrades risk-assessment beyond single beta. US factors → non-US directional only.
+- **`fama_french.py`** → `get_factor_snapshot` (latest + trailing 21d/252d FF5+Mom returns) and `get_factor_exposure(ticker, lookback_days)` - OLS regress ticker excess returns on Mkt-RF/SMB/HML/RMW/CMA/Mom → factor betas + annualized alpha + R² (numpy lstsq, no statsmodels). yfinance prices + Ken French Data Library zips (24h cache). Verified: AAPL market β1.22, profitability +0.55, alpha 3.45%/yr, R²0.34. Upgrades risk-assessment beyond single beta. US factors → non-US directional only.
 - **`defillama.py`** → `get_crypto_macro` (no key). Total DeFi TVL + top chains, aggregate stablecoin mcap + top issuers ($B). 30m cache. Verified live (TVL $73.9B, stablecoins $316.6B, top chain Ethereum $38.5B).
 - **`edgar_filings.py`** → `get_recent_filings(ticker, forms, limit)` (no key). Material SEC filings (8-K/10-K/10-Q/6-K/20-F/S-1/proxy/13D-G) with dates + doc URLs; event-detection feed. Reuses `fundamentals._load_cik_map`. US-listed only. 6h cache. Verified live (AAPL + SHOP).
 
@@ -145,7 +156,7 @@ Surfaced the 11 session-added tools inside the skills that consume them (researc
 
 ## 2026-06-04 - 5 free data integrations (no/low-cost, fill macro+sentiment gaps)
 
-7 new MCP tools (total 84→98). All public data — no PII, no `pii_filter`. Each = own service module mirroring `geopolitical.py` (dict cache + TTL, httpx, graceful degrade).
+7 new MCP tools (total 84→98). All public data - no PII, no `pii_filter`. Each = own service module mirroring `geopolitical.py` (dict cache + TTL, httpx, graceful degrade).
 
 ### New services (`backend/app/services/`)
 - **`boc_valet.py`** → `get_boc_snapshot` (no key). Bank of Canada Valet: policy/overnight target rate (`V39079`), USD/CAD (`FXUSDCAD`), GoC 2/5/10y yields (`BD.CDN.{2,5,10}YR.DQ.YLD`), 10y-2y curve slope. Fills Canadian gap vs US-centric FRED. 12h cache. Verified live (rate 2.25%).
@@ -164,16 +175,16 @@ Surfaced the 11 session-added tools inside the skills that consume them (researc
 ## 2026-06-04 - Feature-gap audit follow-up (4 builds from 19-repo audit)
 
 ### `mcp_server.py` + `portfolio_optimizer.py`
-- **`optimize_portfolio` MCP tool** wired — exposes existing `portfolio_optimizer.optimize()` (PyPortfolioOpt max-Sharpe, Ledoit-Wolf cov, BL views from analyst targets) that was dead code (built, never registered). Params: account_id, top_n=20, use_analyst_views, risk_free_rate. Returns optimal weights + add/trim changes. % only, no $.
-- New skill `optimize-allocation/SKILL.md` — trading-bucket reweighting (distinct from DCA-only auto-rebalance); calls tool + crowding/concentration sanity gate.
+- **`optimize_portfolio` MCP tool** wired - exposes existing `portfolio_optimizer.optimize()` (PyPortfolioOpt max-Sharpe, Ledoit-Wolf cov, BL views from analyst targets) that was dead code (built, never registered). Params: account_id, top_n=20, use_analyst_views, risk_free_rate. Returns optimal weights + add/trim changes. % only, no $.
+- New skill `optimize-allocation/SKILL.md` - trading-bucket reweighting (distinct from DCA-only auto-rebalance); calls tool + crowding/concentration sanity gate.
 
-### `shadow_account.py` — behavioral-bias diagnosis (from Vibe-Trading)
+### `shadow_account.py` - behavioral-bias diagnosis (from Vibe-Trading)
 - `_detect_biases(roundtrips)` on existing FIFO data: disposition effect (loser/winner hold ratio), gain/loss asymmetry (payoff ratio), overtrading (cadence + median hold), anchoring (entries near round numbers). Each flagged+evidence; `biases_flagged` list. Surfaced in `analyze_shadow_account` result.
 
-### `.claude/agents/{analyst,researcher}.md` — fixed dead subagent files
-- Added YAML frontmatter (name/description/tools/model) — previously plain-prose, harness couldn't dispatch. Least-privilege tools (researcher read-only, analyst gets MCP analysis tools); model: opus/sonnet routing now enforced.
+### `.claude/agents/{analyst,researcher}.md` - fixed dead subagent files
+- Added YAML frontmatter (name/description/tools/model) - previously plain-prose, harness couldn't dispatch. Least-privilege tools (researcher read-only, analyst gets MCP analysis tools); model: opus/sonnet routing now enforced.
 
-### GLOBAL `~/.claude/` — security hooks (from awesome-toolkit + ultimate-guide)
+### GLOBAL `~/.claude/` - security hooks (from awesome-toolkit + ultimate-guide)
 - `scripts/guard_secrets.py` + PreToolUse hook: deny AI read/edit of .env/ws_session.json/keys + shell cat of secrets. Fail-open, allowlists .env.example/.sample/.md. Runtime enforcement of CLAUDE.md privacy rules.
 - `scripts/scan_injection.py` + PostToolUse hook (matcher mcp__aifolimizer__.*): non-blocking prompt-injection warning on news/sentiment/positioning tool output (untrusted third-party text).
 
@@ -183,17 +194,17 @@ Surfaced the 11 session-added tools inside the skills that consume them (researc
 - **`entry_zone`** (BUY/ADD): support-anchored buy band. `timing=buy_now` when price near nearest support (SMA20/Bollinger/SMA50); flips to `wait_pullback` when stretched (>2x ATR above support OR RSI ≥ 70). Returns low/high/reference/support_level/support_basis/note.
 - **`exit_ladder`** (BUY/ADD): tiered T1/T2/T3 by conviction R-multiples (HIGH 2/4/6R, MED 1.5/3/4.5R, LOW 1/2/3R), scale-out 40/35/25% summing to full qty. T1 auto-anchors to nearest resistance (bb_upper/SMA) when it lands within range. Crypto → fractional shares.
 - **`position`** block when held (`avg_cost>0`): avg_cost, return_pct, stop_below_cost, plus `gain_from_cost_pct` per ladder rung.
-- **`action="HOLD"`**: management plan for a held name — stop + exit_ladder (profit-taking from current price) + position block, no entry zone, no sizing. order_type=`MANAGE`. Ladder sized against `position_quantity`.
+- **`action="HOLD"`**: management plan for a held name - stop + exit_ladder (profit-taking from current price) + position block, no entry zone, no sizing. order_type=`MANAGE`. Ladder sized against `position_quantity`.
 - Hoisted technicals fetch (reused by stop + zone + ladder). New helpers `_levels_below/_above`, `_atr_abs`, `_build_entry_zone`, `_build_exit_ladder`. All prior keys preserved (non-breaking).
 
 ### `mcp_server.py`
 - `get_trade_ticket` now passes held-position `avg_cost` (book_cost/qty), `holding_return_pct`, `position_quantity` from live session; docstring documents HOLD + entry_zone/exit_ladder/position.
 
 ### Skill wiring
-- **pre-trade-check**: Step 3 now sources levels from `get_trade_ticket` (entry_zone/stop/exit_ladder) — single source of truth, removed hand-rolled TP1/TP2 math; keeps 1.5%-NAV risk-based share sizing as the gate's discipline. Decision card shows buy zone + 3-tier ladder + held context.
-- **position-review**: after verdict, calls `get_trade_ticket(action=verdict)` — HOLD renders exit ladder + stop + stop_below_cost; TRIM/SELL shows stop only.
-- **cash-deployment**: §4 deployment plan routes the top-3 committed adds through `get_trade_ticket(action=ADD)` — replaces raw `pivot_levels.s1/s2` entry/stop with engine entry_zone (defers `wait_pullback` names) + stop + exit_ladder. §3 screening table unchanged. Risk-first 2%-max-loss / 5%-cap sizing kept.
-- **top-trades-today**: deliberately NOT wired — lean 5-name one-shot; `get_trade_ideas` already supplies entry/stop/target/R:R and filters wait_pullback. A 3-tier ladder per idea would bloat the Telegram output and add 5 calls for no decision value at shortlist altitude.
+- **pre-trade-check**: Step 3 now sources levels from `get_trade_ticket` (entry_zone/stop/exit_ladder) - single source of truth, removed hand-rolled TP1/TP2 math; keeps 1.5%-NAV risk-based share sizing as the gate's discipline. Decision card shows buy zone + 3-tier ladder + held context.
+- **position-review**: after verdict, calls `get_trade_ticket(action=verdict)` - HOLD renders exit ladder + stop + stop_below_cost; TRIM/SELL shows stop only.
+- **cash-deployment**: §4 deployment plan routes the top-3 committed adds through `get_trade_ticket(action=ADD)` - replaces raw `pivot_levels.s1/s2` entry/stop with engine entry_zone (defers `wait_pullback` names) + stop + exit_ladder. §3 screening table unchanged. Risk-first 2%-max-loss / 5%-cap sizing kept.
+- **top-trades-today**: deliberately NOT wired - lean 5-name one-shot; `get_trade_ideas` already supplies entry/stop/target/R:R and filters wait_pullback. A 3-tier ladder per idea would bloat the Telegram output and add 5 calls for no decision value at shortlist altitude.
 
 ---
 
@@ -512,7 +523,7 @@ AAPL 365d: buy_hold +42.7% (sharpe 1.7, DD -13.8%); rsi_swing +11.9% (-30.8 vs b
 - MCP: `get_triggered_alerts(since_hours, limit)` + `run_alerts_now(account_id, price_drop_pct, dry_run)`.
 
 ### Rules
-`price_drop_intraday` (−5%), `rsi_oversold` (≤30), `rsi_overbought` (≥75), `earnings_imminent` (next 3 days), `concentration_single` (>10%), `concentration_sector` (>35%)
+`price_drop_intraday` (-5%), `rsi_oversold` (≤30), `rsi_overbought` (≥75), `earnings_imminent` (next 3 days), `concentration_single` (>10%), `concentration_sector` (>35%)
 
 ### Config
 `NTFY_TOPIC` in `backend/.env`. Unset → alerts only logged. ntfy.sh free tier, no signup.
@@ -692,13 +703,13 @@ Always-on BUY/SELL/HOLD/WATCH without manual Claude commands. Rule-based engine,
 - `portfolio_analytics.py` - ETF X-ray, concentration warnings, tax-loss candidates.
 - 8 institutional analysis skills at `~/.claude/skills/`.
 - Next.js 14 dashboard - login (MFA), portfolio table, allocation chart, skill directory.
-## 2026-06-04 — MAX/lottery-stock reversal guard
+## 2026-06-04 - MAX/lottery-stock reversal guard
 - `technicals.py`: added `max_1d_return_21d_pct` + `lottery_flag` (Bali-Cakici-Whitelaw 2011). Flag = max single-day gain in last 21d >= 8% AND >= 3x trailing-63d daily vol (self-normalized). Surfaces as signal_conflict (chase warning).
 - `pre-trade-check`: lottery flag = warning gate for BUY/ADD (wait for mean-revert).
 - `cash-deployment`: lottery_flag != true added to Setup Score + ideal-add cross-ref.
 - Source: review of academic-anomaly screenshots. 5 of 6 anomalies already shipped (52wk-high, PEAD, 12m momentum); pairs-trading + turn-of-month skipped (no short / tx-cost in retail TFSA). Verified: ruff clean, fires on synthetic 15% spike, no false positive on AAPL/NVDA/XEQT.
 
-## 2026-06-04 — Full audit pass (test/perf/security/logic/automation/integrations)
+## 2026-06-04 - Full audit pass (test/perf/security/logic/automation/integrations)
 Baseline: 335 pass + 1 fail. Now 336 pass / 0 fail. 12 files changed.
 - **PII test fix**: portfolio_analytics xray/sector/asset breakdowns returned unrounded float weights (16-digit fractional → tripped `\d{14,}` account-ID guard). Rounded to 6dp.
 - **Perf (high)**: mcp_server `_load_portfolio` called sync `market_data.enrich()` on event loop (blocked ~25 MCP tools). Wrapped in `asyncio.to_thread`.
@@ -709,61 +720,61 @@ Baseline: 335 pass + 1 fail. Now 336 pass / 0 fail. 12 files changed.
 - **Perf**: data_cache enabled WAL + synchronous=NORMAL; data_router copy-before-mutate cached quote.
 - **Automation (self-logging)**: wired nightly equity NAV snapshot into scheduler `_score_once_if_due` so `get_alpha_attribution` self-populates (was manual-only).
 Verified: imports clean, ruff+format clean, 336 tests pass, e2e 14/14, live get_xray/integrations OK, all hooks fire + continuous code-graph sync confirmed.
-Deferred (not worth breakage risk): dead RQ task wrappers (nightly_q/run_risk_gate/run_alerts_for_tenant — harmless no-ops, inline+external paths work); fundamentals/technicals in-flight stampede guard (deadlock risk); signal_history calendar-vs-trading-day skip-label (no wrong numbers); py3.14 vs pyproject <3.14 pin (stale, runs fine).
+Deferred (not worth breakage risk): dead RQ task wrappers (nightly_q/run_risk_gate/run_alerts_for_tenant - harmless no-ops, inline+external paths work); fundamentals/technicals in-flight stampede guard (deadlock risk); signal_history calendar-vs-trading-day skip-label (no wrong numbers); py3.14 vs pyproject <3.14 pin (stale, runs fine).
 
-## 2026-06-04 — Fix: no Telegram alerts from scheduled runs
+## 2026-06-04 - Fix: no Telegram alerts from scheduled runs
 Three independent root causes, all fixed:
 1. **Auth (blocker)**: `run_alerts.py._load_session` hand-rolled `_finalize_session` (no token refresh) → `UNAUTHENTICATED`/`invalid_grant` every run. Now uses hardened `wealthsimple.restore_session()` (force-refreshes expired access token from refresh_token). Verified: 17 alerts triggered, exit 0.
 2. **Schedule**: `schedule_alerts.ps1` used `New-ScheduledTaskTrigger -Once` + `.DaysOfWeek` (no-op on -Once) + `RepetitionDuration 6h30m` → task fired once May 28, never recurred (NextRun empty). Fixed: dropped DaysOfWeek hack, removed RepetitionDuration (=indefinite 30-min repetition), bumped ExecutionTimeLimit 3→10min (cold yfinance+massive 429s exceed 3min). Also fixed em-dash in -Description (broke PS 5.1 ANSI parse of BOM-less file). Re-registered: NextRun armed, scheduled run = result 0.
 3. **Scheduler dead**: FastAPI backend (hosts APScheduler via main.py lifespan; MCP process does NOT) wasn't running (port 8000 down, `aifolimizer-backend` task exited 0xC000013A). Started it → /health ok → nightly scoring/skills/calibration/equity-snapshot live again. `run.py` reload=True→env-gated (default off) so the scheduled service is single-process/robust (documented dev start uses `uvicorn --reload`).
-Telegram delivery confirmed end-to-end (sendMessage 200, ok:true). Dedup is per-rule/symbol/day (7d state) — correct; today's keys already seeded by test runs, fresh pushes resume tomorrow.
-Noted (not changed): `aifolimizer-daily-briefing` task mislabeled (runs run_alerts.py; works now post-auth-fix); `aifolimizer-worker` (RQ consumer) down — only affects per-tenant RQ skill ticks; nightly self-learning runs inline in scheduler.
+Telegram delivery confirmed end-to-end (sendMessage 200, ok:true). Dedup is per-rule/symbol/day (7d state) - correct; today's keys already seeded by test runs, fresh pushes resume tomorrow.
+Noted (not changed): `aifolimizer-daily-briefing` task mislabeled (runs run_alerts.py; works now post-auth-fix); `aifolimizer-worker` (RQ consumer) down - only affects per-tenant RQ skill ticks; nightly self-learning runs inline in scheduler.
 
-## 2026-06-04 — Daily-briefing→Telegram + RQ worker fix
+## 2026-06-04 - Daily-briefing→Telegram + RQ worker fix
 - **New `scripts/send_daily_briefing.py`**: headless/no-LLM digest. restore_session → portfolio → `skill_runner.run_all_skills` (codified composer) → formats daily-briefing snapshot (NLV/return/cash, next_action, insights, alerts) → Telegram (raw httpx, UTF-8). stdout reconfigured utf-8 for --dry-run on cp1252 consoles. Verified: real send exit 0, delivered.
 - **Repointed `aifolimizer-daily-briefing` task** from run_alerts.py → send_daily_briefing.py (kept Mon-Fri 8:30 trigger; ExecutionTimeLimit 10min). NextRun tomorrow 8:30.
 - **Worker fix `scripts/worker.py`**: RQ default Worker forks per job; `os.fork()` absent on Windows → worker crashed/exited every start. Now `SimpleWorker` (in-process, no fork) when `not hasattr(os,'fork')`. Verified: processes queued `run_skill_tick_for_tenant`, stays listening. Started persistently (Redis reachable at redis://localhost:6379/0).
-- Discovered: scheduler HAD been enqueuing per-tenant skill ticks all along — they sat unconsumed because the worker never ran on Windows.
+- Discovered: scheduler HAD been enqueuing per-tenant skill ticks all along - they sat unconsumed because the worker never ran on Windows.
 
-## 2026-06-04 — Alert noise reduction + lifecycle notifications
+## 2026-06-04 - Alert noise reduction + lifecycle notifications
 User: MFA alerts too frequent (30min); portfolio alerts only on critical/major; add system up-after-down.
 - **Portfolio alerts → high-severity only**: `alerts.dispatch(min_severity=)` gates Telegram push (history still logs all). `run_alerts.py --min-severity` default **high** → only major price moves (≥10%) push; earnings/concentration/RSI logged + surfaced via daily briefing. Verified: 3 triggered → 1 pushed, 2 held.
 - **MFA → once per expiry event**: `mfa_notify.py` cooldown 6h→24h (daily reminder cap) + new `clear_flag()`. `run_alerts.py` on dead session fires notify once + exits 0 (was crashing every 30min); on valid session calls `clear_flag()`. `main.py` lifespan clears flag on successful restore, fires notify on None. Net: one heads-up per real expiry, reset on re-auth.
 - **System-up notification**: `main.py._fire_system_up()` pushes "🟢 aifolimizer online" once per boot, deduped 30min (crash-loop guard) via `.online-notify.last` marker. Fired from lifespan. Verified live (marker written = push sent).
 
-## 2026-06-04 — Fix: MCP hangs + wrong account values (per-holding currency)
+## 2026-06-04 - Fix: MCP hangs + wrong account values (per-holding currency)
 User: skills get_profile/get_portfolio_analysis/get_personal_context "stick" forever (no error, must interrupt); account values + per-holding currency wrong (most holdings USD shown as CAD).
 
 Root causes + fixes:
-1. **Per-account holdings empty** — `wealthsimple._position_account_id` read singular `account`/`accountInfo`; WS FetchIdentityPositions puts membership under `accounts` (list of {id}). Returned "" for all → per-account filter dropped every holding (single-account view: total ok from NLV, positions []). Fixed to read `accounts[0].id`.
-2. **Calls hang with no error** — running MCP server predated the 30s requests-timeout patch (disk code correct: fresh proc get_profile 3.92s). Architecture had NO async-layer backstop and ran all WS calls on the shared `asyncio.to_thread` default pool, so a WS stall starved unrelated tools (get_personal_context, zero network). Added `mcp_server._WS_EXECUTOR` (dedicated 4-worker pool) + `_ws_call()` wrapper with `asyncio.wait_for(WS_OP_TIMEOUT_S=90)`; swapped all WS to_thread sites (_load_cached_session, login, get_positions, get_all_positions, get_portfolio_response). Now a stall → bounded RuntimeError, never an infinite stick, never cross-contaminates non-WS tools.
-3. **Per-holding currency wrong** — WS reports per-holding money (totalValue/bookValue/averagePrice) in account base CAD even for NYSE/USD stocks; `_to_position_dict` tagged everything CAD off `totalValue.currency`. Now uses `security.currency` (authoritative native) and divides CAD→native by `_cad_per_usd()` FX for USD holdings. enrich re-multiplies → CAD totals/weights preserved, return % FX-invariant, per-holding displays native (26 USD / 3 CAD). Verified UNH $1586.92 USD (WS $1586.84), TFSA total 23503.65 (WS 23504.89), BB 259.20 CAD.
-4. **USD cash always 0** — `_load_portfolio` called `enrich` with 4 positional args, dropping usd_cash_balance/net_deposits_cad/simple_return_pct. Now passes all (single: per_account fields; aggregate: sum usd + session net_deposits). cash_available_usd now 4101.92 (WS truth), account_return_pct 6.83 (was 0).
+1. **Per-account holdings empty** - `wealthsimple._position_account_id` read singular `account`/`accountInfo`; WS FetchIdentityPositions puts membership under `accounts` (list of {id}). Returned "" for all → per-account filter dropped every holding (single-account view: total ok from NLV, positions []). Fixed to read `accounts[0].id`.
+2. **Calls hang with no error** - running MCP server predated the 30s requests-timeout patch (disk code correct: fresh proc get_profile 3.92s). Architecture had NO async-layer backstop and ran all WS calls on the shared `asyncio.to_thread` default pool, so a WS stall starved unrelated tools (get_personal_context, zero network). Added `mcp_server._WS_EXECUTOR` (dedicated 4-worker pool) + `_ws_call()` wrapper with `asyncio.wait_for(WS_OP_TIMEOUT_S=90)`; swapped all WS to_thread sites (_load_cached_session, login, get_positions, get_all_positions, get_portfolio_response). Now a stall → bounded RuntimeError, never an infinite stick, never cross-contaminates non-WS tools.
+3. **Per-holding currency wrong** - WS reports per-holding money (totalValue/bookValue/averagePrice) in account base CAD even for NYSE/USD stocks; `_to_position_dict` tagged everything CAD off `totalValue.currency`. Now uses `security.currency` (authoritative native) and divides CAD→native by `_cad_per_usd()` FX for USD holdings. enrich re-multiplies → CAD totals/weights preserved, return % FX-invariant, per-holding displays native (26 USD / 3 CAD). Verified UNH $1586.92 USD (WS $1586.84), TFSA total 23503.65 (WS 23504.89), BB 259.20 CAD.
+4. **USD cash always 0** - `_load_portfolio` called `enrich` with 4 positional args, dropping usd_cash_balance/net_deposits_cad/simple_return_pct. Now passes all (single: per_account fields; aggregate: sum usd + session net_deposits). cash_available_usd now 4101.92 (WS truth), account_return_pct 6.83 (was 0).
 
 Deleted `tests/test_ws_timeout_patch.py` per user request (timeout patch itself retained in wealthsimple.py).
 Verified: ruff clean, 336 tests pass, security suite 17/17, all 102 MCP tools import, concurrent get_profile+get_personal_context 3.79s (no starvation).
-OPEN: per-holding return % is CAD-frame (~40.3%, = WS API unrealizedReturns) vs WS *app* native-USD return (UNH 36.8%). Native return needs cost basis at native FX — NOT in the position API (only CAD bookValue at historical FX). Pending user decision.
-ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it alive across chat sessions) so these fixes load — the live hang is a stale pre-patch process.
+OPEN: per-holding return % is CAD-frame (~40.3%, = WS API unrealizedReturns) vs WS *app* native-USD return (UNH 36.8%). Native return needs cost basis at native FX - NOT in the position API (only CAD bookValue at historical FX). Pending user decision.
+ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it alive across chat sessions) so these fixes load - the live hang is a stale pre-patch process.
 
-## 2026-06-04 — WS MFA/stall root cause: duplicate MCP registration
+## 2026-06-04 - WS MFA/stall root cause: duplicate MCP registration
 - aifolimizer registered in BOTH project .mcp.json AND ~/.claude.json local scope (3 project paths) -> two mcp_server.py processes per session -> contention over one rotating WS token -> stalls + spurious MFA (token was NOT expired).
 - Filelock (prior fix) only serialized token rotation; never removed the 2nd process, so symptom recurred.
 - Fix: stripped aifolimizer from ~/.claude.json (backup .claude.json.bak-*); .mcp.json is sole source. Added non-blocking instance FileLock tripwire in mcp_server.py __main__ that warns to stderr on 2nd instance.
 
-## 2026-06-04 — Shared rotating-token fix (A+B): _run_ws on read paths
+## 2026-06-04 - Shared rotating-token fix (A+B): _run_ws on read paths
 - Root cause of recurring WSApiException/MFA: get_positions + get_all_positions built WealthsimpleAPI with _noop_persist, so ws-api mid-call access-token refresh ROTATED the single-use refresh token server-side but never persisted it -> disk token went dead (kills even a single session on next access-expiry). Concurrent Claude sessions compounded it: each refreshed independently and invalidated the others.
 - Fix: new _run_ws(email, fn) runs every read-path WS call under _PERSIST_LOCK, reloads freshest token from disk first, builds client with _persist_session so rotations are saved. Serializes WS calls cross-process; lock reentrant so balances thread-pool unaffected. Removed dead _noop_persist (module-level; mcp_login.py keeps its own local copy).
 - NOT a duplicate-process bug: the "two instances" every prior session chased = venv launcher-stub (.venv python.exe) + base C:\Python314 interpreter = one logical server. Verified by killing child -> parent died, no respawn.
 - Latent: venv is Python 3.14.5; CLAUDE.md pins <3.14 (ta incompat). Rebuild venv on 3.12/3.13.
 - Verified: py_compile, ruff F-codes clean, 9 WS/session tests pass.
 
-## 2026-06-04 — CORRECTION to Fix B: _run_ws is lock-free, not locked
+## 2026-06-04 - CORRECTION to Fix B: _run_ws is lock-free, not locked
 - Prior note said B wraps every WS call in _PERSIST_LOCK. That caused a head-of-line CONVOY: with multiple Claude sessions, one slow/held lock wedged every read call behind the 45s timeout -> tool "stuck". Isolated test proved the WS path itself is fine (restore 4.5s, valid session); the hang was pure lock contention my own change introduced.
 - Revised: _run_ws is lock-free. Reload freshest token from disk (atomic-rename writer => torn-read safe, no lock needed) + persist rotations via _persist_session. Rotation conflicts only occur during the ~1s refresh on access-token expiry (~30min), not on valid-token fetches; the rare simultaneous-refresh race fails one call and self-heals on next reload. Session establishment (_finalize_session) still serializes under the lock (infrequent).
 - Verified: compile, ruff F clean, 9 tests pass, _run_ws completes 0.4s while a live peer holds the lock (convoy gone).
 - NOTE: running mcp_server processes hold OLD code in memory until restarted; reload window/chat to pick up the lock-free version.
 
-## 2026-06-04 — Fix get_profile NLV double-count (pii_filter output relabel)
+## 2026-06-04 - Fix get_profile NLV double-count (pii_filter output relabel)
 - Bug: `filter_user_context` exposed per-account `invested_value` and top-level `total_invested`, but the internal field holds **NLV (cash + securities)**, not securities. Consumers (and humans) computing `NLV = total_invested + total_cash` double-counted cash (e.g. $23.5k NLV mis-read as $29.7k).
 - Root cause: internal `Account.invested_value` = `financials.currentCombined.netLiquidationValue`; all 6 internal consumers (ws.py, run_alerts, send_daily_briefing, skill_runner, mcp_server) correctly treat it as NLV. Only the public output labels were misleading.
 - Fix: relabel at the pii_filter boundary only (internal field + consumers untouched). Per account now: `cash_balance`, `securities_value` (=nlv-cash), `net_liquidation_value`. Top-level: `total_cash`, `total_securities`, `total_nlv`. Identity `total_nlv == total_cash + total_securities` now holds.
@@ -771,37 +782,37 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 - NOTE: running MCP server must restart to serve new shape (module already loaded).
 - OPEN (separate bug, not fixed): get_portfolio per-position `market_value` is native USD while `book_cost`/tax-loss are CAD → wrong `weight` + bogus summary `total_return_pct`. Needs FX normalization in enrichment path.
 
-## 2026-06-07 — ops cleanup: kill restart popups, fix launcher, disable Sentry
-- Removed 4 stale scheduled tasks: `aifolimizer-backend` (run.py @logon), `aifolimizer-worker` (worker.py @logon — REDIS_URL unset → sys.exit(1) every boot), `aifolimizer-daily-briefing` (root dup of `\aifolimizer\daily-briefing`), `\aifolimizer\backend-watchdog` (probed :8000). The two @logon tasks were the "restart popups."
+## 2026-06-07 - ops cleanup: kill restart popups, fix launcher, disable Sentry
+- Removed 4 stale scheduled tasks: `aifolimizer-backend` (run.py @logon), `aifolimizer-worker` (worker.py @logon - REDIS_URL unset → sys.exit(1) every boot), `aifolimizer-daily-briefing` (root dup of `\aifolimizer\daily-briefing`), `\aifolimizer\backend-watchdog` (probed :8000). The two @logon tasks were the "restart popups."
 - Kept Telegram automation: `aifolimizer-alerts` + `\aifolimizer\{daily-briefing,top-trades-today,position-review}`.
 - Hid skill-task consoles (`-WindowStyle Hidden`); switched alerts to `pythonw.exe` (no console). `register-skill-task.ps1` updated so future regs are hidden.
 - Rewrote `scripts/aifolimizer-launch.ps1`: was probing dead FastAPI :8000 + /ws/restore. Now probes session via `wealthsimple.restore_session()` directly and drives interactive `mcp_login.py` for MFA. No backend daemon needed (MCP-only model).
 - Disabled `SENTRY_DSN` in backend/.env (commented; errors → local logs). Stops cloud error flood + dead digest job. SENTRY_AUTH_TOKEN/ORG/PROJECT left (read-only digest path, inert without worker).
-- Killed stale concurrent mcp_server.py instances + removed stale instance.lock. Confirmed MCP path is lock-free disk-reload (no per-call WS validate) — forced-MFA was refresh-token expiry, already mitigated by prior write-lock fix.
+- Killed stale concurrent mcp_server.py instances + removed stale instance.lock. Confirmed MCP path is lock-free disk-reload (no per-call WS validate) - forced-MFA was refresh-token expiry, already mitigated by prior write-lock fix.
 
-## 2026-06-08 — signal-policy postmortem + fixes: kill the negative-EV BUY leg
+## 2026-06-08 - signal-policy postmortem + fixes: kill the negative-EV BUY leg
 - Postmortem of 353 scored forward signals (live track record, NOT the stale 103 in TRACK_RECORD.md): overall 44.2% win / -0.58% avg. Loss is ENTIRELY the BUY leg (197 sigs, 17.8% win, -5.3% alpha vs XEQT). TRIM/SELL have real edge (77-94% win, +5-7% alpha). HIGH conviction INVERTED vs MED (23.6% vs 74.1%). Decay curve: edge ultra-short, h1 49% → h5 34%.
-- Root cause: `win_prob` heuristic anti-correlated with outcomes — analyst-buy→0.62 (realized 18% win), sell→0.35 (realized 94%).
-- Fixes (recommendations.py): (1) removed inverted analyst_rec→win_prob map (symmetric score-based only); (2) Kelly SUPPRESSED until calibrated (kelly_pct=None → EV/max-loss cascade off); (3) BUY gate 7.5→8.0 + fundamentals≥0 floor (ETF-exempt) + signal_quality≥3 floor, marginal longs→WATCH; (4) conviction capped at MED for BUY/ADD until calibration proves HIGH>MED>LOW; (5) wired `_evidence_context.calibrated` to `signal_history.calibrate_confidence` (was hardcoded False) — self-activates as h21 fills.
-- trust_report.py: new SEED-NEGATIVE-EV / DEVELOPING-NEGATIVE-EV tiers — sign of realized return gates the label; negative EV can no longer read as a milestone. Regenerated TRACK_RECORD.md (now SEED-NEGATIVE-EV, 353 sigs).
+- Root cause: `win_prob` heuristic anti-correlated with outcomes - analyst-buy→0.62 (realized 18% win), sell→0.35 (realized 94%).
+- Fixes (recommendations.py): (1) removed inverted analyst_rec→win_prob map (symmetric score-based only); (2) Kelly SUPPRESSED until calibrated (kelly_pct=None → EV/max-loss cascade off); (3) BUY gate 7.5→8.0 + fundamentals≥0 floor (ETF-exempt) + signal_quality≥3 floor, marginal longs→WATCH; (4) conviction capped at MED for BUY/ADD until calibration proves HIGH>MED>LOW; (5) wired `_evidence_context.calibrated` to `signal_history.calibrate_confidence` (was hardcoded False) - self-activates as h21 fills.
+- trust_report.py: new SEED-NEGATIVE-EV / DEVELOPING-NEGATIVE-EV tiers - sign of realized return gates the label; negative EV can no longer read as a milestone. Regenerated TRACK_RECORD.md (now SEED-NEGATIVE-EV, 353 sigs).
 - Deferred (staged in `.claude/context/signal-policy-fix-plan.md`, need review): horizon re-match to decay, benchmark-relative gate, AI-critic pre-emit gate, top-trades-today demote, portfolio risk-gate→engine wiring.
-- Verified: ast+import OK, BUY-gate smoke 5/5, `score_signal_horizons` scored 208 new rows. NOTE: running MCP server holds pre-edit code — restart to load.
+- Verified: ast+import OK, BUY-gate smoke 5/5, `score_signal_horizons` scored 208 new rows. NOTE: running MCP server holds pre-edit code - restart to load.
 
-## 2026-06-08 — wire portfolio risk-gate into trade-ideas surfacing layer
+## 2026-06-08 - wire portfolio risk-gate into trade-ideas surfacing layer
 - Hole (confirmed obs 2481): `risk_gate` state existed only as a read-only MCP tool; the sync recommendation engine + `get_trade_ideas` never consulted it, so portfolio-level halt/reduce did NOT brake surfaced BUY ideas (scheduler path was already gate-aware via size_multiplier).
-- Low-touch fix (addendum B "surfacing layer" option): `get_trade_ideas` now fetches `risk_gate.get_current(thash)` after ranking. On `halt` → suppress BUY/ADD ideas (retain SELL/TRIM), add `suppressed_by_risk_gate` count + note. On `reduce_size` → annotate. Best-effort try/except — never blocks idea generation if pool/gate down. No engine edit (engine-path wiring B-core still deferred — touches the contended sync scorer).
+- Low-touch fix (addendum B "surfacing layer" option): `get_trade_ideas` now fetches `risk_gate.get_current(thash)` after ranking. On `halt` → suppress BUY/ADD ideas (retain SELL/TRIM), add `suppressed_by_risk_gate` count + note. On `reduce_size` → annotate. Best-effort try/except - never blocks idea generation if pool/gate down. No engine edit (engine-path wiring B-core still deferred - touches the contended sync scorer).
 - Also addresses #4 (top-trades-today 0/11): risk-off longs no longer surface as "top trades".
 - Verified: project ruff clean, syntax OK; mirrors existing get_risk_gate_state fetch pattern.
 
-## 2026-06-09 — full sync/audit sweep: doc-count drift, guard crash, skill+logic+dep audit
+## 2026-06-09 - full sync/audit sweep: doc-count drift, guard crash, skill+logic+dep audit
 - Trigger: "make everything synced/up-to-date, optimize, cleanup, test, assess all skills, no busywork."
 - Baseline (read-only): tree clean + synced w/ origin/master; ruff clean; 340 pass / 3 skip; graph fresh (HEAD 33bffe2); ONE logical MCP server (stub pair, not a dup); registered only in .mcp.json (no contention); Obsidian brain scaffolded.
 - Ran 4-agent focused audit (skills / docs / deps / logic). Findings:
   - **Skills (27): healthy.** Zero broken/renamed MCP-tool refs across all 27 SKILL.md (every ref ∈ canonical 103-tool list). All frontmatter valid YAML. get_profile-FIRST satisfied; 3 correct exemptions (perf-optimizer, health-check, profile-setup). Skill-cluster overlaps (earnings, rebalancing, portfolio, trade-gate) are intentional + self-disambiguated.
-  - **Logic: no bugs.** Known "OPEN FX bug" (USD market_value vs CAD book_cost) is ALREADY FIXED — market_data.py:201 `market_value_cad = market_value * fx`; per-position total_return_pct computed in native currency; weights/totals CAD-consistent. PII identity (total_nlv==cash+securities) holds; no id/email/name leak. recommendations.py invariants intact (BUY gate ≥8.0, kelly_pct None until calibrated, conviction capped MED). The prior changes.md "OPEN" note was stale.
+  - **Logic: no bugs.** Known "OPEN FX bug" (USD market_value vs CAD book_cost) is ALREADY FIXED - market_data.py:201 `market_value_cad = market_value * fx`; per-position total_return_pct computed in native currency; weights/totals CAD-consistent. PII identity (total_nlv==cash+securities) holds; no id/email/name leak. recommendations.py invariants intact (BUY gate ≥8.0, kelly_pct None until calibrated, conviction capped MED). The prior changes.md "OPEN" note was stale.
 - **Doc-count drift fixed (source of truth: 103 tools / 27 skills / 15 adapters):** CLAUDE.md (5), README.md (12 incl. dropping brittle "85 market-data + 15 WS"=100 split for a number-free phrasing; "other 23 read-only"→25), AGENTS.md (2), architecture.md (3), SETUP.md (4), FAQ.md (1), mcp-servers-pr-draft.md (2). check_doc_counts.py now passes. `.github/release-notes-v0.1.0.md` left at historical 84/22 (frozen release record).
 - **Tooling bug fixed:** check_doc_counts.py crashed on Windows (cp1252) printing em-dash/arrow from quoted drift lines, masking 2 architecture.md failures. Added `sys.stdout.reconfigure(encoding="utf-8")` guard.
-- **Deps (6 dependabot PRs, assessed vs actual usage, NOT merged — human/CI decision):** pydantic 2.8→2.13 + codeql 3→4 = merge-now (low). yfinance 0.2→1.4 = low (1.0 "no breaking changes"; auto_adjust always explicit; watch curl_cffi default). redis 5→8 + rq 2.0→2.9 = medium, co-test (RESP3 + new 5s socket_timeout can TimeoutError the RQ blocking worker). ws-api 0.33→0.35 = high-touch (unofficial GraphQL client; read changelog + live login→positions→token-refresh smoke before merge).
+- **Deps (6 dependabot PRs, assessed vs actual usage, NOT merged - human/CI decision):** pydantic 2.8→2.13 + codeql 3→4 = merge-now (low). yfinance 0.2→1.4 = low (1.0 "no breaking changes"; auto_adjust always explicit; watch curl_cffi default). redis 5→8 + rq 2.0→2.9 = medium, co-test (RESP3 + new 5s socket_timeout can TimeoutError the RQ blocking worker). ws-api 0.33→0.35 = high-touch (unofficial GraphQL client; read changelog + live login→positions→token-refresh smoke before merge).
 - Verified: ruff clean, check_doc_counts OK, 340 pass / 3 skip (×2).
 
 ## 2026-06-10 - perf: L2-cache _ticker_meta static fields
@@ -839,7 +850,7 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 - Tests: +10 (test_data_router_resolve 4, test_wealthsimple_symbol 6 incl dual-listed T). pytest 360 pass/3 skip, ruff clean, imports clean.
 
 ## 2026-06-11 - signal_history backfill: recover NULL entry_price (follow-on)
-- Follow-on: legacy rows with NULL entry_price are now recoverable — rows_needing_backfill no longer filters on entry_price; signal_backfill derives entry from the signal-date close (offset 0) and persists it via NEW signals_repo.set_entry_price. Live run: with_entry 760->969, realized_return_5d 41->248, written=695. Remaining NULL/empty = delisted symbols (data_router fetch fail, e.g. XEQT/$VFV) + windows not yet closed (21d+). pytest 350 pass.
+- Follow-on: legacy rows with NULL entry_price are now recoverable - rows_needing_backfill no longer filters on entry_price; signal_backfill derives entry from the signal-date close (offset 0) and persists it via NEW signals_repo.set_entry_price. Live run: with_entry 760->969, realized_return_5d 41->248, written=695. Remaining NULL/empty = delisted symbols (data_router fetch fail, e.g. XEQT/$VFV) + windows not yet closed (21d+). pytest 350 pass.
 
 ## 2026-06-11 - security: redact API keys from data-source exception messages
 - Vuln: adapters passing credentials as URL query params leaked the key into httpx exception strings (full request URL embeds `apikey=`/`token=`). Those strings flow into SourceUnavailable -> logs + data_source_reliability error fields. Confirmed live: a twelve_data SHOP.TO 404 printed `apikey=<live-key>`.
@@ -849,7 +860,7 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 
 ## 2026-06-11 - routing: drop tiingo from ca_equity chains (reliability)
 - Root cause of tiingo's 28.6% reliability: it was in the ca_equity quote+history chains but maps `.TO -> SYM-CA`, which 404s (no TSX coverage on free/standard tier). Every CA fallthrough = guaranteed-miss call + skewed metric. Removed _tiingo from both ca_equity chains in data_router.py (_quote_chain_base, _history_chain_base); stays in us_equity (works for US). yf/twelve/eodhd cover CA.
-- Not changed (verified by live probe, not actually broken): eodhd 0/2 = free-tier 20 calls/day quota exhaustion (SHOP.TO works on fresh quota, strong TSX); massive 0/3 = us_equity last-resort deep fallback (only hit when 5 providers ahead fail) + by-design is_tsx() reject — not in CA chain. twelve_data 0/16 was a genuinely bad key (rotated + fixed separately).
+- Not changed (verified by live probe, not actually broken): eodhd 0/2 = free-tier 20 calls/day quota exhaustion (SHOP.TO works on fresh quota, strong TSX); massive 0/3 = us_equity last-resort deep fallback (only hit when 5 providers ahead fail) + by-design is_tsx() reject - not in CA chain. twelve_data 0/16 was a genuinely bad key (rotated + fixed separately).
 - pytest 363 pass/3 skip, ruff clean.
 
 ## 2026-06-11 - refactor: pathfinder unifications U1/U5/U6 (behavior-preserving)
@@ -863,3 +874,27 @@ ACTION REQUIRED BY USER: restart/reconnect the MCP server (Claude Code keeps it 
 - Fix: both fetchers now call base.fetch_json(name="news:finnhub"|"news:eodhd", default=[]) -> redact_secrets applies; raises SourceUnavailable (redacted) which _fetch_chain already catches (contract unchanged: raise on transport fail, [] = no news). Dropped news.py httpx import.
 - Verified: pytest 397 pass/3 skip, ruff clean; NEW tests/test_news_redaction.py (4: finnhub/eodhd error->redacted, parse rows, no-key->[]); live finnhub=244 + eodhd=50 articles, chain=50 (behavior preserved).
 - Skipped U1b (keyless adapters / yfinance _f) deliberately: keyless = no secret to leak, pure cosmetic dedup; deferred (handoff in 04b). Period-dicts re-confirmed spec=True (kline-limit vs outputsize vs days) - not mergeable.
+
+## 2026-06-11 - feature: trade-journal (#3) + earnings-commentary signal (#5)
+- Origin: user asked whether 7 generic "trading system" prompts were worth building / already built. Verdict: 5/7 already covered deeper than the prompts; #3 (psychological journaling) and #5 (management-commentary language signal) were real gaps. Built both via TDD.
+- #3 trade-journal: NEW app/services/trade_journal.py -> ~/.aifolimizer/journal.jsonl (parallel to decisions.jsonl, untouched). log_entry (emotion/conviction_source/confidence_1to5/plan/felt_note/pre_trade_check_passed, validates enums + 1..5), log_exit (reconciles newest open entry), get_insights (joins decisions outcomes -> win-rate by emotion + by conviction_source + confidence calibration). Zero overlap w/ shadow_account (price/date biases) - this is felt-state. 3 MCP tools (log_trade_journal / log_trade_journal_exit / get_journal_insights) + NEW .claude/skills/trade-journal/SKILL.md (entry/exit/review phases). NEW tests/test_trade_journal.py (7).
+- #5 earnings-commentary: NEW app/services/earnings_commentary.py. score_commentary() reuses community.score_text_polarity (negation-aware) w/ NEW _MGMT_BULL/_MGMT_BEAR lexicons -> mgmt_tone 0-1 + signal. Source chain: FMP transcript (optional FMP_KEY, real Q&A) -> SEC EDGAR 8-K Item 2.02 text (free fallback via edgar_filings) -> graceful no-source. L2 cache 24h. NEW MCP tool get_earnings_commentary. Wired into earnings-postmortem SS4 (replaces WebSearch-only) + pead-tracker ADD path (drift confirmation). FMP_KEY added to .env.example. NEW tests/test_earnings_commentary.py (7). Honest framing: probabilistic, NOT "predicts every quarter".
+- Design call: did NOT inject mgmt_tone into per-quarter earnings_history rows (wrong granularity - commentary is latest-report-only - and adds HTTP to the batch hot path); exposed as standalone tool instead.
+- Verify: pytest 411 pass/3 skip (+14 new), ruff clean on all new files, mcp_server imports + both new tool groups register. Doc counts synced 27->28 skills / 103->107 tools (guard green): README meta-line, docs/SETUP.md x4, docs/FAQ.md. lessons.md "3/27" left (historical quote).
+
+### 2026-06-11 (followup) - earnings-commentary source chain reprioritized to free-only
+- Live probe: FMP v3 earning_call_transcript = 403 on free tier (transcripts are paid). User has free FMP only -> FMP dropped from chain entirely (was wasting a 403 + log per call).
+- NEW chain (all free): Alpha Vantage EARNINGS_CALL_TRANSCRIPT (full transcript, existing ALPHA_VANTAGE_KEY, 25/day) -> SEC EDGAR 8-K (prefers earnings 8-K via _pick_earnings_filing, else latest). Removed _fetch_fmp_transcript + its test; FMP_KEY removed from .env.example (nothing else used it). ALPHA_VANTAGE_KEY note updated.
+- Live verified: AAPL -> alpha_vantage 6838w tone 0.986; NVDA -> alpha_vantage 6542w tone 0.979. EDGAR fallback AAPL -> 8-K 535w tone 0.75.
+- Fixed cache poison: a pre-fixture test run had written toy data into the real diskcache (AAPL=tone1.0); purged.
+- CAVEAT (open): full transcripts skew bullish (mgmt prepared remarks promotional, ~46-68:1 bull:bear) -> absolute mgmt_tone less useful than relative (vs prior quarters / bear-word density). Threshold uncalibrated (no labeled set). Documented; not a blocker.
+- Verify: pytest 414 pass/3 skip, ruff clean, doc counts unchanged (107 tools/28 skills, guard green).
+
+### 2026-06-11 (followup 2) - earnings-commentary made predictive: relative trend + AV LLM sentiment
+- Problem found in live probe: absolute lexicon mgmt_tone ~0.98-1.0 EVERY quarter (prepared remarks are promotional) = zero signal.
+- Fix (accuracy): signal is now RELATIVE. _fetch_alphavantage_quarters pulls up to 4 recent quarters; _relativize computes latest-vs-prior-baseline delta -> NEW mgmt_tone_trend (improving/deteriorating/stable/insufficient_history). Primary metric = AV's own per-segment LLM sentiment (_av_sentiment_mean, better model than the 60-word lexicon); lexicon tone is the cross-check + the EDGAR-only path. New fields: mgmt_tone_trend, primary_metric, relative, av_sentiment(+baseline/delta), tone_baseline/delta, quarters_analyzed. mgmt_tone_signal (absolute) kept for back-compat.
+- Thresholds _AV_TREND_THR=0.05 / _TONE_TREND_THR=0.03 (uncalibrated starts, documented).
+- Live AAPL proof: lexicon tone 1.0 (useless) but av_sentiment 0.166 vs 0.271 baseline -> trend=deteriorating. Detects tone worsening despite maximally-upbeat language. Exactly the predictive read absolute tone hides.
+- Skills updated: earnings-postmortem SS4 + pead-tracker now lead with mgmt_tone_trend (ignore absolute in isolation), gate on relative/source. mcp_server tool docstring updated.
+- EDGAR single-doc -> relative=False, insufficient_history (no quarter history), absolute signal only.
+- Verify: pytest 418 pass/3 skip (test_earnings_commentary 14), ruff clean, guard green (107 tools/28 skills). FMP fully removed earlier (free tier 403).

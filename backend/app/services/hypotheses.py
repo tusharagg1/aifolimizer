@@ -1,8 +1,8 @@
 """Hypothesis registry: durable investment theses with lifecycle status.
 
 Complements decision_memory (which tracks EXECUTED trades) by capturing
-un-executed or in-flight theses — "I believe X because Y; confirmed if Z,
-refuted if W" — so research converts to action and ideas are not
+un-executed or in-flight theses - "I believe X because Y; confirmed if Z,
+refuted if W" - so research converts to action and ideas are not
 re-litigated. Stored as JSONL at ~/.aifolimizer/hypotheses.jsonl.
 
 Status lifecycle: open -> confirmed | refuted | expired.

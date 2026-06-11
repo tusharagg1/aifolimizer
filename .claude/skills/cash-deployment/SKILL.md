@@ -56,13 +56,13 @@ Setup Score rubric (1 point each, 8 criteria, max 8):
 - No lottery/MAX flag (`lottery_flag != true`) - abnormal single-day spike = chase risk (Bali-Cakici-Whitelaw)
 
 ### 4. Deployment plan (risk-first)
-For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7-8=HIGH, 5-6=MED, 3-4=LOW, <3=skip>`. This is the single source of truth for levels (same engine as pre-trade-check) — supersedes raw `pivot_levels`:
-- `entry_zone` — `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `wait_pullback`, do NOT deploy at market** — state the pullback band and route that cash to the next ranked `buy_now` candidate or hold it.
+For the **top 3 add candidates** (by Setup Score; tiebreak higher `technical_score`), call `mcp__aifolimizer__get_trade_ticket` with `ticker`, `action="ADD"`, `conviction=<from Setup Score: 7-8=HIGH, 5-6=MED, 3-4=LOW, <3=skip>`. This is the single source of truth for levels (same engine as pre-trade-check) - supersedes raw `pivot_levels`:
+- `entry_zone` - `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `wait_pullback`, do NOT deploy at market** - state the pullback band and route that cash to the next ranked `buy_now` candidate or hold it.
 - `stop_loss_price`, `exit_ladder` (T1/T2/T3 scale-out), `position` block (avg cost / return / stop_below_cost since these are held names).
 
 **Before sizing any position:**
 1. Check `get_concentration_warnings` - exclude overweight names FIRST
-2. Max position loss = (`entry_zone.reference` − `stop_loss_price`) × shares. Ensure no single add risks >2% of total portfolio
+2. Max position loss = (`entry_zone.reference` - `stop_loss_price`) × shares. Ensure no single add risks >2% of total portfolio
 3. Entry = `entry_zone.reference` (only deploy when `timing == buy_now`)
 4. Stop = `stop_loss_price`
 5. Position size = min(risk-based shares, 5% of total portfolio in dollar terms)

@@ -1,17 +1,17 @@
 """Portfolio alpha attribution and AUM benchmarking.
 
 Two capabilities:
-1. snapshot_equity(total_value_cad) — append daily equity point to
+1. snapshot_equity(total_value_cad) - append daily equity point to
    .claude/context/portfolio_history.jsonl. Call once per day (idempotent).
 
-2. get_alpha_attribution(positions) — load snapshot history, fetch
+2. get_alpha_attribution(positions) - load snapshot history, fetch
    benchmark OHLC via data_router, compute:
      annualized return, annualized alpha vs SPY/XEQT/TSX,
      beta, R², information ratio, tracking error, Sharpe, max DD.
    Also compare to Wealthsimple Managed published profile returns.
 
 Wealthsimple Managed returns embedded from publicly-reported figures
-(updated manually — these are approximate 2022-2025 1yr/3yr/5yr).
+(updated manually - these are approximate 2022-2025 1yr/3yr/5yr).
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ _BENCHMARKS = {
 
 # Wealthsimple Managed published approximate annualized returns (CA, gross).
 # Source: Wealthsimple Performance Disclosure 2025.
-# Update annually — these are best-effort public figures.
+# Update annually - these are best-effort public figures.
 _WS_MANAGED = {
     "conservative": {"1y": 9.2, "3y": 4.1, "5y": 5.6},
     "balanced": {"1y": 14.8, "3y": 7.3, "5y": 9.1},
@@ -53,7 +53,7 @@ _WS_MANAGED = {
 def snapshot_equity(total_value_cad: float) -> dict:
     """Append today's portfolio NAV to portfolio_history.jsonl.
 
-    Idempotent per day — overwrites today's entry if called again.
+    Idempotent per day - overwrites today's entry if called again.
     """
     today = date.today().isoformat()
     _CTX.mkdir(parents=True, exist_ok=True)
@@ -83,7 +83,7 @@ def get_alpha_attribution(
 ) -> dict:
     """Full alpha attribution report.
 
-    positions: [{symbol, weight}] — used to compute weighted returns for
+    positions: [{symbol, weight}] - used to compute weighted returns for
     periods not yet in snapshot history. If None, uses snapshot history only.
     lookback_days: how many history days to include.
     """
@@ -104,7 +104,7 @@ def get_alpha_attribution(
 
     if len(port_series) < 5:
         result["warning"] = (
-            "fewer than 5 portfolio snapshots — run snapshot_equity daily "
+            "fewer than 5 portfolio snapshots - run snapshot_equity daily "
             "to build a meaningful curve. Showing benchmark returns only."
         )
         for bsym, bname in _BENCHMARKS.items():

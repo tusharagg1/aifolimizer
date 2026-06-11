@@ -1,4 +1,4 @@
-"""Wealthsimple-as-source — derive live quotes for HELD tickers.
+"""Wealthsimple-as-source - derive live quotes for HELD tickers.
 
 Why: the WS GraphQL session is already authenticated for the user and
 streams live positional values that include unit price * quantity. For
@@ -87,7 +87,7 @@ def warm_async() -> None:
     """Refresh the positions cache in a daemon thread (non-blocking).
 
     Lets a cold-cache held-quote kick a warm without adding latency to the
-    caller — the next quote within the TTL serves from cache. At most one
+    caller - the next quote within the TTL serves from cache. At most one
     refresh runs at a time.
     """
     global _warming
@@ -107,7 +107,7 @@ def warm_async() -> None:
 
 
 def held_symbols_cached() -> set[str]:
-    """Held tickers from the cache ONLY — never triggers a WS refresh.
+    """Held tickers from the cache ONLY - never triggers a WS refresh.
 
     Zero-latency: returns whatever the last positions snapshot loaded (the
     session warms it during normal portfolio loads). Empty if nothing cached
@@ -161,7 +161,7 @@ class WealthsimpleSource(DataSource):
         price = float(row["price"])
         if price <= 0:
             raise SourceUnavailable(f"wealthsimple: zero price {symbol}")
-        # WS doesn't expose prev_close in positions feed — caller's day_change
+        # WS doesn't expose prev_close in positions feed - caller's day_change
         # path will fall through to a different source if needed.
         return Quote(
             symbol=symbol,

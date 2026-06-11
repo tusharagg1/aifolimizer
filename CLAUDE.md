@@ -14,9 +14,9 @@ AI investment advisor for Canadian Wealthsimple retail investors (growth+income+
 ```
 Claude Code / Claude Desktop  (Pro subscription - no API key)
         ↓ invokes
-   .claude/skills/*  (27 institutional analysis skills)
+   .claude/skills/*  (28 institutional analysis skills)
         ↓ calls MCP tool
-   backend/mcp_server.py  (FastMCP, 103 tools)
+   backend/mcp_server.py  (FastMCP, 107 tools)
         ↓ uses
    app/services/{wealthsimple, market_data, fundamentals, technicals, news, macro, quant, portfolio_analytics, health_score, crypto_data}
         ↓ HTTP
@@ -27,7 +27,7 @@ No frontend - analysis runs in Claude Code / Claude Desktop. FastAPI is exposed 
 
 ## How to Start
 
-Fresh clone: `./setup.sh` (POSIX/Git-Bash) or `powershell -File setup.ps1` (Windows) — venv, deps, `backend/.env`, `.mcp.json`, MCP registration, doctor. Idempotent. Then `python backend/scripts/health_check.py` to diagnose.
+Fresh clone: `./setup.sh` (POSIX/Git-Bash) or `powershell -File setup.ps1` (Windows) - venv, deps, `backend/.env`, `.mcp.json`, MCP registration, doctor. Idempotent. Then `python backend/scripts/health_check.py` to diagnose.
 
 ```bash
 # Backend (FastAPI + shared session store)
@@ -44,7 +44,7 @@ pytest                     # testpaths=backend/tests (run from repo root)
 ruff check . ; pyright     # lint + type-check
 ```
 
-## MCP Tools (103 total - table below is a curated subset; see `mcp_server.py` for full list)
+## MCP Tools (107 total - table below is a curated subset; see `mcp_server.py` for full list)
 
 | Tool | Returns | Cache |
 |---|---|---|
@@ -78,11 +78,11 @@ ruff check . ; pyright     # lint + type-check
 | `get_quotes_batch` | Batch quotes for N symbols - 13x faster than serial | 5m |
 | `get_data_source_reliability` | Per-source success rate + avg latency | live |
 | `generate_trust_report` | Write TRACK_RECORD.md + jsonl, git-commit | live |
-| `list_analysis_modes` | Filesystem-driven list of all 27 skills + their MCP tools | static |
+| `list_analysis_modes` | Filesystem-driven list of all 28 skills + their MCP tools | static |
 
 L1+L2: in-process dict + cross-process diskcache. MCP+FastAPI share L2.
 
-## Analysis Skills (27 in `.claude/skills/` - table below highlights core 13)
+## Analysis Skills (28 in `.claude/skills/` - table below highlights core 13)
 
 | Skill | Framework | Key MCP tools |
 |---|---|---|
@@ -118,13 +118,13 @@ Each skill: auto-triggers from frontmatter, calls get_profile FIRST.
 |---|---|
 | Backend API | FastAPI + uvicorn (Python 3.12) |
 | MCP server | FastMCP (shares services with FastAPI) |
-| Technical indicators | `ta>=0.11.0` (NOT pandas-ta - incompatible w/ Python 3.14) |
+| Technical indicators | `ta>=0.11.0` (NOT pandas-ta) |
 | Prices + fundamentals | yfinance (free, no key) |
 | Macro data | FRED public CSV API (free, no key) |
 | Crypto data | CoinGecko v3 free API (no key, 30 req/min) |
 | AI inference | Claude Code / Claude Desktop Pro (no Anthropic API key) |
 
-Supports Python 3.12+; pinned <3.14 due to pandas-ta lineage.
+Supports Python 3.12-3.14 (uses `ta`, not pandas-ta); 3.13 recommended. CI + the hash-locked `requirements.lock` target 3.12.
 
 ## Privacy Rules (NON-NEGOTIABLE)
 
@@ -172,3 +172,10 @@ WS_PASSWORD=...
 - NEVER add `Co-Authored-By: Claude ...` trailer to commits
 - NEVER add "Generated with Claude Code" footer or AI-attribution to commits, PRs, or PR bodies
 - Commit messages authored solely by human user
+
+## No AI Tone (repo-wide, non-negotiable)
+
+- No AI tone or signs of AI authorship anywhere in the repo: docs, code comments, commit messages, PR text, release notes, the GitHub About.
+- No em dashes or en dashes (use `-`, a comma, or a colon). No words like delve, robust, seamless, comprehensive, leverage, elevate, excels, unleash. No emoji-stuffing, no "not X, but Y" cadence, no redundant restatement, no breathless run-ons.
+- No narration of the AI/agent process in committed text (no "parallel audit", "the agent found", "verified by analysis").
+- Write plainly, like a human engineer.

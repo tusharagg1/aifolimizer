@@ -46,7 +46,7 @@ _OUT_DIR = Path(__file__).resolve().parents[2] / ".cache" / "backtests"
 
 # ---- Unbiased universe ---------------------------------------------------
 # Spans 11 GICS sectors + factor ETFs + index ETFs + Canadian exposure.
-# Mix of winners/losers/sideways from the past 5 years — explicitly avoids
+# Mix of winners/losers/sideways from the past 5 years - explicitly avoids
 # the AAPL/MSFT/NVDA/XEQT/VFV cherry-picked set the prior backtest used.
 DEFAULT_UNIVERSE = [
     # Sector SPDRs (all 11)
@@ -119,11 +119,11 @@ def _deflated_sharpe(daily_ret: pd.Series, n_trials: int = 1) -> float:
 
     Penalizes a raw Sharpe by sample size, skew, kurtosis, and the number of
     backtest configurations tried (multiple-testing correction). When you run
-    a strategy across N rule variants the effective SR0 grows with N — DSR
+    a strategy across N rule variants the effective SR0 grows with N - DSR
     asks: is the observed SR statistically distinguishable from the *best*
     SR you'd expect by chance after N trials?
 
-    Returns a probability-style score in [0, 1] — values >= 0.95 typically
+    Returns a probability-style score in [0, 1] - values >= 0.95 typically
     considered evidence of real edge. Below 0.5 is essentially "could be
     luck under multiple testing".
     """
@@ -148,7 +148,7 @@ def _deflated_sharpe(daily_ret: pd.Series, n_trials: int = 1) -> float:
 
 
 def _zinv(p: float) -> float:
-    """Inverse standard normal CDF — rational approximation."""
+    """Inverse standard normal CDF - rational approximation."""
     if p <= 0 or p >= 1:
         return 0.0
     # Beasley-Springer-Moro approximation
@@ -262,7 +262,7 @@ _BATCH_BARS_CACHE: dict[tuple[str, int], pd.Series] = {}
 
 def _prefetch_universe(symbols: list[str], lookback_days: int) -> None:
     """One batched `yf.download` for the whole universe. Failures fall through
-    silently — `_bars_to_close` will retry per-symbol via data_router for any
+    silently - `_bars_to_close` will retry per-symbol via data_router for any
     missing symbol so behaviour is unchanged on partial failure.
     """
     try:
@@ -690,7 +690,7 @@ def walk_forward_backtest(
     advancing by `step_days`. For each window: replay the signal on data
     from that window only, compute returns, then aggregate. Since the
     skill rules are non-parametric (no in-sample fitting), each window
-    yields a true OOS result — stability across windows is what we measure.
+    yields a true OOS result - stability across windows is what we measure.
 
     Returns:
       {
@@ -768,7 +768,7 @@ def walk_forward_backtest(
         )
         start_pos += step_days
 
-    # Regime split — align portfolio daily returns to SPY regime label
+    # Regime split - align portfolio daily returns to SPY regime label
     by_regime: dict[str, dict] = {}
     if not regimes.empty:
         joined = pd.concat([daily_ret.rename("ret"), regimes.rename("regime")], axis=1, join="inner").dropna()
@@ -835,10 +835,10 @@ def _dsr_interpret(dsr: float) -> str:
     if dsr >= 0.95:
         return "strong evidence of real edge (>=95% confidence after multiple-testing correction)"
     if dsr >= 0.80:
-        return "moderate evidence — likely real edge"
+        return "moderate evidence - likely real edge"
     if dsr >= 0.50:
-        return "weak evidence — borderline, could be noise"
-    return "no statistical evidence — likely overfit or luck"
+        return "weak evidence - borderline, could be noise"
+    return "no statistical evidence - likely overfit or luck"
 
 
 def walk_forward_all_skills(

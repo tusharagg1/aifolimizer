@@ -2,7 +2,7 @@
 
 Wraps the existing yfinance.Ticker calls into the DataSource interface
 so the router can mix it with other providers. yfinance is the primary
-free source — fast, broad coverage, but rate-limited / sometimes stale.
+free source - fast, broad coverage, but rate-limited / sometimes stale.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Reddit and StockTwits community sentiment — no API keys required."""
+"""Reddit and StockTwits community sentiment - no API keys required."""
 
 import re
 import time
@@ -8,7 +8,7 @@ _cache: dict[str, tuple[dict, float]] = {}
 _TTL = 1800  # 30 min
 
 _ST_CACHE: dict[str, tuple[dict, float]] = {}
-_ST_TTL = 900  # 15 min — StockTwits is real-time retail flow, shorter TTL
+_ST_TTL = 900  # 15 min - StockTwits is real-time retail flow, shorter TTL
 
 _BULL_WORDS = {
     "buy",
@@ -74,7 +74,7 @@ def score_text_polarity(
     """Count bull / bear keyword hits with 1-token negation lookback.
 
     "not bullish" → bear+1 (not bull+1). "no growth" → bear+1.
-    Matches whole tokens only — "growth" no longer fires inside "regrowth".
+    Matches whole tokens only - "growth" no longer fires inside "regrowth".
     """
     tokens = _TOKEN_RE.findall(text.lower())
     bull = bear = 0
@@ -157,7 +157,7 @@ def _empty(symbol: str) -> dict:
 
 
 def get_stocktwits_sentiment(symbol: str) -> dict:
-    """StockTwits public stream — retail trader sentiment, no API key required.
+    """StockTwits public stream - retail trader sentiment, no API key required.
 
     Returns bullish/bearish message counts, community_score (0=all bear, 100=all bull),
     and sample messages. TSX tickers strip .TO suffix (StockTwits uses bare ticker).

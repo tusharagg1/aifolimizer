@@ -1,4 +1,4 @@
-"""Bank of Canada Valet API — official CAD macro data (free, no key).
+"""Bank of Canada Valet API - official CAD macro data (free, no key).
 
 Fills the Canadian gap left by FRED (US-centric): BoC policy rate, USD/CAD,
 Government of Canada benchmark bond yields (2/5/10y) and the 10y-2y curve
@@ -20,7 +20,7 @@ _LOG = get_logger("aifolimizer.services.boc_valet")
 
 _BASE = "https://www.bankofcanada.ca/valet/observations"
 _TIMEOUT = 12.0
-_TTL = 12 * 3600  # 12h — BoC publishes at most daily
+_TTL = 12 * 3600  # 12h - BoC publishes at most daily
 _cache: tuple[dict, float] | None = None
 
 # series id -> (human label, kind)

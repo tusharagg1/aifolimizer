@@ -1,4 +1,4 @@
-"""Black-Scholes put theta sign — regression for audit P0."""
+"""Black-Scholes put theta sign - regression for audit P0."""
 
 from __future__ import annotations
 

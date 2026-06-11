@@ -9,7 +9,7 @@ a source loses ≥10pp of reliability over the short window we:
   3. Optionally fire a Telegram alert when configured.
 
 This lets the fallback chain re-rank itself when, say, yfinance starts 429-ing
-heavily or stooq goes down — without losing the source entirely.
+heavily or stooq goes down - without losing the source entirely.
 """
 
 from __future__ import annotations
@@ -79,12 +79,12 @@ def detect_and_demote(
             }
         )
         # Demote on either: drift (was-good-now-bad) OR a chronically-low
-        # absolute success rate (stably bad — never trips the drift delta).
+        # absolute success rate (stably bad - never trips the drift delta).
         is_drift = delta >= threshold_pp
         is_chronic = s["success_rate_pct"] < floor_pct
         if not (is_drift or is_chronic):
             continue
-        # Demote in-process — restart resets it. Routes the source to the
+        # Demote in-process - restart resets it. Routes the source to the
         # back of every chain so a chronically-failing/rate-limited provider
         # stops heading the fallback order.
         try:

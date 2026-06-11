@@ -1,11 +1,11 @@
-"""KPI benchmark test suite — aifolimizer.
+"""KPI benchmark test suite - aifolimizer.
 
 Categories:
-  1. Quant primitives   — returns, Sharpe, Sortino, VaR, beta, correlation
-  2. Backtest metrics   — _sharpe, _max_drawdown, _cagr (pandas-level)
-  3. Recommendation     — score direction, convergence gate, stop/target
+  1. Quant primitives   - returns, Sharpe, Sortino, VaR, beta, correlation
+  2. Backtest metrics   - _sharpe, _max_drawdown, _cagr (pandas-level)
+  3. Recommendation     - score direction, convergence gate, stop/target
                           directionality, Kelly bounds, EV calculation
-  4. Cache / TTL        — recommendation cache invalidation
+  4. Cache / TTL        - recommendation cache invalidation
 
 Run from backend/:
   .venv\\Scripts\\python -m pytest tests/test_kpi_suite.py -v
@@ -269,7 +269,7 @@ class TestDirectionHelper:
         assert _direction(0.3, threshold=0.4) == 0
 
 
-# Minimal position fixture — no live data needed
+# Minimal position fixture - no live data needed
 _BASE_POS = {
     "symbol": "TEST",
     "name": "Test Corp",
@@ -527,7 +527,7 @@ class TestRecommendationCache:
         call_count_after_first = len(calls)
         result2 = get_recommendations(positions)
 
-        # Second call hits cache — no additional service calls
+        # Second call hits cache - no additional service calls
         assert len(calls) == call_count_after_first
         assert result1 == result2
 

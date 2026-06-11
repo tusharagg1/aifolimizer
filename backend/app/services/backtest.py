@@ -17,7 +17,7 @@ Output also shows delta_vs_buy_hold so user sees if active rules added value.
 Cached 1h per (symbol, strategy, lookback_days, tx_cost_bps).
 
 Transaction cost: `tx_cost_bps` deducted per trade leg (one buy + one sell =
-2 * tx_cost_bps). Default 5 bps/leg — conservative for commission-free retail
+2 * tx_cost_bps). Default 5 bps/leg - conservative for commission-free retail
 with bid-ask spread. Pass tx_cost_bps=0 for old behavior.
 
 Honest caveat on crowd_fade / crowd_buy: positioning data is point-in-time
@@ -77,7 +77,7 @@ def _risk_adjusted(total_return_pct: float, max_drawdown_pct: float) -> float:
 def _run_buy_hold(close: pd.Series, tx_cost_bps: float = 0.0) -> dict:
     """Buy at first bar, hold to last bar. Equity reflects entry + exit fee
     so Sharpe / CAGR / drawdown share the same fee-adjusted basis used by
-    signal strategies — keeps cross-strategy comparison apples-to-apples.
+    signal strategies - keeps cross-strategy comparison apples-to-apples.
     """
     if close.empty:
         return _empty_result()
@@ -158,7 +158,7 @@ def _run_signal(
         else:
             equity.append(equity[-1])
 
-        # Execute on transition — deduct one leg of fee from equity
+        # Execute on transition - deduct one leg of fee from equity
         if not in_pos and sig_now == 1:
             if date_now.weekday() not in _excl:
                 in_pos = True
@@ -172,7 +172,7 @@ def _run_signal(
             equity[-1] *= 1 - fee_leg
 
     if in_pos:
-        # Close-out at last bar — synthetic exit, charge final leg
+        # Close-out at last bar - synthetic exit, charge final leg
         trades.append((entry_price, float(aligned["close"].iloc[-1])))
         equity[-1] *= 1 - fee_leg
 
@@ -390,7 +390,7 @@ def backtest_symbol(
 
     walk_forward=True splits the window into in-sample (first train_frac) and
     out-of-sample (remainder) and reports both. RSI / SMA params are fixed so
-    no parameter overfit risk — purpose is to surface return decay between
+    no parameter overfit risk - purpose is to surface return decay between
     regimes (e.g. uptrend → chop).
     """
     if strategy not in _STRATEGIES:
@@ -469,7 +469,7 @@ def backtest_symbol(
             "train_frac": train_frac,
             "in_sample": is_metrics,
             "out_of_sample": oos_metrics,
-            # Top-level fields mirror full-window — keeps shape compatible
+            # Top-level fields mirror full-window - keeps shape compatible
             **full_metrics,
             "validation": run_validation(full_ret),
             # Decay = how much OOS underperformed IS (negative = worse OOS)
@@ -528,7 +528,7 @@ def backtest_portfolio(
         return {"error": f"unknown strategies: {bad}"}
 
     # Prefetch all uncached close series in one batch HTTP call before strategy
-    # loop — avoids N serial yfinance fetches across the symbol×strategy matrix.
+    # loop - avoids N serial yfinance fetches across the symbol×strategy matrix.
     period = "2y" if lookback_days > 365 else "1y"
     _prefetch_closes(symbols, period)
 

@@ -1,6 +1,6 @@
 """Trade ticket generator: convert analysis signals into precise, actionable orders.
 
-Output is broker-agnostic — all fields map directly to any broker's order form.
+Output is broker-agnostic - all fields map directly to any broker's order form.
 Current workflow targets Wealthsimple UI. When adding a second broker,
 implement a format_for_broker(ticket, broker="wealthsimple") adapter here.
 """
@@ -14,7 +14,7 @@ from typing import Any
 from app.services import data_router
 from app.services import technicals as technicals_svc
 
-_TICKET_TTL = 60  # 1 min — prices change; tickets must be fresh
+_TICKET_TTL = 60  # 1 min - prices change; tickets must be fresh
 
 _ticket_cache: dict[str, tuple[float, dict]] = {}
 
@@ -30,7 +30,7 @@ _CONVICTION_RR = {"HIGH": 3.0, "MED": 2.5, "LOW": 2.0}
 # Trim conviction → fraction of current position to sell
 _TRIM_FRACTION = {"HIGH": 0.50, "MED": 0.33, "LOW": 0.20}
 
-# Crypto symbols — allow fractional quantities
+# Crypto symbols - allow fractional quantities
 _CRYPTO = {"BTC", "ETH", "SOL", "ADA", "DOT", "AVAX", "LINK", "DOGE", "XRP"}
 
 # Conviction → exit-ladder R-multiples (T1, T2, T3 distance above entry, in risk units)
@@ -40,7 +40,7 @@ _CONVICTION_LADDER = {
     "LOW": (1.0, 2.0, 3.0),
 }
 
-# Scale-out fractions per target — sums to 1.0 (full exit across the ladder)
+# Scale-out fractions per target - sums to 1.0 (full exit across the ladder)
 _LADDER_SELL_FRACTIONS = (0.40, 0.35, 0.25)
 
 _LEVEL_LABELS = {
@@ -106,13 +106,13 @@ def _build_entry_zone(price: float, tech: dict) -> dict[str, Any]:
         note = (
             f"Price stretched {dist_atr:.1f}x ATR above {sup_label}"
             + (f", RSI {rsi:.0f}" if rsi is not None else "")
-            + " — wait for pullback into zone before buying."
+            + " - wait for pullback into zone before buying."
         )
     else:
         timing = "buy_now"
         low = round(max(sup, price - 0.5 * atr), 4)
         high = round(price, 4)
-        note = f"Price near {sup_label} support — acceptable to buy within zone now."
+        note = f"Price near {sup_label} support - acceptable to buy within zone now."
 
     if low > high:
         low, high = high, low
@@ -280,7 +280,7 @@ def generate_trade_ticket(
 
         # ── Quantity ──────────────────────────────────────────────────────────
         if action == "HOLD":
-            # No order — size the ladder against the held quantity
+            # No order - size the ladder against the held quantity
             quantity = round(position_quantity, 6) if symbol in _CRYPTO else int(position_quantity)
         elif symbol in _CRYPTO:
             quantity = round(dollar_amount / price, 6) if price else 0.0
@@ -305,7 +305,7 @@ def generate_trade_ticket(
 
         # ── Order type ────────────────────────────────────────────────────────
         if action == "HOLD":
-            order_type = "MANAGE"  # no order — profit-taking / stop plan for a held name
+            order_type = "MANAGE"  # no order - profit-taking / stop plan for a held name
             limit_price = None
             unit = "units" if symbol in _CRYPTO else "shares"
             targets = " / ".join(
@@ -368,7 +368,7 @@ def generate_trade_ticket(
         else:
             account_rec = "Match the account where position is held."
 
-        # Exit tickets have no long-side target / R:R — null phantom upside levels.
+        # Exit tickets have no long-side target / R:R - null phantom upside levels.
         if action in ("SELL", "EXIT"):
             target_price = None
             risk_reward = None

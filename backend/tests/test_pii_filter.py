@@ -1,4 +1,4 @@
-"""Tests for pii_filter — security guardrail per CLAUDE.md (NON-NEGOTIABLE).
+"""Tests for pii_filter - security guardrail per CLAUDE.md (NON-NEGOTIABLE).
 
 Run from backend/:
   .venv\\Scripts\\python -m pytest tests/test_pii_filter.py -v

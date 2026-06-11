@@ -5,7 +5,7 @@ an OLS factor-exposure regression for any ticker → betas to market, size,
 value, profitability, investment, momentum, with annualized alpha + R^2.
 Upgrades risk-assessment from single-beta to multi-factor attribution.
 
-Factors are US-market based — loadings for non-US tickers are measured against
+Factors are US-market based - loadings for non-US tickers are measured against
 US factors and should be read as directional, not precise.
 
 Source (zipped latin-1 CSVs):

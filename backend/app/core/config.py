@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Local-only WS credentials — never deployed to cloud
+    # Local-only WS credentials - never deployed to cloud
     ws_email: str = ""
     ws_password: str = ""
 
@@ -12,11 +12,11 @@ class Settings(BaseSettings):
     postgres_dsn: str = "postgresql://aifolimizer:aifolimizer@localhost:5432/aifolimizer"
     redis_url: str = "redis://localhost:6379/0"
 
-    # Push notifications — Telegram bot
+    # Push notifications - Telegram bot
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
-    # Error tracking (Phase 15 — opt-in, empty = disabled)
+    # Error tracking (Phase 15 - opt-in, empty = disabled)
     sentry_dsn: str = ""
     sentry_auth_token: str = ""
     sentry_org: str = ""
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     environment: str = "dev"
     app_version: str = "v4.3"
 
-    # LLM provider keys — optional, all free tiers, at least one recommended
+    # LLM provider keys - optional, all free tiers, at least one recommended
     github_token: str = ""  # GitHub Models (GPT-4o-mini, free with Pro)
     google_api_key: str = ""  # Google AI Studio (Gemini Flash, free)
     openrouter_api_key: str = ""  # OpenRouter (Llama 3.3 70B free tier)

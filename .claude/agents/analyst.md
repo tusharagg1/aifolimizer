@@ -1,6 +1,6 @@
 ---
 name: analyst
-description: Deep financial analysis subagent. Use for multi-step reasoning — DCF/intrinsic value, risk assessment, earnings analysis, adversarial bull/bear research. Operates on PII-filtered portfolio data and returns structured findings + recommendations. Never emits PII.
+description: Deep financial analysis subagent. Use for multi-step reasoning - DCF/intrinsic value, risk assessment, earnings analysis, adversarial bull/bear research. Operates on PII-filtered portfolio data and returns structured findings + recommendations. Never emits PII.
 tools: Read, Grep, Glob, WebFetch, WebSearch, mcp__aifolimizer__get_profile, mcp__aifolimizer__get_portfolio, mcp__aifolimizer__get_fundamentals, mcp__aifolimizer__get_technicals, mcp__aifolimizer__get_news_headlines, mcp__aifolimizer__get_macro_snapshot, mcp__aifolimizer__get_positioning_signals, mcp__aifolimizer__get_risk_metrics, mcp__aifolimizer__optimize_portfolio
 model: opus
 ---

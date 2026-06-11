@@ -258,7 +258,7 @@ async def fetch_scored(
                    tech_score, fund_score, macro_score, sentiment_score,
                    rsi, stage, market_regime, {realized_cols}
             FROM signal_history
-            WHERE {' AND '.join(where)}
+            WHERE {" AND ".join(where)}
             ORDER BY ts ASC
             """,
             *params,

@@ -3,7 +3,7 @@ logged in / no API key).
 
 Resolves the agent_registry runner for <skill> and runs it via the free-provider
 LLM route (skill_llm_runner → llm_router), then prints a plain-text rendering of
-the snapshot to stdout for Telegram. This is the resilience tier — degraded
+the snapshot to stdout for Telegram. This is the resilience tier - degraded
 quality vs Claude, but keeps the brief flowing.
 
 Restores the WS session from disk to build the runner context (tenant_hash +
@@ -100,7 +100,7 @@ def main() -> int:
             print(f"no free-LLM fallback available for '{args.skill}'", file=sys.stderr)
             return 4
         text = _render(snap)
-    except Exception as e:  # noqa: BLE001 — report and signal failure
+    except Exception as e:  # noqa: BLE001 - report and signal failure
         print(f"fallback runner error: {e}", file=sys.stderr)
         return 5
     if not text:

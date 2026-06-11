@@ -59,12 +59,12 @@ def _fire_mfa_notify() -> None:
 
 
 def _clear_mfa_flag() -> None:
-    """Session restored OK — reset the MFA notify cursor so the next real
+    """Session restored OK - reset the MFA notify cursor so the next real
     expiry fires a fresh heads-up instead of being suppressed by the window."""
     try:
         (Path.home() / ".aifolimizer" / ".mfa-notify.last").unlink(missing_ok=True)
     except OSError:
-        # Cursor file absent or unwritable — nothing to reset.
+        # Cursor file absent or unwritable - nothing to reset.
         pass
 
 
@@ -80,7 +80,7 @@ def _fire_system_up() -> None:
         if marker.exists() and time.time() - float(marker.read_text(encoding="utf-8").strip() or 0) < 1800:
             return
     except (OSError, ValueError):
-        # Unreadable/garbage marker — treat as no prior notify and continue.
+        # Unreadable/garbage marker - treat as no prior notify and continue.
         pass
     try:
         import httpx
@@ -89,7 +89,7 @@ def _fire_system_up() -> None:
             f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
             json={
                 "chat_id": settings.telegram_chat_id,
-                "text": "🟢 aifolimizer online — backend up, scheduler + worker running.",
+                "text": "🟢 aifolimizer online - backend up, scheduler + worker running.",
             },
             timeout=10.0,
         ).raise_for_status()
@@ -118,10 +118,10 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(asyncio.to_thread(data_router.get_quotes_batch, _PREWARM, 300))
     # Re-seed the WS session from disk so the scheduler keeps the token warm
     # across restarts (its ticks refresh it) instead of idling until a manual
-    # login. Failure is non-fatal — falls back to lazy login on first use.
+    # login. Failure is non-fatal - falls back to lazy login on first use.
     # If restore returns None (no file / stale / WS rejected), fire a single
     # Telegram heads-up via mfa_notify.py. Event-driven: no polling watchdog
-    # required — user gets one message per real expiry event.
+    # required - user gets one message per real expiry event.
     # System-up heads-up: one Telegram ping per boot (deduped) so the user
     # knows the machine came back after a shutdown/restart.
     asyncio.create_task(asyncio.to_thread(_fire_system_up))
@@ -145,7 +145,7 @@ app = FastAPI(title="aifolimizer API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    # FastAPI's CORSMiddleware does NOT expand `*` in allow_origins —
+    # FastAPI's CORSMiddleware does NOT expand `*` in allow_origins -
     # the previous `https://*.vercel.app` entry was a dead literal that
     # never matched. The frontend was removed; the only legitimate browser
     # caller is a local dev server. Vercel-preview support, if needed

@@ -2,16 +2,16 @@
 
 Tries providers in priority order based on available API keys.
 Auto-skips providers with recent errors and retries after cooldown.
-All providers are free-tier compatible — no paid key required.
+All providers are free-tier compatible - no paid key required.
 
 Priority (runtime auto-selection):
-  1. GitHub Models  — GITHUB_TOKEN       (GPT-4o-mini, free with GitHub Pro)
-  2. Google Gemini  — GOOGLE_API_KEY     (Gemini 2.0 Flash, free)
-  3. OpenRouter     — OPENROUTER_API_KEY (Llama-3.3-70B free tier)
-  4. Qwen / Dashscope — DASHSCOPE_API_KEY (Qwen-Plus)
+  1. GitHub Models  - GITHUB_TOKEN       (GPT-4o-mini, free with GitHub Pro)
+  2. Google Gemini  - GOOGLE_API_KEY     (Gemini 2.0 Flash, free)
+  3. OpenRouter     - OPENROUTER_API_KEY (Llama-3.3-70B free tier)
+  4. Qwen / Dashscope - DASHSCOPE_API_KEY (Qwen-Plus)
 
 Cache: 30-min per (symbol, score, market_regime).
-Narrative is None when all providers fail — rule-based signals still show.
+Narrative is None when all providers fail - rule-based signals still show.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ _LOG = get_logger("aifolimizer.services.llm_router")
 
 
 # ── Outbound LLM audit log ─────────────────────────────────────────────────────
-# One JSONL line per outbound call. Hash-only — no full prompts persisted.
+# One JSONL line per outbound call. Hash-only - no full prompts persisted.
 
 import json as _json
 import os as _os
@@ -76,7 +76,7 @@ def _audit_outbound(
 # require a PAT with `models:read` scope on the new endpoint. If user upgrades
 # scope, swap reasoning tasks to "openai/o4-mini" (cheaper) or "openai/o3-mini".
 #
-# Model IDs are namespaced (provider/model) — the new endpoint
+# Model IDs are namespaced (provider/model) - the new endpoint
 # `models.github.ai/inference` requires this format. The legacy Azure-fronted
 # endpoint only exposes a tiny subset (gpt-4o, gpt-4o-mini, Llama-3.1).
 
@@ -107,7 +107,7 @@ _PROVIDERS: list[dict[str, Any]] = [
         "name": "github",
         "key_getter": lambda: settings.github_token,
         "type": "openai_compat",
-        # New GitHub Models endpoint — supports namespaced model IDs and the
+        # New GitHub Models endpoint - supports namespaced model IDs and the
         # full catalog (gated by PAT scope). Legacy Azure-fronted URL only
         # exposed gpt-4o + gpt-4o-mini.
         "base_url": "https://models.github.ai/inference",
@@ -201,7 +201,7 @@ _FOOTER = "_Educational analysis only. Not investment advice. Verify independent
 _SYSTEM_PROMPT = (
     "You are a concise portfolio analyst. "
     "Reply in exactly 1-2 sentences. "
-    "Be specific — cite numbers from the signals. "
+    "Be specific - cite numbers from the signals. "
     "ALWAYS append this footer on its own final line, exactly: "
     f"{_FOOTER}"
 )
@@ -216,7 +216,7 @@ _SELL_VERIFY_SYSTEM = (
 def _build_sell_verify_prompt(rec: dict) -> str:
     reasons = "\n".join(f"  - {r}" for r in rec.get("reasons", []))
     return (
-        f"Stock: {rec['symbol']} — Score {rec['score']}/10 — Confidence: {rec.get('confidence', 'unknown')}\n"
+        f"Stock: {rec['symbol']} - Score {rec['score']}/10 - Confidence: {rec.get('confidence', 'unknown')}\n"
         f"Tech score: {rec.get('tech_score', 'N/A')}  Fund score: {rec.get('fund_score', 'N/A')}  "
         f"Macro score: {rec.get('macro_score', 'N/A')}  Sentiment: {rec.get('sentiment', 'N/A')}\n"
         f"Stage: {rec.get('stage')}  RSI: {rec.get('rsi')}  Regime: {rec.get('market_regime')}\n"
@@ -363,7 +363,7 @@ async def generate_narrative(rec: dict) -> str | None:
                 _store_narrative(ck, text)
                 return text
         except Exception as e:
-            print(f"[llm_router] {provider['name']} failed for {symbol}: {type(e).__name__}: {e}")
+            _LOG.warning("[llm_router] %s failed for %s: %s: %s", provider["name"], symbol, type(e).__name__, e)
             _record_error(provider["name"])
 
     return None
@@ -373,17 +373,17 @@ _PORTFOLIO_COMMENTARY_SYSTEM = (
     "You are a concise portfolio advisor for a Canadian retail growth "
     "investor using Wealthsimple. Reply with a JSON object: "
     '"commentary" (2-3 sentences) and "actions" (2-4 actionable bullets).\n'
-    "STRICT RULES — violating any is a hallucination:\n"
+    "STRICT RULES - violating any is a hallucination:\n"
     "1. TRIM/SELL actions must reference a symbol ONLY from the HOLDINGS list. "
     "   NEVER propose trimming a symbol not in HOLDINGS.\n"
     "2. Size every action as a PERCENTAGE (e.g. 'Trim 25%', 'Add 2% of NLV'). "
-    "   NEVER quote absolute dollar amounts — you are not given any balances.\n"
+    "   NEVER quote absolute dollar amounts - you are not given any balances.\n"
     "3. BUY actions must fit within the Cash figure (given as % of NLV). Sum of "
     "   BUY allocations must not exceed available cash %.\n"
     "4. Distinguish Account Return (overall NLV vs deposits, includes cash "
     "   interest) from Equity Return (PnL on equity sleeve only). High-cash "
     "   accounts often have positive Account Return + negative Equity Return.\n"
-    "5. Reference figures from the data given — do not invent. Use weights and "
+    "5. Reference figures from the data given - do not invent. Use weights and "
     "   percentages only; never fabricate dollar amounts.\n"
     "6. No markdown outside JSON. Each action under 15 words.\n"
     '7. ALWAYS include a "footer" string field in the JSON object set EXACTLY to: '
@@ -395,10 +395,10 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     # SPI guard: this prompt is sent to external LLM providers (GitHub Models,
     # Gemini, OpenRouter, Qwen) when their keys are set. Absolute dollar amounts
     # (NLV, cash, net deposits, per-position market value) are financial SPI and
-    # MUST NOT leave the machine. Send only relative sizing — weights and % of
-    # NLV — which is enough for the model to reason about allocation.
+    # MUST NOT leave the machine. Send only relative sizing - weights and % of
+    # NLV - which is enough for the model to reason about allocation.
     nlv = summary.get("total_value", 0) or 0
-    # cash_available is the total CAD-equivalent cash — wealthsimple.py:369
+    # cash_available is the total CAD-equivalent cash - wealthsimple.py:369
     # already converts USD cash and sums it into acc["cash"] before storing.
     # cash_available_usd is the raw USD figure kept for separate display only;
     # adding it here would double-count the USD money.
@@ -408,15 +408,15 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     cash_pct = round(cash_cad / nlv * 100, 1) if nlv > 0 else None
 
     # Holdings table: every actual position, sorted by weight desc. Weight (% of
-    # NLV) is the held-position signal — recs for watchlist/buy candidates have
+    # NLV) is the held-position signal - recs for watchlist/buy candidates have
     # weight 0. Using weight (not absolute market value) keeps balances off-machine.
     holdings_with_val = sorted(
         [r for r in top_recs if (r.get("weight") or 0) > 0],
         key=lambda r: -(r.get("weight") or 0),
     )
     if not holdings_with_val:
-        # Watchlist-only context — no held positions
-        holdings_block = "(no held positions — cash + watchlist only)"
+        # Watchlist-only context - no held positions
+        holdings_block = "(no held positions - cash + watchlist only)"
     else:
         rows = ["sym  |  weight%  |  ret%  |  action  |  score"]
         for r in holdings_with_val[:12]:
@@ -435,7 +435,7 @@ def _build_portfolio_prompt(summary: dict, top_recs: list[dict]) -> str:
     acc_ret_str = f"{acc_ret:+.2f}%" if acc_ret is not None else "N/A"
     cash_str = f"{cash_pct:.1f}% of NLV" if cash_pct is not None else "N/A"
     return (
-        f"PORTFOLIO (relative sizing only — no absolute balances)\n"
+        f"PORTFOLIO (relative sizing only - no absolute balances)\n"
         f"  Account Return: {acc_ret_str} (NLV vs deposits)\n"
         f"  Equity Return: {eq_ret:+.2f}% (PnL on equity sleeve)\n"
         f"  Cash: {cash_str}\n"
@@ -579,7 +579,7 @@ async def verify_sell_signal(rec: dict) -> bool:
     """
     providers = _available_providers()
     if not providers:
-        return True  # no LLM — trust the rules
+        return True  # no LLM - trust the rules
 
     prompt = _build_sell_verify_prompt(rec)
 
@@ -608,13 +608,13 @@ async def verify_sell_signal(rec: dict) -> bool:
             _LOG.warning(f"[llm_router] verify_sell {rec['symbol']} via {provider['name']}: {e}")
             _record_error(provider["name"])
 
-    return True  # all providers failed — keep SELL
+    return True  # all providers failed - keep SELL
 
 
 # ── News sentiment scoring ─────────────────────────────────────────────────────
 
 _SENT_LLM_CACHE: dict[tuple, tuple[float, float]] = {}
-_SENT_LLM_TTL = 1800  # 30 min — same as narrative cache
+_SENT_LLM_TTL = 1800  # 30 min - same as narrative cache
 
 _SENTIMENT_SYSTEM = (
     "Financial news sentiment analyst. "
@@ -626,7 +626,7 @@ _SENTIMENT_SYSTEM = (
 async def score_news_sentiment(symbol: str, headlines: list[str]) -> float | None:
     """LLM-score news headlines for symbol. Returns -1.0 to +1.0, or None on failure.
 
-    Called from a ThreadPoolExecutor thread via asyncio.run() — safe because
+    Called from a ThreadPoolExecutor thread via asyncio.run() - safe because
     those threads have no running event loop.
     """
     import hashlib

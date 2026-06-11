@@ -6,7 +6,7 @@ Two queues:
            calibration, discovery scans)
 
 Connection uses the same Redis container as the rest of the stack
-(REDIS_URL). RQ requires a sync `redis.Redis` client — the async client
+(REDIS_URL). RQ requires a sync `redis.Redis` client - the async client
 in app.cache.redis_client is FastAPI-only.
 """
 

@@ -1,7 +1,7 @@
 """SEC EDGAR recent filings via the submissions API (free, no key).
 
 Surfaces material filings (8-K, 10-K, 10-Q, proxy, 13D/G, S-1, foreign 6-K/20-F)
-with dates and direct document links — an event-detection feed for catalysts
+with dates and direct document links - an event-detection feed for catalysts
 the price/fundamentals tools don't flag. Reuses the ticker→CIK map already
 loaded by fundamentals.py. US-listed only (EDGAR has no Canadian filings).
 

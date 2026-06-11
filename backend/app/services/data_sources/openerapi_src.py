@@ -1,10 +1,10 @@
-"""open.er-api.com FX adapter — ExchangeRate-API open access, free, no key.
+"""open.er-api.com FX adapter - ExchangeRate-API open access, free, no key.
 
 Endpoint: https://open.er-api.com/v6/latest/USD   # base -> {rates: {CAD: ...}}
 
 Keyless, ~160 currencies, refreshed once per day (response carries
 time_next_update). Complements Frankfurter (ECB, ~30 majors, weekday-only):
-open.er-api adds breadth + weekend continuity. Quote-only — the open tier has
+open.er-api adds breadth + weekend continuity. Quote-only - the open tier has
 no historical time-series, so get_history falls through to the next source.
 
 Symbol form: USDCAD or USDCAD=X (base=USD, target=CAD). The base is in the
@@ -58,7 +58,7 @@ class OpenErApiSource(DataSource):
         except (TypeError, ValueError) as e:
             raise SourceUnavailable(f"openerapi bad rate {symbol}: {e}") from e
 
-        # Open tier is daily-snapshot only — no prior value, so no change%.
+        # Open tier is daily-snapshot only - no prior value, so no change%.
         return Quote(
             symbol=symbol,
             price=price,

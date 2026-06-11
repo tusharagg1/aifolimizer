@@ -5,10 +5,10 @@
 ## Entry Points
 
 - `backend/main.py` - FastAPI app
-- `backend/mcp_server.py` - MCP server (103 tools)
+- `backend/mcp_server.py` - MCP server (107 tools)
 - `backend/mcp_login.py` - interactive WS MFA login (run once)
 - `backend/run.py` - uvicorn entry point
-- `.claude/skills/` - 27 analysis skills
+- `.claude/skills/` - 28 analysis skills
 
 ## Important Folders
 
@@ -33,7 +33,7 @@ cd backend; .venv\Scripts\python.exe mcp_login.py
 # lint / compile / test
 cd backend; ruff check .
 cd backend; .venv\Scripts\python.exe -m py_compile mcp_server.py main.py
-cd backend; $env:PYTHONPATH="."; .venv\Scripts\python.exe -m pytest tests/ -q
+pytest   # run from repo root (pyproject testpaths = backend/tests)
 
 # infra (optional)
 docker compose up -d

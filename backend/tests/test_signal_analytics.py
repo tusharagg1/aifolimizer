@@ -1,4 +1,4 @@
-"""Unit tests for signal_analytics (PG-backed). DB-free — fetch_scored is
+"""Unit tests for signal_analytics (PG-backed). DB-free - fetch_scored is
 monkeypatched. Verifies the flat-PG-row -> legacy-shape conversion feeds the
 shared signal_history math correctly."""
 

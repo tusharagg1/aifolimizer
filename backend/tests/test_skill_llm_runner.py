@@ -1,6 +1,6 @@
 """Unit tests for skill_llm_runner (Phase 7).
 
-LLM calls are mocked — tests verify wrapper semantics, JSON parsing,
+LLM calls are mocked - tests verify wrapper semantics, JSON parsing,
 graceful degrade, and snapshot shape.
 """
 

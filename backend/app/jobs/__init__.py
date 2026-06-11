@@ -1,1 +1,1 @@
-"""Background jobs — scheduler runs codified skills on a cadence."""
+"""Background jobs - scheduler runs codified skills on a cadence."""

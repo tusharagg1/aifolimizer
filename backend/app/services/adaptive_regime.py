@@ -1,4 +1,4 @@
-"""Adaptive (skill, regime) multipliers — Phase 11.
+"""Adaptive (skill, regime) multipliers - Phase 11.
 
 The static table in `market_regime._INITIAL_MULTIPLIERS` was an educated guess.
 This module learns the table from realized data: for each (skill, composite
@@ -10,7 +10,7 @@ Output:
     {skill: {composite_regime: float}}
 
 Read on every `market_regime.multiplier_for` call. If the file is missing
-or stale we fall back to the static table — adaptive learning is purely
+or stale we fall back to the static table - adaptive learning is purely
 additive and non-blocking.
 
 Wired from `app/jobs/scheduler.py` after `weights_tuner.recalibrate`.
@@ -44,7 +44,7 @@ def _expectancy_to_multiplier(exp_pct: float, baseline_pct: float) -> float:
 
     Centred at 1.0 when the (skill, regime) cell matches the all-skills
     baseline. Each percentage point of out-/under-performance shifts the
-    multiplier by 0.1 — a deliberately gentle slope so a noisy month
+    multiplier by 0.1 - a deliberately gentle slope so a noisy month
     doesn't flip a regime call.
     """
     delta = exp_pct - baseline_pct

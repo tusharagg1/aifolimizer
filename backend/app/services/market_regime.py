@@ -4,14 +4,14 @@ Composes existing macro + breadth data into a single composite regime label
 + per-skill multipliers. No new external data sources.
 
 Output dimensions (all best-effort, fall back to neutral on missing data):
-  trend:      "up" | "down" | "sideways"   — SPY vs SMA200 + magnitude
-  volatility: "low" | "normal" | "high"     — VIX banding
-  breadth:    "broad" | "narrow"            — SPY vs SMA200 magnitude (proxy)
-  macro:      "risk_on" | "risk_off"        — 10y yield + Fed funds heuristic
+  trend:      "up" | "down" | "sideways"   - SPY vs SMA200 + magnitude
+  volatility: "low" | "normal" | "high"     - VIX banding
+  breadth:    "broad" | "narrow"            - SPY vs SMA200 magnitude (proxy)
+  macro:      "risk_on" | "risk_off"        - 10y yield + Fed funds heuristic
   composite:  hyphenated combination like "trend_up_low_vol"
 
 Per-skill multipliers seed `regime_skill_multipliers` table on first call
-per composite — initial values are hand-picked baselines. Nightly tuner
+per composite - initial values are hand-picked baselines. Nightly tuner
 (Phase 11) adjusts them once enough samples accumulate per regime bucket.
 """
 
@@ -163,7 +163,7 @@ def classify(
     ten_y_yield: float | None = None,
     fed_funds: float | None = None,
 ) -> Regime:
-    """Pure classifier — no I/O. Caller supplies signals."""
+    """Pure classifier - no I/O. Caller supplies signals."""
     trend = _classify_trend(spy_vs_sma200_pct)
     vol = _classify_vol(vix)
     breadth = _classify_breadth(spy_vs_sma200_pct)

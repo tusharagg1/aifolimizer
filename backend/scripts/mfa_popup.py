@@ -11,7 +11,7 @@ resume cleanly the next time the session expires.
 
 Purpose
     GUI Tk fallback to prompt for the Wealthsimple MFA code when no
-    terminal is attached — e.g. when the launcher fires from a Windows
+    terminal is attached - e.g. when the launcher fires from a Windows
     Scheduled Task, a shortcut, or any context without an interactive
     console for stdin-based prompts.
 
@@ -127,7 +127,7 @@ def main() -> int:
             otp_answer=None,
             persist_session_fct=_noop,
         )
-        # WS didn't demand OTP — this login produced a fresh, valid session.
+        # WS didn't demand OTP - this login produced a fresh, valid session.
         # Persist it so the launcher's silent-success path actually refreshes
         # ws_session.json instead of leaving the old (possibly stale) token.
         _persist(session, email)

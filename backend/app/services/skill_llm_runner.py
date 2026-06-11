@@ -3,7 +3,7 @@
 Three skills require LLM synthesis and live in .claude/skills/ as Claude Code
 prompts. This module re-implements them as backend-callable nightly jobs that
 go through llm_router (free providers only). Outputs feed skill_evidence as
-soft contributors — None on LLM failure does NOT block the integrated signal.
+soft contributors - None on LLM failure does NOT block the integrated signal.
 
 Rules:
   - Cap LLM calls at top_n holdings per night (default 10).
@@ -217,7 +217,7 @@ _PRE_TRADE_SYSTEM = (
     '[...],"warnings":[...],"suggested_entry":<float>,"suggested_stop":'
     '<float>,"position_pct_of_nav":<float>,'
     '"max_loss_pct_of_nav":<float>}. '
-    "Size is given in % of NAV only — never request or quote dollar amounts. "
+    "Size is given in % of NAV only - never request or quote dollar amounts. "
     "Never recommend size > 5% of NAV. "
     "Never recommend re-entry on a stop-hit ticker without explicit new "
     "bullish catalyst. No prose outside the JSON object."
@@ -239,7 +239,7 @@ _REBALANCE_SYSTEM = (
     'weights, and per-account cash %, produce JSON {"deployment":[{"ticker":'
     '"...","account_label":"...","pct_of_nav":<float>,"action":'
     '"BUY|TRIM"},...],"drift_summary":"...","cash_remaining_pct":<float>,'
-    '"next_review_days":<int>}. All sizing in % of NAV — never request or '
+    '"next_review_days":<int>}. All sizing in % of NAV - never request or '
     "quote dollar amounts. Never recommend selling a core holding "
     "unless drift > 15pp above target. Rebalance via new cash by default. "
     "No prose outside the JSON object."
@@ -411,7 +411,7 @@ async def run_adversarial_research(
     ]
     insights = [
         f"{ticker} verdict: {verdict} ({conviction} conviction)",
-        f"Risk: {data.get('key_risk', '—')}",
+        f"Risk: {data.get('key_risk', '-')}",
     ]
     if data.get("price_target"):
         insights.append(f"Target: ${data['price_target']}")
@@ -502,7 +502,7 @@ async def run_stock_compare(a: str, b: str) -> dict[str, Any]:
             {"symbol": winner, "action": "BUY", "reason": data.get("reason", "")},
             {"symbol": loser, "recommendation": loser_act, "reason": "loses comparison"},
         ],
-        key_insights=[f"{winner} > {loser}: {data.get('reason', '—')}"],
+        key_insights=[f"{winner} > {loser}: {data.get('reason', '-')}"],
     )
 
 
@@ -541,8 +541,8 @@ async def run_risk_assessment(context: dict | None = None) -> dict[str, Any]:
             else []
         ),
         key_insights=[
-            f"Risk: {level} — top concern: {data.get('top_risk', '—')}",
-            f"Action: {action} — {data.get('reason', '—')}",
+            f"Risk: {level} - top concern: {data.get('top_risk', '-')}",
+            f"Action: {action} - {data.get('reason', '-')}",
         ],
     )
 
@@ -578,8 +578,8 @@ async def run_portfolio_health(context: dict | None = None) -> dict[str, Any]:
         ],
         alerts=([{"level": "warn", "message": f"Health: {health}"}] if health == "unhealthy" else []),
         key_insights=[
-            f"Health: {health} — issue: {data.get('top_issue', '—')}",
-            f"Action: {action} — {data.get('reason', '—')}",
+            f"Health: {health} - issue: {data.get('top_issue', '-')}",
+            f"Action: {action} - {data.get('reason', '-')}",
         ],
     )
 
@@ -615,8 +615,8 @@ async def run_macro_impact(context: dict | None = None) -> dict[str, Any]:
             }
         ],
         key_insights=[
-            f"Regime: {regime} — posture: {posture}",
-            f"Action: {action} — {data.get('reason', '—')}",
+            f"Regime: {regime} - posture: {posture}",
+            f"Action: {action} - {data.get('reason', '-')}",
         ],
     )
 
@@ -654,20 +654,20 @@ async def run_daily_briefing(context: dict | None = None) -> dict[str, Any]:
         ],
         key_insights=[
             data.get("headline", ""),
-            f"Concern: {data.get('top_concern', '—')}",
-            f"Opportunity: {data.get('top_opportunity', '—')}",
-            f"Action: {data.get('action_today', '—')}",
+            f"Concern: {data.get('top_concern', '-')}",
+            f"Opportunity: {data.get('top_opportunity', '-')}",
+            f"Action: {data.get('action_today', '-')}",
         ],
     )
 
 
 def _pre_trade_prompt(ctx: dict) -> str:
-    # SPI guard: Total NAV is private — never send. Public market data
+    # SPI guard: Total NAV is private - never send. Public market data
     # (current_price, ATR, SMA50) is fine. Sizing is requested as % of NAV.
     # ATR is converted to % of price so the model has volatility scale without
     # an absolute dollar reference.
     # numpy scalars (np.float64 from yfinance/pandas) fail isinstance(_, float)
-    # silently — try-cast covers Python and numpy numeric types alike.
+    # silently - try-cast covers Python and numpy numeric types alike.
     try:
         _p = float(ctx.get("current_price"))
         _a = float(ctx.get("atr_14"))
@@ -703,7 +703,7 @@ def _pre_trade_prompt(ctx: dict) -> str:
 
 
 def _weekly_mirror_prompt(ctx: dict) -> str:
-    # SPI guard: NAV, deposits, P&L absolute dollars are private — never send.
+    # SPI guard: NAV, deposits, P&L absolute dollars are private - never send.
     # All P&L figures are relative (% of NAV). avg_win/avg_loss in dollars are
     # dropped; R-multiple already conveys their ratio.
     return (
@@ -725,7 +725,7 @@ def _weekly_mirror_prompt(ctx: dict) -> str:
 def _rebalance_prompt(ctx: dict) -> str:
     # SPI guard: NAV and per-account cash dollar amounts are private. Send
     # per-account cash as % of NAV instead, keyed by account label (TFSA/RRSP/
-    # Non-Reg/...) — caller is expected to redact account IDs upstream.
+    # Non-Reg/...) - caller is expected to redact account IDs upstream.
     return (
         f"Strategy: {ctx.get('strategy', 'growth-aggressive')}\n"
         f"Target weights (% of NAV): {ctx.get('target_weights', {})}\n"
@@ -779,7 +779,7 @@ async def run_pre_trade_check(context: dict | None = None) -> dict[str, Any]:
         ],
         alerts=([{"level": "warn", "message": f"REJECT: {data.get('reason')}"}] if verdict == "REJECT" else []),
         key_insights=[
-            f"{verdict}: {data.get('reason', '—')}",
+            f"{verdict}: {data.get('reason', '-')}",
             f"Failed gates: {data.get('failed_gates') or 'none'}",
             f"Warnings: {data.get('warnings') or 'none'}",
         ],
@@ -823,10 +823,10 @@ async def run_weekly_mirror(context: dict | None = None) -> dict[str, Any]:
         actionable=[{"recommendation": a, "reason": ""} for a in (data.get("next_actions") or [])],
         alerts=[{"level": alert_level, "message": f"Verdict: {verdict}"}],
         key_insights=[
-            f"Verdict: {verdict} — {data.get('reason', '—')}",
-            f"30d win rate: {data.get('win_rate_30d', '—')}%",
-            f"30d R-multiple: {data.get('r_multiple_30d', '—')}",
-            f"Top pattern: {data.get('top_pattern', '—')}",
+            f"Verdict: {verdict} - {data.get('reason', '-')}",
+            f"30d win rate: {data.get('win_rate_30d', '-')}%",
+            f"30d R-multiple: {data.get('r_multiple_30d', '-')}",
+            f"Top pattern: {data.get('top_pattern', '-')}",
         ],
     )
 
@@ -850,7 +850,7 @@ _CASH_DEPLOY_SYSTEM = (
     'candidate setups, produce JSON {"deployment":[{"ticker":"...",'
     '"pct_of_nav":<float>,"entry":<float>,"stop":<float>,'
     '"setup_score":<int>},...],"cash_remaining_pct":<float>,"reason":'
-    '"..."}. All sizing in % of NAV — never quote dollar amounts. Never '
+    '"..."}. All sizing in % of NAV - never quote dollar amounts. Never '
     "recommend single position > 5% NAV. Never add to concentration-flagged "
     "or crowding>=70 names. No prose."
 )
@@ -860,7 +860,7 @@ _DIV_SYSTEM = (
     'yield + payout context, produce JSON {"income_health":"strong|ok|'
     'weak","projected_yield_pct":<float>,"top_risked_payer":"...",'
     '"recommendation":"hold|rotate|add_dividend|trim_low_yield",'
-    '"reason":"..."}. Yield expressed as % only — never quote dollar '
+    '"reason":"..."}. Yield expressed as % only - never quote dollar '
     "income amounts. No prose."
 )
 
@@ -878,7 +878,7 @@ _TAX_LOSS_SYSTEM = (
     '"account_label":"...","replacement":"...",'
     '"superficial_block_until":"YYYY-MM-DD"},...],'
     '"total_loss_pct_of_nav":<float>,"reason":"..."}. Loss figures in '
-    "% of NAV only — never quote dollar amounts. Never recommend harvesting "
+    "% of NAV only - never quote dollar amounts. Never recommend harvesting "
     "in TFSA or RRSP (no tax benefit). Always flag superficial-loss rule. "
     "No prose."
 )
@@ -927,7 +927,7 @@ def _cash_deploy_prompt(ctx: dict) -> str:
 
 def _div_prompt(ctx: dict) -> str:
     # SPI guard: Total NAV and absolute annual income $ are private. Yield
-    # already expressed as % — sufficient signal without dollar amounts.
+    # already expressed as % - sufficient signal without dollar amounts.
     return (
         f"Dividend payers: {ctx.get('payers', [])}\n"
         f"Portfolio yield %: {ctx.get('portfolio_yield_pct', 'n/a')}\n"
@@ -948,7 +948,7 @@ def _sector_prompt(ctx: dict) -> str:
 def _tax_loss_prompt(ctx: dict) -> str:
     # SPI guard: absolute CAD loss + YTD realized gain $ are private. Send
     # loss as % of NAV. Account breakdown should arrive pre-redacted (labels
-    # only, no IDs) — the caller is responsible upstream.
+    # only, no IDs) - the caller is responsible upstream.
     return (
         f"Underwater positions: {ctx.get('losers', [])}\n"
         f"Total unrealized loss (% of NAV): "
@@ -997,7 +997,7 @@ def _generic_runner_factory(skill_name: str, prompt_fn, system_prompt, task):
                 ]
             ),
             key_insights=[
-                f"{skill_name}: {data.get('verdict') or data.get('reason') or '—'}",
+                f"{skill_name}: {data.get('verdict') or data.get('reason') or '-'}",
             ],
         )
 
@@ -1080,7 +1080,7 @@ async def run_auto_rebalance(context: dict | None = None) -> dict[str, Any]:
             for d in deployments
         ],
         key_insights=[
-            f"Drift: {data.get('drift_summary', '—')}",
+            f"Drift: {data.get('drift_summary', '-')}",
             f"Deployments planned: {len(deployments)}",
             f"Next review in {data.get('next_review_days', 30)}d",
         ],
@@ -1163,7 +1163,7 @@ async def run_nightly_llm_skills(
 
     results: dict[str, int] = {"adv": 0, "earn": 0, "compare": 0, "errors": 0}
 
-    # Bounded concurrency — free-tier rate-limits cap us at 4 parallel calls.
+    # Bounded concurrency - free-tier rate-limits cap us at 4 parallel calls.
     sem = asyncio.Semaphore(4)
 
     async def _run_adv(h: dict) -> tuple[str, bool]:

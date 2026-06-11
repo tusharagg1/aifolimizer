@@ -56,10 +56,25 @@ cd <REPO>
 scripts\register-skill-task.ps1 -Skill daily-briefing   -Time 07:00 -Days MON,TUE,WED,THU,FRI
 scripts\register-skill-task.ps1 -Skill top-trades-today -Time 08:00 -Days MON,TUE,WED,THU,FRI
 scripts\register-skill-task.ps1 -Skill position-review  -Time 18:30 -Days DAILY
-# others (have free-LLM fallback runners): weekly-mirror, portfolio-health,
-# risk-assessment, adversarial-research, sector-rotation, dividend-strategy,
-# auto-rebalance, tax-loss-review
+# Other skills with free-LLM fallback runners are whatever app/services/agent_registry.py
+# exposes (run_skill_fallback.py resolves against it) - e.g. weekly-mirror, portfolio-health,
+# risk-assessment, adversarial-research, sector-rotation, dividend-strategy, tax-loss-review.
 ```
+
+## Scheduled data jobs (headless, no LLM)
+
+Two Python jobs run on a schedule independent of the skills above:
+
+```powershell
+# Headless morning digest -> Telegram (no LLM, supports --dry-run)
+python backend\scripts\send_daily_briefing.py
+
+# Daily post-close data pipeline: scores recommendations, refreshes the
+# track-record / calibration / equity loops
+python backend\scripts\run_maintenance.py
+```
+
+Register them with `register-skill-task.ps1`-style Scheduled Tasks (or cron / launchd on POSIX) the same way as the skill tasks. `send_daily_briefing.py` is the headless task wired to the `aifolimizer-daily-briefing` job; `run_maintenance.py` feeds the nightly scoring loops.
 
 Test a task immediately:
 ```powershell
@@ -193,10 +208,12 @@ systemctl --user start aifolimizer-daily-briefing.service   # test now
 0 7 * * 1-5 /path/to/aifolimizer/scripts/run-claude-skill.sh daily-briefing
 ```
 
-### Minimal bash wrapper (`run-claude-skill.sh`)
+### Minimal bash wrapper (illustrative)
 
-Mirrors the PS1: try `claude -p` first, fall back to the free-LLM runner, push
-to Telegram. Make executable: `chmod +x scripts/run-claude-skill.sh`.
+This is a minimal illustration of the flow, not the shipped file. The real
+`scripts/run-claude-skill.sh` is hardened (JSON-envelope parsing, quota/auth
+failure classifiers, `AIFOLIMIZER_ROOT` override) - use it directly. Make
+executable: `chmod +x scripts/run-claude-skill.sh`.
 
 ```bash
 #!/usr/bin/env bash

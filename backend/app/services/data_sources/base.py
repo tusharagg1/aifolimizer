@@ -31,9 +31,7 @@ class SourceUnavailable(Exception):
 # exception strings (which embed the full request URL). Those messages flow into
 # logs and data_source_reliability error fields. Scrub credential values before
 # they reach any SourceUnavailable message so a live key never lands in a log.
-_SECRET_QUERY_RE = re.compile(
-    r"(?i)\b(apikey|api_key|api_token|access_token|access_key|token|secret)=[^&\s'\")>]+"
-)
+_SECRET_QUERY_RE = re.compile(r"(?i)\b(apikey|api_key|api_token|access_token|access_key|token|secret)=[^&\s'\")>]+")
 
 
 def redact_secrets(text: object) -> str:

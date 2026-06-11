@@ -1,6 +1,6 @@
 """Quantitative primitives: returns, volatility, Sharpe, Sortino, VaR, beta, correlation.
 
-Zero external dependencies — pure stdlib. Adapted from ai-portfolio-analyzer reference.
+Zero external dependencies - pure stdlib. Adapted from ai-portfolio-analyzer reference.
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def correlation_matrix(
     symbols = list(symbol_returns.keys())
     lengths = {s: len(r) for s, r in symbol_returns.items()}
 
-    # Fast path: when every series shares one length (the live case — one
+    # Fast path: when every series shares one length (the live case - one
     # batched fetch over a common period) compute all pairs in a single
     # vectorized np.corrcoef instead of O(n²) pure-Python Pearson loops.
     # Ragged inputs fall back to the pairwise loop to preserve per-pair
@@ -263,7 +263,7 @@ def stable_bucket(key: str, n_buckets: int = 1_000_000) -> int:
     """SHA-256 deterministic bucket assignment. Same key always → same bucket.
 
     Use for reproducible walk-forward splits and strategy A/B grouping without
-    persisting any state — the bucket is fully derived from the key string.
+    persisting any state - the bucket is fully derived from the key string.
     """
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
     return int(digest[:12], 16) % n_buckets
@@ -274,7 +274,7 @@ def deterministic_split_idx(symbol: str, n_points: int, train_frac: float = 0.7)
 
     Adds a small per-symbol jitter (±5% of n_points) to the nominal train_frac
     split so different symbols don't all break at the same calendar date. The
-    jitter is deterministic — same symbol always gets the same offset.
+    jitter is deterministic - same symbol always gets the same offset.
     """
     nominal = int(n_points * train_frac)
     jitter_range = max(1, int(n_points * 0.05))

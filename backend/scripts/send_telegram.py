@@ -16,7 +16,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# Run from anywhere — put backend/ on path so app.core.config resolves.
+# Run from anywhere - put backend/ on path so app.core.config resolves.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings
@@ -60,7 +60,7 @@ def send(text: str, title: str | None = None) -> int:
         return 2
     body = (f"{title}\n\n{text}" if title else text).strip()
     if not body:
-        print("empty input — nothing to send", file=sys.stderr)
+        print("empty input - nothing to send", file=sys.stderr)
         return 3
     try:
         for chunk in _chunks(body):
@@ -75,7 +75,7 @@ def send(text: str, title: str | None = None) -> int:
                 timeout=10.0,
             )
             r.raise_for_status()
-    except Exception as e:  # noqa: BLE001 — report and signal failure to caller
+    except Exception as e:  # noqa: BLE001 - report and signal failure to caller
         print(f"telegram send failed: {e}", file=sys.stderr)
         return 1
     return 0

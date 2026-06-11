@@ -32,7 +32,7 @@ def main() -> None:
     from rq import SimpleWorker, Worker
 
     # RQ's default Worker forks a work-horse per job; os.fork() is absent on
-    # Windows. SimpleWorker runs jobs in-process (no fork) — fine for solo use.
+    # Windows. SimpleWorker runs jobs in-process (no fork) - fine for solo use.
     worker_cls = Worker if hasattr(os, "fork") else SimpleWorker
 
     r = get_redis_sync()

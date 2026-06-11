@@ -24,10 +24,10 @@ Wait for user confirmation before continuing. If user says yes or forced, procee
 - After any 7-day streak of losses
 - Before any decision to increase position sizes
 
-## Stage 0 — Decision Memory (load FIRST)
+## Stage 0 - Decision Memory (load FIRST)
 
 Before the review, load prior decisions so the mirror reflects the logged record, not memory:
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 - For any name you single out, load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
 
 ## How to run
@@ -119,11 +119,11 @@ Output: "Reduce position sizes by 50% for next 30 days. Take half the trades. Jo
 
 **🔴 SUSPEND DISCRETIONARY**
 Criteria: 30d win rate < 40%, OR R-multiple < 1.0, OR discretionary underperforming boring-core by ≥5% over 90d.
-Output: "Stop discretionary trading for 30 days. Allocate next 4 weeks of contributions to your core index ETF (DCA only). Revisit after 30d." If the user has no confirmed core ETF yet (no saved preference / none held), do NOT name one — tell them to run `auto-rebalance` first to pick a core sleeve on merit, then DCA into that.
+Output: "Stop discretionary trading for 30 days. Allocate next 4 weeks of contributions to your core index ETF (DCA only). Revisit after 30d." If the user has no confirmed core ETF yet (no saved preference / none held), do NOT name one - tell them to run `auto-rebalance` first to pick a core sleeve on merit, then DCA into that.
 
 ### 7. Next actions (≤ 3 bullets)
 - Specific calls to action with $ amounts
-- Example: "Sell PLTR (stop hit 4d ago, still holding): −$340 realized > continued risk"
+- Example: "Sell PLTR (stop hit 4d ago, still holding): -$340 realized > continued risk"
 - Example: "Move $2,000 settled cash → XEQT.TO biweekly DCA"
 - Example: "Skip next 5 swing-trade temptations. Journal them but do not enter."
 

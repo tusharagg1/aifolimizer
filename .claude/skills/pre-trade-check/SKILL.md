@@ -71,18 +71,18 @@ If user can't answer #5 with a specific reason that isn't "saw it on social medi
 
 **Step 3 - Levels + sizing (only if all fatal gates PASS):**
 
-Call `mcp__aifolimizer__get_trade_ticket` with `ticker=TICKER`, `action=<BUY|ADD|SELL|TRIM>`, `conviction=<HIGH|MED|LOW from thesis strength>`. This is the single source of truth for levels — do NOT hand-roll them:
-- `entry_zone` — `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `timing == wait_pullback`, the disciplined call is WAIT** — state the pullback band + support basis; do not approve a market entry at current price.
-- `stop_loss_price` — SMA20/ATR-anchored stop.
-- `exit_ladder` — tiered `[{label, price, sell_pct, gain_pct, rationale}]`. Render verbatim; do not recompute targets.
-- `position` block (only if already held) — `avg_cost`, `return_pct`, `stop_below_cost`.
+Call `mcp__aifolimizer__get_trade_ticket` with `ticker=TICKER`, `action=<BUY|ADD|SELL|TRIM>`, `conviction=<HIGH|MED|LOW from thesis strength>`. This is the single source of truth for levels - do NOT hand-roll them:
+- `entry_zone` - `{timing: buy_now | wait_pullback, low, high, reference, support_basis}`. **If `timing == wait_pullback`, the disciplined call is WAIT** - state the pullback band + support basis; do not approve a market entry at current price.
+- `stop_loss_price` - SMA20/ATR-anchored stop.
+- `exit_ladder` - tiered `[{label, price, sell_pct, gain_pct, rationale}]`. Render verbatim; do not recompute targets.
+- `position` block (only if already held) - `avg_cost`, `return_pct`, `stop_below_cost`.
 
-Then apply **risk-based sizing** (the gate's discipline — OVERRIDES the tool's conviction-based size):
+Then apply **risk-based sizing** (the gate's discipline - OVERRIDES the tool's conviction-based size):
 
 1. **Risk per trade** = 1.5% of total NAV (default; ask if user wants different).
 2. **Entry** = `entry_zone.reference`.
 3. **Stop** = `stop_loss_price`.
-4. **Risk per share** = entry − stop.
+4. **Risk per share** = entry - stop.
 5. **Max shares** = floor(risk_per_trade / risk_per_share).
 6. **Position $** = max_shares × entry; **Position %** = position_$ / total_NAV.
 7. If `position_%` > 5%, cap shares so position = 5% of NAV (max-size rule wins).
@@ -100,8 +100,8 @@ Fatal gates:  [✓] FOMO  [✓] Crowding  [✓] Sizing  [✓] Stop  [✓] Concen
 Warning gates: <list any that triggered>
 
 If PASS, trade ticket:
-  Entry:    zone $LOW–$HIGH  (<buy_now | WAIT pullback> · <support_basis>)
-  Stop:     $X.XX (−A.A%)
+  Entry:    zone $LOW-$HIGH  (<buy_now | WAIT pullback> · <support_basis>)
+  Stop:     $X.XX (-A.A%)
   Exits:    T1 $.. (+b% sell 40%) · T2 $.. (+c% sell 35%) · T3 $.. (+d% sell 25%)
   Shares:   N   (risk-based: 1.5% NAV ÷ risk-per-share)
   Cost:     $C,CCC
@@ -125,7 +125,7 @@ Call `mcp__aifolimizer__log_recommendation` with:
 - `action=<BUY/SELL>`
 - `conviction="MED"` (this skill is a discipline gate, not a conviction call - "MED" is the codebase's neutral default; `log_recommendation` only accepts HIGH/MED/LOW and raises ValueError on anything else)
 - `rationale=<user's thesis sentence>`
-- `target_pct` and `stop_pct` — the schema takes **percentages from entry**, not absolute prices. Compute from the ticket: let `entry = entry_zone.reference`, then `stop_pct = (stop_loss_price - entry) / entry * 100` (negative for a BUY) and `target_pct = (T2_price - entry) / entry * 100` (T2 = primary target from `exit_ladder`). Pass those two numbers. (`log_recommendation` has no `entry_price`/`stop_loss`/`target_price` args — passing them errors or silently drops the levels.)
+- `target_pct` and `stop_pct` - the schema takes **percentages from entry**, not absolute prices. Compute from the ticket: let `entry = entry_zone.reference`, then `stop_pct = (stop_loss_price - entry) / entry * 100` (negative for a BUY) and `target_pct = (T2_price - entry) / entry * 100` (T2 = primary target from `exit_ladder`). Pass those two numbers. (`log_recommendation` has no `entry_price`/`stop_loss`/`target_price` args - passing them errors or silently drops the levels.)
 
 This builds the forward track record for `weekly-mirror` skill.
 

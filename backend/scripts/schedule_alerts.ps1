@@ -43,7 +43,7 @@ $action = New-ScheduledTaskAction `
 
 # Every 30 min, indefinitely. Omitting -RepetitionDuration repeats forever
 # (the old -RepetitionDuration 6h30m made the task fire one day then stop, and
-# setting .DaysOfWeek on a -Once trigger is a no-op — that combo never recurred).
+# setting .DaysOfWeek on a -Once trigger is a no-op - that combo never recurred).
 # Off-hours/weekend runs are cheap: no new price data => alerts dedup to no-op.
 $trigger = New-ScheduledTaskTrigger `
   -Once -At 9:30am `

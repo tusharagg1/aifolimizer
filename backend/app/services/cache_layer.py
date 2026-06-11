@@ -2,7 +2,7 @@
 
 In-process dict caches (L1) inside each service stay fast for hot-path repeats
 within one Python process. But the MCP server and the FastAPI server run as
-separate processes — without a shared layer they each pay full yfinance cost
+separate processes - without a shared layer they each pay full yfinance cost
 on cold start.
 
 This module wraps `diskcache.Cache` with a tiny API matched to existing usage:
@@ -11,7 +11,7 @@ This module wraps `diskcache.Cache` with a tiny API matched to existing usage:
   cache_set(namespace, key, value, ttl)   → None
 
 `diskcache` is thread+process safe (SQLite under the hood). Failures are
-swallowed and logged — never block the caller.
+swallowed and logged - never block the caller.
 
 Security note (CVE-2025-69872, CVSS 9.8):
   Stock diskcache pickles every cached value. An attacker with write access
@@ -44,7 +44,7 @@ _LOG = get_logger("aifolimizer.services.cache_layer")
 
 try:
     from diskcache import Cache as _DiskCache, JSONDisk as _JSONDisk
-except Exception:  # pragma: no cover — optional dep
+except Exception:  # pragma: no cover - optional dep
     _DiskCache = None  # type: ignore[assignment]
     _JSONDisk = None  # type: ignore[assignment]
 
@@ -67,7 +67,7 @@ def _harden_dir_permissions(path: Path) -> None:
 
 
 def _get_cache() -> Any:
-    """Lazy singleton — survive missing diskcache lib (returns None)."""
+    """Lazy singleton - survive missing diskcache lib (returns None)."""
     global _cache_singleton
     if _cache_singleton is not None:
         return _cache_singleton
@@ -78,7 +78,7 @@ def _get_cache() -> Any:
             try:
                 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
                 _harden_dir_permissions(_CACHE_DIR)
-                # JSONDisk: serializes values via json.dumps/loads — no
+                # JSONDisk: serializes values via json.dumps/loads - no
                 # pickle on read, neutralises CVE-2025-69872 even on a
                 # tampered cache directory.
                 disk_kwargs: dict[str, Any] = {}

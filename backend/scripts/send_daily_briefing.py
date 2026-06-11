@@ -59,7 +59,7 @@ def _format_briefing(portfolio, briefing: dict) -> str:
     composed = summary.get("composed_from") or []
 
     ps = portfolio.summary
-    lines = [f"📊 <b>aifolimizer Daily Briefing</b> — {date.today().isoformat()}"]
+    lines = [f"📊 <b>aifolimizer Daily Briefing</b> - {date.today().isoformat()}"]
     lines.append(f"NLV ${ps.total_value:,.0f} | Return {ps.total_return_pct:+.1f}% | Cash ${ps.cash_available:,.0f}")
     if next_action:
         lines.append(f"\n⚡ <b>Next action:</b> {next_action}")
@@ -124,6 +124,6 @@ if __name__ == "__main__":
         try:
             _stream.reconfigure(encoding="utf-8")
         except Exception:
-            # Stream not reconfigurable — emoji may garble but output still flows.
+            # Stream not reconfigurable - emoji may garble but output still flows.
             pass
     sys.exit(main())

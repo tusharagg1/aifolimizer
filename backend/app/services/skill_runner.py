@@ -1,11 +1,11 @@
-"""Skill runner — background-executable Python implementations of analysis skills.
+"""Skill runner - background-executable Python implementations of analysis skills.
 
 Per-skill pure-Python service functions that operate on a PortfolioResponse and
 return a SkillSnapshot. These are executed by the scheduler (`app/jobs/scheduler.py`)
 and cached to disk so the frontend can read pre-computed skill outputs.
 
 LLM-required skills (adversarial-research, earnings-postmortem, stock-compare)
-are NOT codified here — they remain on-demand via Claude.
+are NOT codified here - they remain on-demand via Claude.
 
 Each runner emits four sections:
   summary:     headline metrics for the panel
@@ -39,7 +39,7 @@ from app.services import quant
 _SNAP_DIR = Path(__file__).resolve().parents[2] / ".cache" / "skill_snapshots"
 _SNAP_DIR.mkdir(parents=True, exist_ok=True)
 
-# Active tenant for the current run — set by run_all_skills so composite
+# Active tenant for the current run - set by run_all_skills so composite
 # runners (daily-briefing) read the correct namespace.
 _active_tenant: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "active_tenant",
@@ -67,7 +67,7 @@ _DEFAULT_TTLS = {
     "earnings-analyzer": 360,
 }
 
-# Sector regime sensitivity — rough sign of correlation to each regime.
+# Sector regime sensitivity - rough sign of correlation to each regime.
 # +1 favored, -1 disfavored, 0 neutral. Used by macro-impact to flag
 # sector exposure that fights the current regime.
 _SECTOR_REGIME_BIAS: dict[str, dict[str, int]] = {
@@ -160,7 +160,7 @@ def _run_portfolio_health(portfolio: PortfolioResponse) -> dict:
                 )
         insights = []
         score = health.get("score") or 0
-        grade = health.get("grade") or "—"
+        grade = health.get("grade") or "-"
         insights.append(f"Health {score}/100 ({grade})")
         if warnings:
             insights.append(f"{len(warnings)} concentration warnings")
@@ -190,7 +190,7 @@ def _run_portfolio_health(portfolio: PortfolioResponse) -> dict:
 
 
 def _fetch_returns_for(symbols: list[str], lookback_days: int = 252) -> dict[str, list[float]]:
-    """Fetch daily simple returns for each symbol. Returns dict — empty if data missing."""
+    """Fetch daily simple returns for each symbol. Returns dict - empty if data missing."""
     out: dict[str, list[float]] = {}
     for sym in symbols:
         try:
@@ -231,11 +231,11 @@ def _run_risk_assessment(portfolio: PortfolioResponse) -> dict:
         mdd = metrics.get("max_drawdown_pct")
         var = metrics.get("var_95_pct")
         if vol is not None and vol > 35:
-            alerts.append({"level": "warn", "message": f"Annualized vol {vol:.1f}% — elevated risk"})
+            alerts.append({"level": "warn", "message": f"Annualized vol {vol:.1f}% - elevated risk"})
         if mdd is not None and mdd < -25:
-            alerts.append({"level": "warn", "message": f"Max drawdown {mdd:.1f}% — significant historical pain"})
+            alerts.append({"level": "warn", "message": f"Max drawdown {mdd:.1f}% - significant historical pain"})
         if var is not None and var < -3:
-            alerts.append({"level": "info", "message": f"VaR(95) {var:.2f}% daily — 1-in-20 days expected loss"})
+            alerts.append({"level": "info", "message": f"VaR(95) {var:.2f}% daily - 1-in-20 days expected loss"})
         insights = []
         if metrics.get("sharpe") is not None:
             insights.append(f"Sharpe {metrics['sharpe']:.2f}")
@@ -289,7 +289,7 @@ def _run_macro_impact(portfolio: PortfolioResponse) -> dict:
             alerts.append(
                 {
                     "level": "warn",
-                    "message": f"Regime {regime} — defensive bias recommended",
+                    "message": f"Regime {regime} - defensive bias recommended",
                 }
             )
         if misaligned_weight > 30:
@@ -365,7 +365,7 @@ def _run_dividend_strategy(portfolio: PortfolioResponse) -> dict:
         alerts = [
             {
                 "level": "warn",
-                "message": f"{d['symbol']} payout ratio {d['payout_ratio_pct']}% — dividend may be at risk",
+                "message": f"{d['symbol']} payout ratio {d['payout_ratio_pct']}% - dividend may be at risk",
             }
             for d in unsustainable[:3]
         ]
@@ -554,7 +554,7 @@ def _run_cash_deployment(portfolio: PortfolioResponse) -> dict:
         insights = [
             f"Cash available ${cash:,.0f} CAD",
             f"{len(sized)} BUY/ADD candidates sized" if sized else "no qualified candidates",
-            (f"Top allocation: {sized[0]['symbol']} ${sized[0]['allocation_cad']:,.0f}") if sized else "—",
+            (f"Top allocation: {sized[0]['symbol']} ${sized[0]['allocation_cad']:,.0f}") if sized else "-",
         ]
         return _snapshot(
             "cash-deployment",
@@ -648,7 +648,7 @@ def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
             {
                 "level": "warn",
                 "message": (
-                    f"{u['symbol']} earnings in {u['days_to_earnings']}d — "
+                    f"{u['symbol']} earnings in {u['days_to_earnings']}d - "
                     f"±{u.get('expected_move_pct') or '?'}% expected move"
                     + (f", ${u['position_at_risk_cad']:,.0f} CAD at risk" if u.get("position_at_risk_cad") else "")
                 ),
@@ -677,7 +677,7 @@ def _run_earnings_analyzer(portfolio: PortfolioResponse) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# daily-briefing (composite — synthesizes other snapshots)
+# daily-briefing (composite - synthesizes other snapshots)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -716,18 +716,18 @@ def _run_daily_briefing(portfolio: PortfolioResponse) -> dict:
         ph = composed.get("portfolio-health", {}).get("summary") or {}
         if ea.get("n_imminent_7d", 0) > 0:
             next_action = (
-                f"Review {ea['n_imminent_7d']} position(s) with earnings ≤7d — trim or hedge before binary event"
+                f"Review {ea['n_imminent_7d']} position(s) with earnings ≤7d - trim or hedge before binary event"
             )
         elif sa.get("by_action", {}).get("SELL", 0) > 0:
             top = sa.get("top_sells") or []
             sym = top[0]["symbol"] if top else "?"
-            next_action = f"Review SELL signal on {sym} — thesis broken or deteriorating"
+            next_action = f"Review SELL signal on {sym} - thesis broken or deteriorating"
         elif ph.get("n_warnings", 0) > 0:
-            next_action = "Rebalance — concentration warning active"
+            next_action = "Rebalance - concentration warning active"
         elif cd.get("n_qualified_candidates", 0) > 0:
             cands = cd.get("candidates") or []
             sym = cands[0]["symbol"] if cands else "?"
-            next_action = f"Deploy cash — top candidate {sym}"
+            next_action = f"Deploy cash - top candidate {sym}"
         return _snapshot(
             "daily-briefing",
             summary={
@@ -793,7 +793,7 @@ def read_snapshot(skill: str, *, tenant_id: str | None = None) -> dict | None:
     path = target_dir / f"{skill}.json"
     if not path.exists():
         # Fall back to global only when tenant_id is set but no tenant
-        # snapshot exists yet — avoids a blank UI on first run.
+        # snapshot exists yet - avoids a blank UI on first run.
         if tenant_id and (_SNAP_DIR / f"{skill}.json").exists():
             path = _SNAP_DIR / f"{skill}.json"
         else:
@@ -888,7 +888,7 @@ def llm_only_skills() -> list[str]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Composer fallback runners (ctx-based, deterministic — no LLM, no PII egress)
+# Composer fallback runners (ctx-based, deterministic - no LLM, no PII egress)
 #
 # Resolved by scripts/run_skill_fallback.py when Claude is unavailable. Unlike
 # the LLM-narrative skills in skill_llm_runner, these are pure-Python: they load
@@ -919,7 +919,7 @@ def _ctx_session_id(context: dict | None) -> str | None:
 async def run_top_trades_today(context: dict | None = None) -> dict:
     """Ranked, decision-ready trade ideas across holdings + watchlist.
 
-    Codified mirror of the top-trades-today skill — reuses the recommendation
+    Codified mirror of the top-trades-today skill - reuses the recommendation
     engine + trade_ideas.rank_trade_ideas so output matches the MCP tool.
     """
     from app.services import trade_ideas as trade_ideas_svc
@@ -966,7 +966,7 @@ async def run_top_trades_today(context: dict | None = None) -> dict:
                 f"{idea['action']} {idea.get('conviction') or ''}{rr_str}".strip()
             )
         if not ideas:
-            insights.append("No actionable setups — all HOLD/WATCH or below R:R floor.")
+            insights.append("No actionable setups - all HOLD/WATCH or below R:R floor.")
         return _snapshot(
             "top-trades-today",
             summary={
@@ -987,7 +987,7 @@ _REVIEW_VERDICT = {"SELL": "SELL", "TRIM": "TRIM", "ADD": "HOLD", "BUY": "HOLD"}
 async def run_position_review(context: dict | None = None) -> dict:
     """HOLD/TRIM/SELL verdict per top holding (deterministic routing fallback).
 
-    Codified mirror of the position-review sweep — derives the verdict from the
+    Codified mirror of the position-review sweep - derives the verdict from the
     recommendation engine action and attaches stop/target levels. No per-name
     LLM routing; the deep adversarial path is Claude-only by design.
     """
@@ -1026,7 +1026,7 @@ async def run_position_review(context: dict | None = None) -> dict:
                 alerts.append(
                     {
                         "level": "warn",
-                        "message": f"{p.symbol}: {verdict} — {(reasons or ['signal deterioration'])[0]}",
+                        "message": f"{p.symbol}: {verdict} - {(reasons or ['signal deterioration'])[0]}",
                     }
                 )
         # Worst first: SELL, then TRIM, then HOLD; within each, lowest score first.

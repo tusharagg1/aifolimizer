@@ -35,7 +35,7 @@ if [ -z "$VENV_PY" ]; then
   [ -n "$VENV_PY" ] || { echo "ERROR: venv created but no python found under backend/.venv"; exit 1; }
   echo "    created backend/.venv"
 else
-  echo "    backend/.venv exists — keeping"
+  echo "    backend/.venv exists - keeping"
 fi
 
 echo "==> 2/5 dependencies"
@@ -46,9 +46,9 @@ echo "    installed backend/requirements.txt"
 echo "==> 3/5 backend/.env"
 if [ ! -f backend/.env ]; then
   cp .env.example backend/.env
-  echo "    created backend/.env — EDIT IT and fill WS_EMAIL / WS_PASSWORD"
+  echo "    created backend/.env - EDIT IT and fill WS_EMAIL / WS_PASSWORD"
 else
-  echo "    backend/.env exists — keeping"
+  echo "    backend/.env exists - keeping"
 fi
 
 echo "==> 4/5 .mcp.json"
@@ -58,7 +58,7 @@ if [ ! -f .mcp.json ]; then
     "$VENV_PY" "$REPO/backend/mcp_server.py"
   echo "    wrote .mcp.json"
 else
-  echo "    .mcp.json exists — keeping"
+  echo "    .mcp.json exists - keeping"
 fi
 
 if command -v claude >/dev/null 2>&1; then
@@ -67,7 +67,7 @@ if command -v claude >/dev/null 2>&1; then
     && echo "    registered (restart Claude to pick it up)" \
     || echo "    already registered or registration skipped"
 else
-  echo "    claude CLI not on PATH — register manually:"
+  echo "    claude CLI not on PATH - register manually:"
   echo "      claude mcp add aifolimizer \"$VENV_PY\" \"$REPO/backend/mcp_server.py\""
 fi
 
@@ -77,7 +77,7 @@ echo "==> 5/5 doctor"
 cat <<EOF
 
 Setup done. Next (run.py needs cwd=backend for the uvicorn app import):
-  1. Edit backend/.env  (WS_EMAIL / WS_PASSWORD — optional, only for portfolio skills)
+  1. Edit backend/.env  (WS_EMAIL / WS_PASSWORD - optional, only for portfolio skills)
   2. cd backend
   3. "$VENV_PY" mcp_login.py   # first Wealthsimple login (MFA)
   4. "$VENV_PY" run.py         # start backend on :8000

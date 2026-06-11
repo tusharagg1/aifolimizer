@@ -104,12 +104,12 @@ async def force_run(
         raise HTTPException(404, f"unknown agent: {name}")
     tenant = _tenant_from(request)
     if tenant is None:
-        raise HTTPException(401, "no session — log in first")
+        raise HTTPException(401, "no session - log in first")
     runner = ar.resolve_runner(spec)
     if runner is None:
         raise HTTPException(
             501,
-            f"no backend runner registered for {name} — Claude Code only",
+            f"no backend runner registered for {name} - Claude Code only",
         )
     try:
         if asyncio.iscoroutinefunction(runner):

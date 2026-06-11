@@ -1,4 +1,4 @@
-"""Massive (formerly Polygon.io) data source — US stocks only.
+"""Massive (formerly Polygon.io) data source - US stocks only.
 
 TSX/Canadian symbols raise SourceUnavailable immediately so the router
 falls through to yfinance without wasting an API call.
@@ -104,7 +104,7 @@ class MassiveSource(DataSource):
     def get_quote(self, symbol: str) -> Quote:
         """Last close from most recent daily agg bar.
 
-        Snapshot endpoint requires paid plan; list_aggs is free-tier.
+        Uses the daily-aggregates endpoint.
         """
         if is_tsx(symbol):
             raise SourceUnavailable(f"massive: {symbol} is TSX")
@@ -189,5 +189,5 @@ class MassiveSource(DataSource):
             raise SourceUnavailable(f"massive history {symbol}: {redact_secrets(e)}") from e
 
     def get_fundamentals(self, symbol: str) -> Fundamentals:
-        # ticker_details is rate-limited on free tier — delegate to yfinance
+        # ticker_details is rate-limited on free tier - delegate to yfinance
         raise SourceUnavailable(f"massive: fundamentals deferred to yfinance for {symbol}")

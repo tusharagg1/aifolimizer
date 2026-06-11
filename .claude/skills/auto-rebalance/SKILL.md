@@ -1,6 +1,6 @@
 ---
 name: auto-rebalance
-description: Monthly rebalance + DCA prompt for the long-term core ETF sleeve only (broad-market index ETFs) — NOT single-stock adds (use cash-deployment) and NOT max-Sharpe reweighting (use optimize-allocation). Use when the user asks "should I rebalance?", "where should I deploy my paycheck?", "DCA recommendation", "is my allocation drifting?", "auto-invest plan", or on the 1st of each month. Computes target vs actual core allocation, suggests DCA amount per ETF, accounts for tax-account routing.
+description: Monthly rebalance + DCA prompt for the long-term core ETF sleeve only (broad-market index ETFs) - NOT single-stock adds (use cash-deployment) and NOT max-Sharpe reweighting (use optimize-allocation). Use when the user asks "should I rebalance?", "where should I deploy my paycheck?", "DCA recommendation", "is my allocation drifting?", "auto-invest plan", or on the 1st of each month. Computes target vs actual core allocation, suggests DCA amount per ETF, accounts for tax-account routing.
 ---
 
 # Auto-Rebalance (Long-Term Core Maintenance)
@@ -22,7 +22,7 @@ Math behind it: rebalancing by adding new cash to underweighted positions (vs se
 ## Decision Memory Protocol (load first, log after)
 
 **Before** forming any view, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` (`max_lessons=3`) - portfolio-level win/loss patterns
 - For any name you issue a per-ticker BUY/SELL/TRIM/HOLD/ADD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`). If a prior decision exists and this run flips it, state explicitly WHY (new data / catalyst / price); never silently contradict a logged decision.
 
 **After** output, log every actionable verdict: for each BUY/SELL/TRIM/ADD/HOLD issued, call `mcp__aifolimizer__log_recommendation` (`skill="auto-rebalance", ticker, action, conviction, rationale, target_pct, stop_pct`). Skipping breaks the cross-session feedback loop and causes drift.
@@ -47,7 +47,7 @@ a) Set the role mix from the user's risk/horizon (`get_personal_context`), and c
    - Balanced → equity + bond ballast + cash
    - Income tilt → dividend-equity + (covered-call or bond) + cash
 
-b) For each role, build a candidate set — these are STARTING candidates, NOT the answer and NOT exhaustive; add any others you know of:
+b) For each role, build a candidate set - these are STARTING candidates, NOT the answer and NOT exhaustive; add any others you know of:
    - Global all-equity: XEQT, VEQT, XGRO, ZEQT, VGRO …
    - US large-cap: VFV, ZSP, XUS, VOO, VTI …
    - Bond ballast: ZAG, XBB, VAB …
@@ -55,12 +55,12 @@ b) For each role, build a candidate set — these are STARTING candidates, NOT t
    - Growth / tech tilt: QQQ, XQQ …
 
 c) Score each candidate on objective criteria, then recommend the winner per role:
-   - MER (WebSearch — lower wins; flag if unavailable)
+   - MER (WebSearch - lower wins; flag if unavailable)
    - Index coverage / diversification vs the role
    - Currency + withholding fit for the target account (CAD-listed vs US-domiciled in RRSP)
-   - Overlap with existing holdings (`get_xray`) — don't stack the same exposure twice
+   - Overlap with existing holdings (`get_xray`) - don't stack the same exposure twice
    - Liquidity / AUM / tracking (volume from `get_technicals`; AUM via WebSearch)
-   If XEQT / VFV win on these, recommend them — but only because they won, never by default. If a cheaper or better-fitting fund wins, recommend that instead.
+   If XEQT / VFV win on these, recommend them - but only because they won, never by default. If a cheaper or better-fitting fund wins, recommend that instead.
 
 d) If the user ALREADY holds core ETFs, evaluate keep-vs-switch: only switch when a candidate is clearly better net of switching cost + tax. Don't churn a working core just to chase a few bps of MER.
 
@@ -71,7 +71,7 @@ Output a "Core sleeve" recommendation table: Role | Recommended ETF | MER | why 
 For each core ETF in target:
 - Current weight (% of NAV) from `get_portfolio`
 - Target weight from preferences
-- Drift = current − target
+- Drift = current - target
 - Dollar gap = drift × NAV
 - Direction: ADD if negative drift, TRIM if positive drift > 5pp from target
 
@@ -126,7 +126,7 @@ NEXT REVIEW: <today + 30 days>
 ## Investor profile
 
 - Always pull capital from `get_profile` - never hardcode
-- No fixed default allocation — run the Step 2 merit-based core selection UNTIL the user sets a preference, then honor the saved targets
+- No fixed default allocation - run the Step 2 merit-based core selection UNTIL the user sets a preference, then honor the saved targets
 - Currency = CAD aggregate; per-account if cash split
 
 ## Rules

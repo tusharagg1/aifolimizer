@@ -1,6 +1,6 @@
 """Heuristic signal quality scoring adapted from AI-Trader (MIT).
 
-Pure functions — no database. Call score_quality() on any text (recommendation
+Pure functions - no database. Call score_quality() on any text (recommendation
 reasons, news summary, thesis) to get a 0-5 score on five dimensions plus a
 weighted overall. Weights from AI-Trader heuristic-v1:
   verifiability 30%, evidence 25%, specificity 20%, novelty 15%, completeness 10%
@@ -88,7 +88,7 @@ def score_quality(
     symbol: str | None = None,
     existing_texts: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Score text across 5 quality dimensions (each 0–5). Returns sub-scores + weighted overall.
+    """Score text across 5 quality dimensions (each 0-5). Returns sub-scores + weighted overall.
 
     existing_texts: pass other recently-seen texts to detect near-duplicates (novelty penalty).
     """

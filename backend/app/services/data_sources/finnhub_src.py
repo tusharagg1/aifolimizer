@@ -68,9 +68,8 @@ class FinnhubSource(DataSource):
             raise SourceUnavailable("finnhub: no API key")
         if interval != "1d":
             raise SourceUnavailable("finnhub free: daily only")
-        # Finnhub free plan dropped /stock/candle for non-forex in 2024.
-        # Skip until paid tier; let router fall to next source.
-        raise SourceUnavailable("finnhub: history requires paid plan")
+        # /stock/candle is not available for non-forex here; fall through to the next source.
+        raise SourceUnavailable("finnhub: history unavailable")
 
     def get_fundamentals(self, symbol: str) -> Fundamentals:
         if not self.is_configured():

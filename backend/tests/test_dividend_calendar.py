@@ -1,4 +1,4 @@
-"""_coerce_date_str — calendar value normalization for the dividend calendar.
+"""_coerce_date_str - calendar value normalization for the dividend calendar.
 
 yfinance returns Ex-Dividend / Dividend Date values in inconsistent shapes
 (date, Timestamp, list-of-dates, pandas Series). _coerce_date_str must reduce

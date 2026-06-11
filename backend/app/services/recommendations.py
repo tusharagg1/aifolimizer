@@ -1,16 +1,16 @@
 """Multi-signal recommendation engine.
 
 Scores each position using four independent sub-signals:
-  tech_score    — Minervini stage, RSI, MACD, trend (volatile, intraday)
-  fund_score    — analyst targets, EPS, short interest (stable, 6h cache)
-  macro_score   — market regime, VIX, Fear & Greed (1h cache)
-  sentiment     — Google News RSS headline polarity (30m cache)
+  tech_score    - Minervini stage, RSI, MACD, trend (volatile, intraday)
+  fund_score    - analyst targets, EPS, short interest (stable, 6h cache)
+  macro_score   - market regime, VIX, Fear & Greed (1h cache)
+  sentiment     - Google News RSS headline polarity (30m cache)
 
 Action is only escalated to BUY or SELL when sub-signals CONVERGE.
 Conflicting signals cap at WATCH, preventing the BUY→SELL flip seen
 when a single volatile indicator (MACD histogram, RSI) crosses a threshold.
 
-Output is cached 30 minutes — eliminates per-page-load recalculation.
+Output is cached 30 minutes - eliminates per-page-load recalculation.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ _ETF_ASSET_CLASSES = {"etf", "index", "mutual_fund"}
 
 # Asset classes the equity signal engine must NOT score. A WS PRECIOUS_METAL
 # holding (e.g. "GOLD") otherwise gets equity-priced via yahoo "GOLD" = Barrick
-# Gold — a different security — and emitted as a bogus equity signal. Fixed
+# Gold - a different security - and emitted as a bogus equity signal. Fixed
 # income / cash have no equity technicals either. Equity/ETF/crypto still score.
 _NON_SCOREABLE_ASSET_CLASSES = frozenset({"commodity", "bond", "cash"})
 
@@ -91,7 +91,7 @@ _WEIGHTS_CACHE: dict[str, float] = {
     "w_skill": 0.5,
 }
 _WEIGHTS_CACHE_TS: float = 0.0
-_WEIGHTS_CACHE_TTL = 300  # 5 minutes — short to react to nightly tuner
+_WEIGHTS_CACHE_TTL = 300  # 5 minutes - short to react to nightly tuner
 
 
 def _load_weights() -> dict[str, float]:
@@ -103,20 +103,20 @@ def _load_weights() -> dict[str, float]:
     if time.time() - _WEIGHTS_CACHE_TS < _WEIGHTS_CACHE_TTL:
         return _WEIGHTS_CACHE
     try:
-        # Lazy import — avoid circular dep at module load.
+        # Lazy import - avoid circular dep at module load.
         from app.db.pool import get_pool
 
         pool = get_pool()
         if pool is None:
             return _WEIGHTS_CACHE
-        # Sync usage from a sync caller — run a brief asyncio.run if no loop.
+        # Sync usage from a sync caller - run a brief asyncio.run if no loop.
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # Already inside an event loop; skip refresh this tick.
                 return _WEIGHTS_CACHE
         except RuntimeError:
-            # No running loop in this thread — fall through and refresh synchronously.
+            # No running loop in this thread - fall through and refresh synchronously.
             pass
 
         async def _q() -> dict | None:
@@ -131,7 +131,7 @@ def _load_weights() -> dict[str, float]:
             _WEIGHTS_CACHE.update({k: float(v) for k, v in row.items()})
             _WEIGHTS_CACHE_TS = time.time()
     except Exception:
-        # Silent — sub-signal weighting is best-effort; defaults still valid.
+        # Silent - sub-signal weighting is best-effort; defaults still valid.
         _log.debug("suppressed exception", exc_info=True)
     return _WEIGHTS_CACHE
 
@@ -213,7 +213,7 @@ def _fetch_sentiment(symbol: str) -> float:
         if llm_score is not None:
             return llm_score
         # Negation-aware token scan: counts whole tokens only and flips polarity
-        # when preceded by "not"/"no"/etc — "not bullish" → bear, not bull.
+        # when preceded by "not"/"no"/etc - "not bullish" → bear, not bull.
         pos = neg = 0
         for title in raw_titles:
             p, n = score_text_polarity(title, _POSITIVE, _NEGATIVE)
@@ -270,20 +270,20 @@ def _score_position(
 
     if stage == 2:
         tech_score += 2.0
-        reasons.append("Minervini stage 2 — price above rising SMA200 (uptrend)")
+        reasons.append("Minervini stage 2 - price above rising SMA200 (uptrend)")
     elif stage == 4:
         tech_score -= 2.0
-        reasons.append("Minervini stage 4 — below falling SMA200 (decline)")
+        reasons.append("Minervini stage 4 - below falling SMA200 (decline)")
     elif stage == 3:
         tech_score -= 0.5
-        reasons.append("Stage 3 distribution — SMA200 flattening, trend weakening")
+        reasons.append("Stage 3 distribution - SMA200 flattening, trend weakening")
     elif stage == 1:
         tech_score += 0.5
-        reasons.append("Stage 1 basing — SMA200 rising, potential accumulation")
+        reasons.append("Stage 1 basing - SMA200 rising, potential accumulation")
 
     if minervini_score >= 6:
         tech_score += 0.5
-        reasons.append(f"Strong Minervini template — {minervini_score}/7 criteria met")
+        reasons.append(f"Strong Minervini template - {minervini_score}/7 criteria met")
     elif minervini_score <= 2 and stage is not None:
         tech_score -= 0.3
 
@@ -291,40 +291,40 @@ def _score_position(
     if rsi is not None:
         if 40 <= rsi <= 65:
             tech_score += 0.4
-            reasons.append(f"RSI {rsi:.0f} — healthy momentum, not extended")
+            reasons.append(f"RSI {rsi:.0f} - healthy momentum, not extended")
         elif rsi > 75:
             tech_score -= 0.7
-            reasons.append(f"RSI {rsi:.0f} — overbought, elevated pullback risk")
+            reasons.append(f"RSI {rsi:.0f} - overbought, elevated pullback risk")
             flags.append("overbought")
         elif rsi > 70:
             tech_score -= 0.3
-            reasons.append(f"RSI {rsi:.0f} — approaching overbought territory")
+            reasons.append(f"RSI {rsi:.0f} - approaching overbought territory")
         elif rsi < 30:
             tech_score += 0.4
-            reasons.append(f"RSI {rsi:.0f} — oversold, mean-reversion potential")
+            reasons.append(f"RSI {rsi:.0f} - oversold, mean-reversion potential")
 
     macd_hist = tech.get("macd_hist")
     if macd_hist is not None:
-        # Reduced weight vs old ±0.5 — MACD histogram is the most volatile signal
+        # Reduced weight vs old ±0.5 - MACD histogram is the most volatile signal
         if macd_hist > 0:
             tech_score += 0.3
-            reasons.append("MACD histogram positive — bullish momentum")
+            reasons.append("MACD histogram positive - bullish momentum")
         else:
             tech_score -= 0.3
-            reasons.append("MACD histogram negative — bearish momentum")
+            reasons.append("MACD histogram negative - bearish momentum")
 
     trend = tech.get("trend")
     if trend == "uptrend":
         tech_score += 0.5
-        reasons.append("Price above SMA200 — long-term uptrend intact")
+        reasons.append("Price above SMA200 - long-term uptrend intact")
     elif trend == "downtrend":
         tech_score -= 0.5
-        reasons.append("Price below SMA200 — long-term downtrend")
+        reasons.append("Price below SMA200 - long-term downtrend")
 
     pct_from_52w_high = tech.get("pct_from_52w_high")
     if pct_from_52w_high is not None and pct_from_52w_high < -30 and stage != 4:
         tech_score += 0.3
-        reasons.append(f"{abs(pct_from_52w_high):.0f}% off 52-week high — deep value entry zone")
+        reasons.append(f"{abs(pct_from_52w_high):.0f}% off 52-week high - deep value entry zone")
 
     # ── Fundamental sub-score (skip for index ETFs) ────────────────────────────
     if not is_etf and fund:
@@ -355,83 +355,83 @@ def _score_position(
         if eps_growth is not None:
             if eps_growth > 0.20:
                 fund_score += 0.5
-                reasons.append(f"EPS +{eps_growth * 100:.0f}% YoY — strong earnings momentum")
+                reasons.append(f"EPS +{eps_growth * 100:.0f}% YoY - strong earnings momentum")
             elif eps_growth < 0:
                 fund_score -= 0.5
-                reasons.append(f"EPS declining {eps_growth * 100:.0f}% YoY — earnings headwind")
+                reasons.append(f"EPS declining {eps_growth * 100:.0f}% YoY - earnings headwind")
 
         short_int = fund.get("short_interest")
         if short_int is not None:
             if short_int > 0.15:
                 fund_score -= 0.5
-                reasons.append(f"High short interest {short_int * 100:.0f}% — elevated bearish pressure")
+                reasons.append(f"High short interest {short_int * 100:.0f}% - elevated bearish pressure")
                 flags.append("high_short_interest")
             elif short_int < 0.03:
                 fund_score += 0.3
-                reasons.append(f"Low short interest {short_int * 100:.0f}% — minimal bearish overhang")
+                reasons.append(f"Low short interest {short_int * 100:.0f}% - minimal bearish overhang")
 
         revenue_growth = fund.get("revenue_growth_yoy")
         if revenue_growth is not None and revenue_growth > 0.15:
             fund_score += 0.3
-            reasons.append(f"Revenue +{revenue_growth * 100:.0f}% YoY — top-line growth")
+            reasons.append(f"Revenue +{revenue_growth * 100:.0f}% YoY - top-line growth")
 
     # ── Macro sub-score ────────────────────────────────────────────────────────
     market_regime = macro.get("market_regime") or "unknown"
     if market_regime == "bear_high_fear":
         macro_score -= 1.0
-        reasons.append("Bear market + elevated fear — defensive positioning favored")
+        reasons.append("Bear market + elevated fear - defensive positioning favored")
     elif market_regime == "bull_high_fear":
         macro_score -= 0.25
-        reasons.append("Fear spike in bull trend — caution, potential pullback")
+        reasons.append("Fear spike in bull trend - caution, potential pullback")
     elif market_regime == "bear_low_fear":
         macro_score -= 0.5
-        reasons.append("Bear trend with complacency — volatility expansion risk")
+        reasons.append("Bear trend with complacency - volatility expansion risk")
 
     vix = macro.get("vix")
     if vix and vix > 30:
         macro_score -= 0.5
-        reasons.append(f"VIX {vix:.0f} — extreme fear, risk-off environment")
+        reasons.append(f"VIX {vix:.0f} - extreme fear, risk-off environment")
 
     fg_score = macro.get("fear_greed_score")
     if fg_score is not None:
         if fg_score >= 75:
             macro_score -= 0.4
-            reasons.append(f"Fear & Greed {fg_score:.0f} (Extreme Greed) — market euphoria risk")
+            reasons.append(f"Fear & Greed {fg_score:.0f} (Extreme Greed) - market euphoria risk")
         elif fg_score <= 25:
             macro_score += 0.3
-            reasons.append(f"Fear & Greed {fg_score:.0f} (Extreme Fear) — contrarian buy signal")
+            reasons.append(f"Fear & Greed {fg_score:.0f} (Extreme Fear) - contrarian buy signal")
 
-    # Yield curve inversion — strongest macro recession signal (leads by 6-18 months)
+    # Yield curve inversion - strongest macro recession signal (leads by 6-18 months)
     yc_signal = macro.get("yield_curve_signal")
     if yc_signal == "deeply_inverted":
         macro_score -= 0.8
         spread_val = macro.get("yield_curve_spread", 0)
-        reasons.append(f"Yield curve deeply inverted ({spread_val:+.2f}%) — recession warning, reduce risk")
+        reasons.append(f"Yield curve deeply inverted ({spread_val:+.2f}%) - recession warning, reduce risk")
     elif yc_signal == "inverted":
         macro_score -= 0.4
-        reasons.append("Yield curve inverted — elevated recession risk over next 12–18 months")
+        reasons.append("Yield curve inverted - elevated recession risk over next 12-18 months")
 
     # ── Sentiment sub-score ────────────────────────────────────────────────────
     if sentiment > 0.3:
-        reasons.append(f"News sentiment positive ({sentiment:+.2f}) — recent headlines bullish")
+        reasons.append(f"News sentiment positive ({sentiment:+.2f}) - recent headlines bullish")
     elif sentiment < -0.3:
-        reasons.append(f"News sentiment negative ({sentiment:+.2f}) — recent headlines bearish")
+        reasons.append(f"News sentiment negative ({sentiment:+.2f}) - recent headlines bearish")
 
     # ── Position management (applied directly to final score) ─────────────────
     weight = position.get("weight") or 0
     overweight_penalty = 0.0
     if weight > 20:
         overweight_penalty = -0.5
-        reasons.append(f"Overweight {weight:.0f}% of portfolio — consider trimming")
+        reasons.append(f"Overweight {weight:.0f}% of portfolio - consider trimming")
         flags.append("overweight")
 
     total_return = position.get("total_return_pct") or 0
     loss_penalty = 0.0
     if total_return < -25:
         loss_penalty = -0.25
-        reasons.append(f"Down {abs(total_return):.0f}% — review stop-loss")
+        reasons.append(f"Down {abs(total_return):.0f}% - review stop-loss")
 
-    # ── Skill evidence (Phase 2 — 5th sub-signal) ─────────────────────────────
+    # ── Skill evidence (Phase 2 - 5th sub-signal) ─────────────────────────────
     # Skills augment, never replace the 4 quantitative sub-signals. They vote
     # in the convergence gate ONLY when skill_confidence ≥ 0.5 (enough skills
     # ran). Contribution to raw_score is clamped to ±2 so a runaway skill
@@ -569,19 +569,19 @@ def _score_position(
             risk = current_price - stop_loss
             risk_reward = round(reward / risk, 1) if risk > 0 else None
 
-    # Entry timing: flag if RSI extended — better to wait for pullback
+    # Entry timing: flag if RSI extended - better to wait for pullback
     entry_timing: str
     if rsi and rsi > 65 and action in ("BUY", "ADD"):
         entry_timing = "wait_pullback"
     else:
         entry_timing = "acceptable"
 
-    # ── Position sizing — Kelly GATED on calibration ──────────────────────────
+    # ── Position sizing - Kelly GATED on calibration ──────────────────────────
     # win_prob is an indicative heuristic interpolated symmetrically from score.
     # The old analyst_rec→win_prob map (buy=0.62 / sell=0.35) was INVERTED vs
     # realized outcomes (analyst-buy names realized ~18% win, sell ~94%) and is
     # removed. Kelly sizing is SUPPRESSED until confidence labels calibrate
-    # against realized returns — an uncalibrated win_prob must never drive bet
+    # against realized returns - an uncalibrated win_prob must never drive bet
     # size. kelly_pct stays None (EV/max-loss cascade off it) until then.
     # Interpolate from score: score=5 → 45%, score=10 → 65%.
     win_prob = min(0.65, max(0.35, 0.35 + (score / 10) * 0.30))
@@ -617,7 +617,7 @@ def _score_position(
         if stop_gap_pct > 0:
             max_loss_dollars = round(position_value * (kelly_pct / 100) * stop_gap_pct, 2)
 
-    # HOLD/NO_EDGE: no trade levels — showing them implies action
+    # HOLD/NO_EDGE: no trade levels - showing them implies action
     if action in ("HOLD", "NO_EDGE"):
         stop_loss = None
         stop_type = None
@@ -647,13 +647,13 @@ def _score_position(
     if em and em.get("days_to_earnings") is not None and em.get("days_to_earnings", 99) <= 14:
         if weight > 5:
             hedge_flag = True
-            hedge_reason = f"Earnings in {em['days_to_earnings']}d with >{weight:.0f}% weight — consider trimming or protective put"
+            hedge_reason = f"Earnings in {em['days_to_earnings']}d with >{weight:.0f}% weight - consider trimming or protective put"
     elif stage == 3 and weight > 8:
         hedge_flag = True
-        hedge_reason = f"Stage 3 distribution + {weight:.0f}% weight — trim risk before trend breaks"
+        hedge_reason = f"Stage 3 distribution + {weight:.0f}% weight - trim risk before trend breaks"
     elif rsi and rsi > 78 and weight > 5:
         hedge_flag = True
-        hedge_reason = f"RSI {rsi:.0f} overbought with {weight:.0f}% weight — consider partial trim"
+        hedge_reason = f"RSI {rsi:.0f} overbought with {weight:.0f}% weight - consider partial trim"
 
     # ── Earnings risk flag ────────────────────────────────────────────────────
     earnings_risk: str | None = None
@@ -663,12 +663,12 @@ def _score_position(
         position_at_risk = round(position_value * expected_move_pct / 100, 0) if position_value else None
         if days_to_earnings <= 7:
             earnings_risk = "imminent"
-            reasons_entry = f"Earnings in {days_to_earnings}d — options imply ±{expected_move_pct}%" + (
+            reasons_entry = f"Earnings in {days_to_earnings}d - options imply ±{expected_move_pct}%" + (
                 f" (${position_at_risk:,.0f} at risk)" if position_at_risk else ""
             )
         elif days_to_earnings <= 21:
             earnings_risk = "upcoming"
-            reasons_entry = f"Earnings in {days_to_earnings}d — implied move ±{expected_move_pct}%"
+            reasons_entry = f"Earnings in {days_to_earnings}d - implied move ±{expected_move_pct}%"
         else:
             earnings_risk = None
             reasons_entry = None
@@ -720,7 +720,7 @@ def _score_position(
         "entry_timing": entry_timing,
         "kelly_pct": kelly_pct,
         # Sizing/EV are indicative only: win_prob is a heuristic, not yet
-        # calibrated from realized outcomes — do not treat as precise.
+        # calibrated from realized outcomes - do not treat as precise.
         "sizing_basis": "indicative_heuristic",
         # Expected value
         "ev_dollars": ev_dollars,
@@ -803,7 +803,7 @@ def _evidence_tier(
     """Classify a recommendation: proven_edge / reasonable_thesis /
     experimental / no_edge. Determines whether 'high confidence' is earned."""
     if action == "NO_EDGE":
-        return "no_edge", "No measurable edge — no clean directional signal."
+        return "no_edge", "No measurable edge - no clean directional signal."
     positive_ev = ev_dollars is None or ev_dollars > 0
     if forward_n >= _MIN_FORWARD_PROVEN and calibrated and positive_ev and confidence == "high":
         return (
@@ -817,7 +817,7 @@ def _evidence_tier(
         )
     return (
         "experimental",
-        f"Only {forward_n} closed forward signals — experimental until calibrated (need ~{_MIN_FORWARD_PROVEN}).",
+        f"Only {forward_n} closed forward signals - experimental until calibrated (need ~{_MIN_FORWARD_PROVEN}).",
     )
 
 
@@ -841,11 +841,11 @@ def _decide_action(
 ) -> tuple[str, str | None]:
     """Accuracy-first action selector.
 
-    Returns (action, gate_reason). Rules — strictest first:
+    Returns (action, gate_reason). Rules - strictest first:
 
     1. NO_EDGE: zero or one directional sub-signal, OR thesis too thin
        (signal_quality < 2 of 5). The engine refuses to call when evidence
-       is insufficient — better to skip a trade than emit a wrong one.
+       is insufficient - better to skip a trade than emit a wrong one.
 
     2. Adversarial / conflict cap: if conflicting >= confirming, downgrade
        to WATCH regardless of score.
@@ -854,23 +854,23 @@ def _decide_action(
        + score < 3.5 + 3-signal convergence. Otherwise TRIM/WATCH/NO_EDGE.
        ETFs skip the fundamentals requirement.
 
-    4. BUY gate (tightened — live BUY leg was negative EV): score >= 8.0 +
+    4. BUY gate (tightened - live BUY leg was negative EV): score >= 8.0 +
        3-signal convergence + zero conflicts + fundamentals >= 0 (ETFs exempt)
        + signal_quality >= 3 + regime not hostile. Otherwise WATCH/HOLD/NO_EDGE.
 
     5. Default HOLD for everything in between.
     """
     if signal_quality < 2:
-        return "NO_EDGE", f"Signal quality {signal_quality:.1f}/5 — thesis too thin to act"
+        return "NO_EDGE", f"Signal quality {signal_quality:.1f}/5 - thesis too thin to act"
 
     if primary_count == 0:
-        return "NO_EDGE", "No directional sub-signals — no measurable edge"
+        return "NO_EDGE", "No directional sub-signals - no measurable edge"
 
     if confirming <= 1 and conflicting >= 1:
-        return "NO_EDGE", f"Signals contradict ({confirming} for, {conflicting} against) — no advantage"
+        return "NO_EDGE", f"Signals contradict ({confirming} for, {conflicting} against) - no advantage"
 
     if conflicting >= confirming:
-        return "WATCH", "Adversarial check — bear case as strong as bull, refusing directional call"
+        return "WATCH", "Adversarial check - bear case as strong as bull, refusing directional call"
 
     # Bearish path
     if dominant_dir == -1:
@@ -884,12 +884,12 @@ def _decide_action(
         ):
             return "SELL", "Stage 3/4 trend + weak fundamentals + 3-signal convergence"
         if score < 5.0 and stage in (3, 4):
-            return "TRIM", "Bearish lean — trim risk, not yet full SELL conviction"
+            return "TRIM", "Bearish lean - trim risk, not yet full SELL conviction"
         if score < 5.5:
             return "WATCH", "Bearish but insufficient deterioration for SELL"
         return "HOLD", None
 
-    # Bullish path — BUY gate tightened (live BUY leg was negative expectancy:
+    # Bullish path - BUY gate tightened (live BUY leg was negative expectancy:
     # 197 sigs, 17.8% win, -5.3% alpha vs XEQT). Raise score bar 7.5→8.0, add a
     # fundamentals floor (ETFs exempt) and a signal-quality floor; demote
     # marginal longs to WATCH so they route away from the losing BUY bucket.
@@ -905,9 +905,9 @@ def _decide_action(
         if buy_ok:
             return "BUY", "Score≥8 + 3-signal convergence + fundamentals≥0 + quality≥3 + regime ok"
         if score >= 8.0 and market_regime in _REGIME_BUY_HOSTILE:
-            return "WATCH", f"Bullish setup but {market_regime} regime — defer until trend confirms"
+            return "WATCH", f"Bullish setup but {market_regime} regime - defer until trend confirms"
         if score >= 7.0 and confirming >= 2:
-            return "WATCH", "Promising — needs score≥8 + fundamentals + quality + 3-signal confirm"
+            return "WATCH", "Promising - needs score≥8 + fundamentals + quality + 3-signal confirm"
         if score >= 5.5:
             return "HOLD", None
         return "NO_EDGE", "Bullish score too weak to act"
@@ -932,7 +932,7 @@ def get_recommendations(
     if not portfolio_positions:
         return []
 
-    # Drop non-equity holdings (precious metal, fixed income, cash) — the
+    # Drop non-equity holdings (precious metal, fixed income, cash) - the
     # equity engine would mis-price and mis-signal them. Done before symbol
     # fetch so e.g. GOLD is never fetched as Barrick. Equity/ETF/crypto pass.
     portfolio_positions = [
@@ -943,7 +943,7 @@ def get_recommendations(
 
     skill_evidence_map = skill_evidence_map or {}
 
-    # Include rounded position weights in the cache key — overweight_penalty,
+    # Include rounded position weights in the cache key - overweight_penalty,
     # kelly_pct, ev_dollars and hedge_flag all depend on weight, so a key built
     # on symbols alone would serve stale outputs after a rebalance for 30 min.
     # Skill evidence digest invalidates cache when consensus changes for any
@@ -964,7 +964,7 @@ def get_recommendations(
 
     symbols = [p["symbol"] for p in portfolio_positions]
     # 4 workers serialized 23 HTTP-bound tasks (3 aggregate + N sentiment).
-    # Sentiment is the long pole — bump the pool so each per-symbol HTTP can
+    # Sentiment is the long pole - bump the pool so each per-symbol HTTP can
     # overlap. Cap at 16 to avoid hammering the upstream sentiment provider.
     pool_size = min(16, 3 + len(symbols)) or 4
     with concurrent.futures.ThreadPoolExecutor(max_workers=pool_size) as pool:
@@ -977,7 +977,7 @@ def get_recommendations(
         macro_data = macro_future.result()
         sent_data = {sym: f.result() for sym, f in sent_futures.items()}
 
-    # Earnings expected move — non-blocking, cached 2h, fails gracefully
+    # Earnings expected move - non-blocking, cached 2h, fails gracefully
     try:
         em_data = get_earnings_expected_moves(symbols, fund_data, tech_data)
     except Exception:

@@ -18,14 +18,11 @@ scheduler loop is not blocked.
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import date, datetime
 
 from app.services import data_router
 from app.services.signal_history import _close_at_offset
 from app.db.repositories import signals_repo
-
-_LOG = logging.getLogger(__name__)
 
 _DEFAULT_HORIZONS: tuple[int, ...] = (1, 3, 5, 10, 21, 42, 63)
 _LONG_ACTIONS = frozenset({"BUY", "ADD"})
@@ -57,9 +54,7 @@ def compute_return(entry: float, exit_close: float, action: str) -> float | None
 async def _bars(symbol: str, cache: dict[str, list[dict]]) -> list[dict]:
     if symbol not in cache:
         try:
-            bars = await asyncio.to_thread(
-                data_router.get_history, symbol, period="1y", interval="1d"
-            )
+            bars = await asyncio.to_thread(data_router.get_history, symbol, period="1y", interval="1d")
             cache[symbol] = bars or []
         except Exception:
             cache[symbol] = []
@@ -124,9 +119,7 @@ async def run(
                 skipped_data += 1
                 continue
 
-            await signals_repo.set_realized_return(
-                row["tenant_hash"], symbol, ts, h, round(ret_pct, 3)
-            )
+            await signals_repo.set_realized_return(row["tenant_hash"], symbol, ts, h, round(ret_pct, 3))
             h_written += 1
             written += 1
         per_horizon[f"h{h}"] = h_written

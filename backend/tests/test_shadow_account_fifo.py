@@ -1,4 +1,4 @@
-"""Quantity-aware FIFO pairing — regression test for the audit P1 fix.
+"""Quantity-aware FIFO pairing - regression test for the audit P1 fix.
 
 Earlier impl popped a whole buy lot on the first matching sell, which
 mispaired scale-in / scale-out flows. The fix tracks remaining qty per

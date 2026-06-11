@@ -5,12 +5,12 @@ stored in Redis. Material flips/score-moves are persisted to Postgres
 signal_changes and pushed via Telegram.
 
 Material change rules:
-  - action flipped (HOLD → BUY, BUY → SELL, etc.) — always material
+  - action flipped (HOLD → BUY, BUY → SELL, etc.) - always material
     EXCEPT noise pairs HOLD↔WATCH and NO_EDGE↔HOLD
   - conviction stepped UP on BUY/SELL (medium → high)
   - score moved ≥ 2.0 points in either direction (large re-rating)
 
-Dedup: per (symbol, new_action, today) — one push per direction per day.
+Dedup: per (symbol, new_action, today) - one push per direction per day.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from typing import Iterable
 log = logging.getLogger(__name__)
 
 
-# Action pairs we ignore as noise — keep alerts clean.
+# Action pairs we ignore as noise - keep alerts clean.
 _NOISE_PAIRS: frozenset[frozenset[str]] = frozenset(
     {
         frozenset({"HOLD", "WATCH"}),
@@ -112,7 +112,7 @@ def _detect_one(
     rr = new.get("risk_reward")
 
     if prev is None:
-        # First-ever signal — only material if it's a strong action.
+        # First-ever signal - only material if it's a strong action.
         if new_action in _STRONG_ACTIONS:
             return SignalChange(
                 symbol=new["symbol"],
@@ -178,7 +178,7 @@ def detect_changes(
     new_signals: Iterable[dict],
     ts: datetime | None = None,
 ) -> list[SignalChange]:
-    """Compute material changes. Pure function — no I/O.
+    """Compute material changes. Pure function - no I/O.
 
     Args:
       prev_map: { symbol: prev_signal_dict }

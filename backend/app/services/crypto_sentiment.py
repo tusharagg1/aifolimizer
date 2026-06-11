@@ -21,7 +21,7 @@ _LOG = get_logger("aifolimizer.services.crypto_sentiment")
 
 _URL = "https://api.alternative.me/fng/"
 _TIMEOUT = 10.0
-_TTL = 3600  # 1h — index updates once daily
+_TTL = 3600  # 1h - index updates once daily
 _cache: dict[int, tuple[dict, float]] = {}
 
 

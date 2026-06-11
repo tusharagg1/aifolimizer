@@ -1,27 +1,27 @@
 ---
 name: stock-analysis
-description: Run a Goldman Sachs + Citadel combined fundamental and technical analysis on a specific ticker — a quick analytical deep-dive. Use when the user asks about a specific stock, wants a deep dive, or asks for entry/exit points. For a full bull/bear multi-agent debate hand off to adversarial-research.
+description: Run a Goldman Sachs + Citadel combined fundamental and technical analysis on a specific ticker - a quick analytical deep-dive. Use when the user asks about a specific stock, wants a deep dive, or asks for entry/exit points. For a full bull/bear multi-agent debate hand off to adversarial-research.
 ---
 
 # Stock Analysis (Goldman Sachs + Citadel)
 
-## Data grounding (REQUIRED — anti-hallucination contract)
+## Data grounding (REQUIRED - anti-hallucination contract)
 
 Every numeric claim (price, P/E, RSI, target, FCF, weight) MUST come from a
 tool call in THIS run. After fetching, restate the verified figures in a short
 "Verified data" block and cite ONLY those numbers downstream. If a figure is
-not in any tool response, say "not available" — never estimate, recall, or
+not in any tool response, say "not available" - never estimate, recall, or
 invent it. WebSearch is allowed only for narrative (earnings quotes, upgrades),
 not for numbers that a tool already provides.
 
-## Stage 0 — Decision Memory (load BEFORE forming any verdict)
+## Stage 0 - Decision Memory (load BEFORE forming any verdict)
 
 Before fetching market data, load prior decisions on this ticker so the verdict stays consistent across sessions:
-- `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER, max_decisions=5` — prior actions, outcomes, reflections
-- `mcp__aifolimizer__get_ticker_reflection` with `symbol=TICKER, n=3` — prior recs + realized alpha
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER, max_decisions=5` - prior actions, outcomes, reflections
+- `mcp__aifolimizer__get_ticker_reflection` with `symbol=TICKER, n=3` - prior recs + realized alpha
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## How to run
 
@@ -78,7 +78,7 @@ Apply the 2 most relevant lenses for this stock type. Skip inapplicable ones - s
 
 **Buffett (Quality Moat + Owner Earnings + Management):** Three-part read.
 - *Moat:* rating wide/narrow (from fundamental section)? Profit margins stable or expanding over 3yr? ROIC proxy = `profit_margin × revenue / market_cap`-style qualitative read.
-- *Owner earnings:* Buffett's real cash to owner ≈ operating cash flow − maintenance capex; proxy with FCF from `get_dcf_valuation` `fcf_history` (US only). State FCF yield = `latest FCF / market_cap` as %. If FCF runs persistently below net income, flag "accounting earnings overstate cash - lower quality." If FCF ≥ net income and growing: "earnings are real cash."
+- *Owner earnings:* Buffett's real cash to owner ≈ operating cash flow - maintenance capex; proxy with FCF from `get_dcf_valuation` `fcf_history` (US only). State FCF yield = `latest FCF / market_cap` as %. If FCF runs persistently below net income, flag "accounting earnings overstate cash - lower quality." If FCF ≥ net income and growing: "earnings are real cash."
 - *Management quality (capital allocation):* Is `payout_ratio` sustainable (<60% mature co, <80% REIT/utility)? Share count discipline - in `get_sec_financials`, EPS growing faster than net income = buybacks (good when cheap); EPS lagging net income = dilution (flag). Net insider buying from `get_insider_sentiment` = alignment. Rate: rational allocator / mixed / value-destroyer.
 - *Verdict:* wide moat + owner earnings ≥ reported + rational allocator → "Buffett-quality compounder - hold forever at right price." Any leg fails → name the failing leg, downgrade to "Pass - [reason]."
 
@@ -100,7 +100,7 @@ Lens selection guide (use as default, override with judgment):
 
 ## After output - log decision
 
-Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (percent from entry — entry captured live at call time), 1-line rationale, `skill="stock-analysis"`. Feeds forward win-rate / track-record loop.
+Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM), conviction (HIGH/MED/LOW), `target_pct` + `stop_pct` (percent from entry - entry captured live at call time), 1-line rationale, `skill="stock-analysis"`. Feeds forward win-rate / track-record loop.
 
 ## Rules
 
@@ -121,8 +121,8 @@ Call `mcp__aifolimizer__log_recommendation` with action (BUY/HOLD/SELL/ADD/TRIM)
 - Headline velocity counts yfinance news only - misses Reddit/X chatter. Underestimates retail surge.
 - `pivot_levels` null for symbols with <2 trading days of data (new listings, halted). State "pivot data unavailable" rather than guessing.
 - `volume_score` null when volume data missing (common for some TSX ETFs). Do not comment on volume conviction in that case.
-- `get_insider_sentiment` / `get_recent_filings` are US-only (Finnhub/EDGAR) — for .TO tickers they return `no_api_key`/`no_cik`; state "US-only data unavailable for TSX name", don't fabricate.
-- `get_finnhub_news` sentiment is a crude keyword tally, not NLP — use as a tie-breaker, not a primary signal. `get_factor_exposure` low R² (<0.2) = factor model doesn't fit; skip the lens-selection use.
+- `get_insider_sentiment` / `get_recent_filings` are US-only (Finnhub/EDGAR) - for .TO tickers they return `no_api_key`/`no_cik`; state "US-only data unavailable for TSX name", don't fabricate.
+- `get_finnhub_news` sentiment is a crude keyword tally, not NLP - use as a tie-breaker, not a primary signal. `get_factor_exposure` low R² (<0.2) = factor model doesn't fit; skip the lens-selection use.
 - `technical_score` weights are fixed (40/25/20/10/5). Treat as screening signal, not a precise model output.
 - Owner-earnings FCF yield + share-count read are US-only (`get_dcf_valuation` / `get_sec_financials` via EDGAR). For .TO names these return empty - fall back to `payout_ratio` + the cash-flow narrative in fundamental item 2; state "FCF/share-count detail unavailable for TSX name", do NOT fabricate FCF.
 - `get_dcf_valuation` returns a note when latest FCF is negative - in that case skip the FCF-yield claim and say "owner earnings negative this period; cyclical or reinvestment-heavy - check capex."

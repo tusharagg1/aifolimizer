@@ -1,7 +1,7 @@
-"""Signal quality KPI tests — recommendations, EV, RSI, prediction accuracy.
+"""Signal quality KPI tests - recommendations, EV, RSI, prediction accuracy.
 
 Measures:
-  - EV formula correctness (Kelly half-Kelly, win_prob × gain − loss_prob × loss)
+  - EV formula correctness (Kelly half-Kelly, win_prob × gain - loss_prob × loss)
   - RSI signal: buy<30 / sell>70 hit-rate on synthetic price series
   - Recommendation precision: bullish-setup → BUY, bearish-setup → SELL (no noise)
   - Signal convergence lift: multi-factor vs single-factor accuracy
@@ -73,7 +73,7 @@ _BEAR_MACRO = {"market_regime": "bear_high_fear", "vix": 36.0, "fear_greed_score
 
 
 class TestEVFormulaAccuracy:
-    """Verify EV = win_prob × gain − (1−win_prob) × loss, half-Kelly sizing."""
+    """Verify EV = win_prob × gain - (1-win_prob) × loss, half-Kelly sizing."""
 
     def _ev_expected(self, score: float, win_prob: float, rr: float, pos_val: float) -> float:
         """Replicate the engine's EV formula exactly."""
@@ -127,7 +127,7 @@ class TestEVFormulaAccuracy:
     def test_ev_formula_matches_manual_calc(self):
         rec = _score_position("T", _POS, _BULL_TECH, _BULL_FUND, _BULL_MACRO, 0.4)
         if not (rec["ev_dollars"] and rec["kelly_pct"] and rec["risk_reward"]):
-            pytest.skip("No EV — insufficient R/R or position value")
+            pytest.skip("No EV - insufficient R/R or position value")
         pos_val = 10_000.0
         kelly_pct = rec["kelly_pct"]
         rr = rec["risk_reward"]
@@ -174,7 +174,7 @@ class TestRSISignalQuality:
 
     @staticmethod
     def _make_mean_reverting(n: int = 500, seed: int = 42) -> pd.Series:
-        """Ornstein-Uhlenbeck process — mean-reverting by construction."""
+        """Ornstein-Uhlenbeck process - mean-reverting by construction."""
         rng = np.random.default_rng(seed)
         prices = [100.0]
         theta, mu, sigma = 0.15, 100.0, 2.0
@@ -185,7 +185,7 @@ class TestRSISignalQuality:
 
     @staticmethod
     def _make_trending(n: int = 500, seed: int = 42) -> pd.Series:
-        """Geometric Brownian Motion — trending, not mean-reverting."""
+        """Geometric Brownian Motion - trending, not mean-reverting."""
         rng = np.random.default_rng(seed)
         log_returns = rng.normal(0.001, 0.015, n - 1)
         prices = [100.0]
@@ -251,7 +251,7 @@ class TestRSISignalQuality:
             dtype=float,
         )
         rsi = self._rsi(prices).dropna()
-        assert len(rsi) > 0, "RSI series empty — warmup issue"
+        assert len(rsi) > 0, "RSI series empty - warmup issue"
         assert rsi.iloc[-10:].mean() > 70
 
     def test_rsi_extreme_downtrend_stays_oversold(self):
@@ -265,7 +265,7 @@ class TestRSISignalQuality:
         rate_mr = self._oversold_hit_rate(mr, fwd=10)
         rate_tr = self._oversold_hit_rate(tr, fwd=10)
         # RSI mean-reversion signal should have higher hit rate on OU than GBM
-        assert rate_mr > rate_tr, f"OU hit rate {rate_mr:.1%} ≤ GBM {rate_tr:.1%} — RSI works better on mean-reverting"
+        assert rate_mr > rate_tr, f"OU hit rate {rate_mr:.1%} ≤ GBM {rate_tr:.1%} - RSI works better on mean-reverting"
 
 
 # ── 3. Recommendation Prediction Accuracy ────────────────────────────────────
@@ -298,7 +298,7 @@ class TestRecommendationPredictionAccuracy:
         ]
 
     def test_directional_precision_100pct_on_unambiguous_setups(self):
-        # NO_EDGE is an abstention — engine refusing low-quality calls is correct
+        # NO_EDGE is an abstention - engine refusing low-quality calls is correct
         # behavior, not a precision miss. Excluded from numerator AND denominator.
         # Bullish bucket accepts BUY/HOLD/WATCH; bearish accepts SELL/TRIM/WATCH.
         # WATCH is acceptable because the convergence gate may downgrade unambiguous
@@ -315,9 +315,9 @@ class TestRecommendationPredictionAccuracy:
                 correct += 1 if action in ("BUY", "HOLD", "WATCH") else 0
             else:
                 correct += 1 if action in ("SELL", "TRIM", "WATCH") else 0
-        assert total > 0, "All scenarios returned NO_EDGE — gate may be too strict"
+        assert total > 0, "All scenarios returned NO_EDGE - gate may be too strict"
         precision = correct / total
-        assert precision == 1.0, f"Directional precision {precision:.0%} on unambiguous setups — expected 100%"
+        assert precision == 1.0, f"Directional precision {precision:.0%} on unambiguous setups - expected 100%"
 
     def test_high_confidence_calls_are_directionally_correct(self):
         """All high-confidence recs must match signal direction."""
@@ -448,7 +448,7 @@ class TestConvergenceLift:
         assert converged["score"] > single["score"]
 
     def test_low_confidence_caps_extreme_actions(self):
-        """Mixed signals must not produce BUY or SELL — engine caps at WATCH."""
+        """Mixed signals must not produce BUY or SELL - engine caps at WATCH."""
         mixed_scenarios = [
             (_BULL_TECH, _BEAR_FUND, _BEAR_MACRO, -0.5),
             (_BEAR_TECH, _BULL_FUND, _BULL_MACRO, 0.5),
@@ -457,7 +457,7 @@ class TestConvergenceLift:
             rec = _score_position("T", _POS, tech, fund, macro, sent)
             if rec["confidence"] == "low":
                 assert rec["action"] not in ("BUY", "SELL"), (
-                    f"Low-confidence rec produced {rec['action']} — should be WATCH"
+                    f"Low-confidence rec produced {rec['action']} - should be WATCH"
                 )
 
     def test_sentiment_contributes_to_convergence(self):
@@ -476,18 +476,18 @@ class TestBacktestBenchmarks:
 
     Numbers from historical backtest runs (3yr, 5-stock universe).
     Tests enforce that key claimed metrics are structurally possible given
-    the backtest math (not a live fetch — guard regression in metric logic).
+    the backtest math (not a live fetch - guard regression in metric logic).
     """
 
     def test_sharpe_above_1_is_mathematically_valid(self):
-        # earnings_analyzer claimed Sharpe 1.47 — verify Sharpe can exceed 1
+        # earnings_analyzer claimed Sharpe 1.47 - verify Sharpe can exceed 1
         from app.services.backtest import _sharpe
 
         # Simulate a high-Sharpe equity curve (consistent 0.15%/day return, small noise)
         rng = np.random.default_rng(0)
         returns = pd.Series(0.0015 + rng.normal(0, 0.005, 756))
         s = _sharpe(returns)
-        assert s > 1.0, f"Sharpe {s:.2f} — should exceed 1.0 for consistent-gain series"
+        assert s > 1.0, f"Sharpe {s:.2f} - should exceed 1.0 for consistent-gain series"
 
     def test_cagr_double_in_3yr_is_valid(self):
         from app.services.backtest import _cagr

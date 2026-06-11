@@ -1,9 +1,9 @@
-"""Frankfurter FX adapter — ECB reference rates, free, no API key.
+"""Frankfurter FX adapter - ECB reference rates, free, no API key.
 
 Endpoint: https://api.frankfurter.dev/v1/latest?from=USD&to=CAD
 Endpoint: https://api.frankfurter.dev/v1/2024-01-15..2025-01-15?from=USD&to=CAD
 
-Coverage: 30+ currencies vs ECB reference rates. EOD only — published
+Coverage: 30+ currencies vs ECB reference rates. EOD only - published
 ~16:00 CET each business day. NOT real-time but always fresh, accurate,
 and survives without a key. Use as the FX primary since CAD/USD only
 moves ~1% intraday and ECB closes match end-of-day cash needs.

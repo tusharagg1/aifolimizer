@@ -14,7 +14,7 @@ _LOG = get_logger("aifolimizer.services.market_data")
 
 
 _FX_CACHE: tuple[float, float] | None = None  # (timestamp, cad_per_usd)
-_FX_TTL = 300  # 5 min — forex moves during market hours
+_FX_TTL = 300  # 5 min - forex moves during market hours
 
 # Per-symbol price+sector cache. enrich() runs on every portfolio fetch and
 # without this it makes one yf.Ticker(...).info HTTP call per holding in serial.
@@ -196,7 +196,7 @@ def enrich(
 
         # WS currency is authoritative; fall back to symbol-suffix inference
         currency = ws_market_currency if ws_market_currency in ("USD", "CAD") else _infer_currency(symbol)
-        # WS market_value is authoritative — yfinance only supplements day_change + sector
+        # WS market_value is authoritative - yfinance only supplements day_change + sector
         market_value = ws_market_value
         book_cost = ws_book_cost
         day_change_pct = 0.0
@@ -254,7 +254,7 @@ def enrich(
             }
         )
 
-    # Use WS account NLV as weight denominator when available — includes crypto etc.
+    # Use WS account NLV as weight denominator when available - includes crypto etc.
     weight_base = max(ws_account_total, total_market_value_cad)
     enriched = []
     for p in positions:
@@ -262,10 +262,10 @@ def enrich(
         enriched.append(Position(**p, weight=weight))
 
     equity_cost_cad = sum(p.book_cost * (cad_per_usd if p.currency == "USD" else 1.0) for p in enriched)
-    # NLV already includes all cash — do not add cash_balance again.
+    # NLV already includes all cash - do not add cash_balance again.
     reported_total = ws_account_total if ws_account_total > 0 else total_market_value_cad
 
-    # Prefer WS unrealized P&L for equity-only return — covers all positions
+    # Prefer WS unrealized P&L for equity-only return - covers all positions
     # incl. crypto. cash_balance already holds CAD + USD-converted total
     # (wealthsimple.py:369 sets acc["cash"] = cad_cash + usd_cash * fx before
     # storing); usd_cash_balance is raw USD kept for per-currency display
@@ -308,7 +308,7 @@ def enrich(
 
 
 _RETURNS_CACHE: dict[tuple, tuple[dict, float]] = {}
-_RETURNS_TTL = 3600  # 1h — matches technicals cache
+_RETURNS_TTL = 3600  # 1h - matches technicals cache
 
 
 def fetch_returns(symbols: list[str], period: str = "1y") -> dict[str, list[float]]:

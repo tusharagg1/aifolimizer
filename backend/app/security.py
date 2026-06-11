@@ -1,6 +1,6 @@
 """Security helpers: session cookies, rate limiting, structured logging.
 
-No new dependencies — uses stdlib only (logging, time, threading, json).
+No new dependencies - uses stdlib only (logging, time, threading, json).
 
 ## Session cookie
 `SESSION_COOKIE_NAME = "aifolimizer_session"`. Set via `set_session_cookie` on
@@ -13,7 +13,7 @@ env var is "1". 8h TTL matches Wealthsimple token TTL in `wealthsimple.py`.
 
 ## Rate limiting
 `RateLimiter` is a sliding-window counter keyed by `(scope, identity)`. Used
-for login + OTP — strict limits protect against credential stuffing and OTP
+for login + OTP - strict limits protect against credential stuffing and OTP
 brute force.
 
 ## Logging
@@ -86,7 +86,7 @@ class _JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: str = "INFO") -> None:
-    """Install root logger handler. Idempotent — safe to call repeatedly."""
+    """Install root logger handler. Idempotent - safe to call repeatedly."""
     root = logging.getLogger()
     # Strip prior handlers to avoid duplicate lines on reload
     for h in list(root.handlers):
@@ -138,7 +138,7 @@ def session_from_request(
 ) -> Optional[str]:
     """Return session_id from httpOnly cookie when present, else legacy query.
 
-    Backwards-compatible during migration — once all clients use cookies the
+    Backwards-compatible during migration - once all clients use cookies the
     legacy fallback can be removed.
     """
     sid = request.cookies.get(SESSION_COOKIE_NAME)
@@ -153,7 +153,7 @@ def session_from_request(
 class RateLimiter:
     """Threadsafe sliding-window rate limiter, keyed by (scope, identity).
 
-    Not durable across restarts and not multi-process — for that move to Redis.
+    Not durable across restarts and not multi-process - for that move to Redis.
     For a single-host backend this is sufficient to defeat credential stuffing
     and OTP brute-force on the login surface.
     """

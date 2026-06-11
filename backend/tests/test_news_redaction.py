@@ -28,8 +28,7 @@ def test_finnhub_news_redacts_key_on_error(monkeypatch):
 
     def boom(*a, **k):
         raise RuntimeError(
-            "Client error '401' for url "
-            "'https://finnhub.io/api/v1/company-news?symbol=AAPL&token=SECRETNEWSKEY'"
+            "Client error '401' for url 'https://finnhub.io/api/v1/company-news?symbol=AAPL&token=SECRETNEWSKEY'"
         )
 
     monkeypatch.setattr(base.httpx, "get", boom)
@@ -60,10 +59,7 @@ def test_eodhd_news_redacts_key_on_error(monkeypatch):
     monkeypatch.setenv("EODHD_KEY", "EODSECRET")
 
     def boom(*a, **k):
-        raise RuntimeError(
-            "Server error for url "
-            "'https://eodhd.com/api/news?s=AAPL.US&api_token=EODSECRET&fmt=json'"
-        )
+        raise RuntimeError("Server error for url 'https://eodhd.com/api/news?s=AAPL.US&api_token=EODSECRET&fmt=json'")
 
     monkeypatch.setattr(base.httpx, "get", boom)
     with pytest.raises(SourceUnavailable) as ei:

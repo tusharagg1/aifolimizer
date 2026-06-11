@@ -36,9 +36,9 @@ def test_to_float(raw, expected):
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        (0.04, 4.0),     # ratio -> percent
-        (4.0, 4.0),      # already percent stays
-        (1.0, 1.0),      # boundary: >=1 stays
+        (0.04, 4.0),  # ratio -> percent
+        (4.0, 4.0),  # already percent stays
+        (1.0, 1.0),  # boundary: >=1 stays
         (None, None),
         ("-", None),
     ],
@@ -85,8 +85,7 @@ def test_fetch_json_redacts_apikey_in_error(monkeypatch):
     # Simulate the real leak: httpx error string carries the full URL + apikey.
     def boom(*a, **k):
         raise RuntimeError(
-            "Client error '404' for url "
-            "'https://api.twelvedata.com/quote?symbol=SHOP&apikey=SECRET123KEY&exchange=TSX'"
+            "Client error '404' for url 'https://api.twelvedata.com/quote?symbol=SHOP&apikey=SECRET123KEY&exchange=TSX'"
         )
 
     monkeypatch.setattr(base.httpx, "get", boom)

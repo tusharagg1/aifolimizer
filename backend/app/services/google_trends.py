@@ -3,7 +3,7 @@
 Search interest is a retail-demand proxy: a spike in queries for a ticker or
 theme often precedes or confirms crowding. Use alongside positioning signals.
 
-pytrends scrapes Google's unofficial endpoint — it is rate-limited (HTTP 429)
+pytrends scrapes Google's unofficial endpoint - it is rate-limited (HTTP 429)
 and may break without notice. The dependency is imported lazily so the rest of
 the server runs even if pytrends is absent; all failures degrade gracefully.
 """
@@ -17,7 +17,7 @@ from app.security import get_logger
 
 _LOG = get_logger("aifolimizer.services.google_trends")
 
-_TTL = 6 * 3600  # 6h — search interest is slow-moving
+_TTL = 6 * 3600  # 6h - search interest is slow-moving
 _cache: dict[str, tuple[dict, float]] = {}
 
 

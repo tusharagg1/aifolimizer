@@ -19,8 +19,8 @@ def test_send_formats_and_posts(monkeypatch):
     assert captured["json"]["chat_id"] == "CHAT"
     assert captured["json"]["parse_mode"] == "HTML"
     text = captured["json"]["text"]
-    assert "🔴" in text          # high severity tag
-    assert "⬇️" in text          # rsi_oversold emoji
+    assert "🔴" in text  # high severity tag
+    assert "⬇️" in text  # rsi_oversold emoji
     assert "<b>" in text and "Title here" in text
     assert "Body here" in text
 
@@ -30,7 +30,7 @@ def test_send_swallows_errors(monkeypatch):
         raise RuntimeError("network down")
 
     monkeypatch.setattr(telegram.httpx, "post", boom)
-    # Must not raise — one failed push can't block the caller.
+    # Must not raise - one failed push can't block the caller.
     telegram.send("T", "C", "t", "b")
 
 

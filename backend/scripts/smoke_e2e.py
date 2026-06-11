@@ -3,7 +3,7 @@
 Exercises the full pipeline with a synthetic portfolio so you can catch
 "scaffolding works in isolation but is broken when wired together" before
 shipping. Hits real market data via data_router (yfinance), so it's
-network-bound — expect 30-90s end-to-end.
+network-bound - expect 30-90s end-to-end.
 
 Run:
     cd backend
@@ -15,7 +15,7 @@ What it verifies:
     2. Tenant isolation: snapshots written for tenant-A do not appear when
        reading tenant-B.
     3. RecommendationEngine: emits a sensible distribution of actions.
-       Flags as FAIL if NO_EDGE rate > 90% (engine too strict — would
+       Flags as FAIL if NO_EDGE rate > 90% (engine too strict - would
        produce zero forward samples) or < 5% (engine too loose).
     4. Auto-log: after get_recommendations runs, recommendations.jsonl has
        new rows with the full contract (horizon, benchmarks_entry, etc).
@@ -379,7 +379,7 @@ def check_recommendation_quality(
         checks.append(Check("emits recommendations").fail("0 recs"))
         return checks, recs
 
-    # Distribution check — NO_EDGE rate should be reasonable
+    # Distribution check - NO_EDGE rate should be reasonable
     by_action: dict[str, int] = {}
     for r in recs:
         by_action[r["action"]] = by_action.get(r["action"], 0) + 1
@@ -393,13 +393,13 @@ def check_recommendation_quality(
     if no_edge_pct > 90:
         checks.append(
             Check("NO_EDGE rate is sane (<=90%)").fail(
-                f"{no_edge_pct:.0f}% NO_EDGE — engine too strict, no samples will accumulate. Distribution: {dist}",
+                f"{no_edge_pct:.0f}% NO_EDGE - engine too strict, no samples will accumulate. Distribution: {dist}",
             )
         )
     elif no_edge_pct > 75:
         checks.append(
             Check("NO_EDGE rate is sane (<=90%)").ok(
-                f"WARNING: {no_edge_pct:.0f}% NO_EDGE — high but acceptable. Distribution: {dist}",
+                f"WARNING: {no_edge_pct:.0f}% NO_EDGE - high but acceptable. Distribution: {dist}",
             )
         )
     else:
@@ -432,7 +432,7 @@ def check_recommendation_quality(
 def check_auto_log(portfolio, recs_from_prior_run: list[dict] | None) -> list[Check]:
     """Verify auto-log wrote a row when the engine emitted actionable signals.
 
-    Use the recs the engine already produced earlier — calling
+    Use the recs the engine already produced earlier - calling
     get_recommendations again would hit same-day dedup and falsely fail.
     """
     from app.services import paper_trade
@@ -465,11 +465,11 @@ def check_auto_log(portfolio, recs_from_prior_run: list[dict] | None) -> list[Ch
     if not actionable:
         checks.append(
             Check("auto-log writes to recommendations.jsonl").ok(
-                "no actionable signals (HOLD/WATCH/NO_EDGE only) — nothing to log",
+                "no actionable signals (HOLD/WATCH/NO_EDGE only) - nothing to log",
             )
         )
     else:
-        # Match by ticker — any actionable rec should have a same-day row
+        # Match by ticker - any actionable rec should have a same-day row
         actionable_syms = {r["symbol"] for r in actionable}
         logged_syms = {row.get("ticker") for row in today_rows if row.get("skill") == "recommendations_engine"}
         matched = actionable_syms & logged_syms

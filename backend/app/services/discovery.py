@@ -1,11 +1,11 @@
 """Discovery layer (Phase 13).
 
-Nightly: scan (S&P500 ∪ TSX60 ∪ user_watchlist) − already_held → rank by
+Nightly: scan (S&P500 ∪ TSX60 ∪ user_watchlist) - already_held → rank by
 integrated 5-signal score → surface top N picks to dashboard + Telegram for
 score ≥ 8.
 
 Implementation notes:
-  - Reuses recommendations.get_recommendations() — same 5-signal engine
+  - Reuses recommendations.get_recommendations() - same 5-signal engine
     used for held positions. No new scoring code path.
   - Held symbols pre-filter avoids re-recommending current holdings.
   - Sector-saturation guard: if current sector weight + suggested
@@ -115,12 +115,12 @@ async def scan_universe(
     min_score: float = _DEFAULT_MIN_SCORE,
     universe: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Score every symbol in (universe ∪ watchlist) − held → return
+    """Score every symbol in (universe ∪ watchlist) - held → return
     ranked list of picks where score >= min_score.
 
     Args:
       tenant_hash: required for watchlist + wash-sale lookups.
-      portfolio:   optional PortfolioResponse — used to exclude held and
+      portfolio:   optional PortfolioResponse - used to exclude held and
                    to compute sector-saturation guards.
       min_score:   default 6.0; anything below isn't surfaced.
       universe:    optional override; defaults to S&P500 + TSX60 + ETFs.

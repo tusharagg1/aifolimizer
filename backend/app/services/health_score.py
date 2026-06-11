@@ -74,10 +74,10 @@ def compute_health_score(portfolio: PortfolioResponse) -> dict:
 
     verdicts = {
         "A": "Excellent portfolio composition",
-        "B": "Good — minor improvements possible",
-        "C": "Fair — review concentration and diversification",
-        "D": "Needs attention — significant imbalances present",
-        "F": "Critical issues — rebalancing recommended",
+        "B": "Good - minor improvements possible",
+        "C": "Fair - review concentration and diversification",
+        "D": "Needs attention - significant imbalances present",
+        "F": "Critical issues - rebalancing recommended",
     }
 
     return {

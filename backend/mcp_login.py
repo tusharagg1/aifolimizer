@@ -39,21 +39,21 @@ def _exit_rate_limited(exc: Exception) -> None:
     if "1015" in s or "Expecting value" in s:
         print(
             "ERROR: Wealthsimple is rate-limiting this IP (Cloudflare 1015).\n"
-            "Wait 15-60 min, then retry ONCE — repeated attempts extend it."
+            "Wait 15-60 min, then retry ONCE - repeated attempts extend it."
         )
     else:
-        print(f"ERROR: WS request failed — {exc}")
+        print(f"ERROR: WS request failed - {exc}")
     sys.exit(1)
 
 
-# Unified WS session file — same path app.services.wealthsimple persists/reads.
+# Unified WS session file - same path app.services.wealthsimple persists/reads.
 # Schema must match wealthsimple._persist_session so refresh + restore + MCP all
 # share one file (token rotation never orphans the session the MCP server reads).
 SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 
 
 def main() -> None:
-    print("aifolimizer — Wealthsimple MFA Login")
+    print("aifolimizer - Wealthsimple MFA Login")
     print("=" * 40)
 
     email = os.getenv("WS_EMAIL", "").strip()
@@ -89,12 +89,12 @@ def main() -> None:
             print("ERROR: OTP rejected. Try again.")
             sys.exit(1)
         except LoginFailedException as e:
-            print(f"ERROR: Login failed — {e}")
+            print(f"ERROR: Login failed - {e}")
             sys.exit(1)
         except CurlException as e:
             _exit_rate_limited(e)
     except LoginFailedException as e:
-        print(f"ERROR: Login failed — {e}")
+        print(f"ERROR: Login failed - {e}")
         sys.exit(1)
     except CurlException as e:
         _exit_rate_limited(e)

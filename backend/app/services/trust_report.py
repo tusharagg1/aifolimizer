@@ -1,19 +1,19 @@
 """Trust signal report generator.
 
 Produces two artefacts:
-1. TRACK_RECORD.md (repo root) — public summary suitable for GitHub.
+1. TRACK_RECORD.md (repo root) - public summary suitable for GitHub.
    Contains: methodology, backtest KPIs, live rec stats, data reliability.
    No PII, no individual trade detail.
 
-2. .claude/context/track_record_full.jsonl (gitignored) — raw evidence.
+2. .claude/context/track_record_full.jsonl (gitignored) - raw evidence.
    Contains: every scored recommendation with ticker + return.
 
 Call generate_report() to refresh both. Designed to be called
 once per week via scheduler or manually via MCP tool.
 
 The report shows up to two labeled backtest blocks:
-- "holdings"  — personalized run on live portfolio (decision-relevant headline)
-- "broad"     — unbiased 40+ symbol basket (strategy mechanics, no single-name luck)
+- "holdings"  - personalized run on live portfolio (decision-relevant headline)
+- "broad"     - unbiased 40+ symbol basket (strategy mechanics, no single-name luck)
 Each is picked up independently from the latest persisted run of that label.
 """
 
@@ -47,17 +47,17 @@ def generate_report() -> dict:
     if holdings:
         blocks.append(
             (
-                "Headline — Your Holdings",
-                "Run on your live portfolio top holdings — decision-relevant, but a small single-account universe.",
+                "Headline - Your Holdings",
+                "Run on your live portfolio top holdings - decision-relevant, but a small single-account universe.",
                 holdings,
             )
         )
     if broad:
         blocks.append(
             (
-                "Mechanics — Unbiased Broad Basket",
+                "Mechanics - Unbiased Broad Basket",
                 "40+ symbols across 11 GICS sectors including laggards and drawdown "
-                "names — tests strategy mechanics, not single-name luck.",
+                "names - tests strategy mechanics, not single-name luck.",
                 broad,
             )
         )
@@ -102,7 +102,7 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
     """Honest trust tier driven by forward (out-of-sample) sample size AND
     realized net expectancy. Closed forward signals are the only OOS evidence
     we have. A large sample with negative expectancy is evidence of a LOSING
-    policy, not of edge — it must never read as a positive milestone, so the
+    policy, not of edge - it must never read as a positive milestone, so the
     sign of realized return gates the label regardless of how many signals
     closed."""
     forward_n = max((w.get("count", 0) for w in live_windows.values()), default=0)
@@ -128,21 +128,21 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
             return (
                 "DEVELOPING-NEGATIVE-EV",
                 forward_n,
-                f"⚠️ NEGATIVE EXPECTANCY — {ev_str} over {forward_n} closed forward "
-                "signals (30–99). The live signal policy is currently losing; this "
+                f"⚠️ NEGATIVE EXPECTANCY - {ev_str} over {forward_n} closed forward "
+                "signals (30-99). The live signal policy is currently losing; this "
                 "is not emerging edge. Treat every recommendation as experimental.",
             )
         return (
             "DEVELOPING",
             forward_n,
-            f"{forward_n} closed forward signals (30–99), {ev_str}. Trend forming "
+            f"{forward_n} closed forward signals (30-99), {ev_str}. Trend forming "
             "but below the ~100-signal bar for trusting confidence labels.",
         )
     if neg_ev:
         return (
             "SEED-NEGATIVE-EV",
             forward_n,
-            f"⚠️ NEGATIVE EXPECTANCY — {forward_n} closed forward signals (≥100) but "
+            f"⚠️ NEGATIVE EXPECTANCY - {forward_n} closed forward signals (≥100) but "
             f"{ev_str}. Sample size is met; net-of-cost edge is NOT. This is positive "
             "evidence that the live signal policy LOSES money. Every recommendation "
             "remains experimental until expectancy turns positive AND calibrates.",
@@ -151,13 +151,13 @@ def _evidence_tier(live_windows: dict) -> tuple[str, int, str]:
         "SEED-ESTABLISHED",
         forward_n,
         f"{forward_n} closed forward signals (≥100), {ev_str}. Sample met AND "
-        "expectancy positive — judge by calibration and net-of-cost expectancy.",
+        "expectancy positive - judge by calibration and net-of-cost expectancy.",
     )
 
 
 def _universe_str(universe: list[str]) -> str:
     if not universe:
-        return "—"
+        return "-"
     if len(universe) <= 12:
         return ", ".join(universe)
     return ", ".join(universe[:12]) + f", … ({len(universe)} total)"
@@ -177,10 +177,10 @@ def _render_backtest_block(a, title: str, subtitle: str, bt_meta: dict) -> None:
     a("|---|---|---|---|---|---|---|---|")
     for r in bt_meta.get("results", []):
         if "error" in r:
-            a(f"| {r['skill']} | — | error | | | | | |")
+            a(f"| {r['skill']} | - | error | | | | | |")
             continue
         alpha_spy = r.get("alpha_vs_spy_pct")
-        a_str = f"{alpha_spy:+.1f}" if alpha_spy is not None else "—"
+        a_str = f"{alpha_spy:+.1f}" if alpha_spy is not None else "-"
         a(
             f"| {r['skill']} "
             f"| {r.get('strategy_spec', '')} "
@@ -205,7 +205,7 @@ def _render_markdown(
     lines: list[str] = []
     a = lines.append
 
-    a("# aifolimizer — Track Record & Methodology")
+    a("# aifolimizer - Track Record & Methodology")
     a("")
     a(f"*Last generated: {dt_str}*  ")
     a("*Auto-generated by `trust_report.generate_report()`. Refresh: `mcp__aifolimizer__generate_trust_report`.*")
@@ -225,7 +225,7 @@ def _render_markdown(
     tier, forward_n, why = _evidence_tier(live_windows)
     a("## Evidence Tier")
     a("")
-    a(f"> **{tier}** — {why}")
+    a(f"> **{tier}** - {why}")
     a(">")
     a("> Evidence hierarchy used here: `proven edge` (large forward sample + calibrated +")
     a("> positive net expectancy) > `reasonable thesis` > `experimental`. Until the forward")
@@ -280,8 +280,8 @@ def _render_markdown(
     a("|---|---|---|---|")
     for wkey, wdata in live_windows.items():
         count = wdata.get("count", 0)
-        wr = wdata.get("win_rate_pct", "—")
-        ar = wdata.get("avg_return_pct", "—")
+        wr = wdata.get("win_rate_pct", "-")
+        ar = wdata.get("avg_return_pct", "-")
         a(f"| {wkey} | {count} | {wr} | {ar} |")
     a("")
     a("---")
@@ -292,9 +292,9 @@ def _render_markdown(
     a("|---|---|---|---|")
     if reliability:
         for r in reliability:
-            a(f"| {r['source']} | {r['calls']} | {r.get('success_rate_pct', '—')} | {r.get('avg_latency_ms', '—')} |")
+            a(f"| {r['source']} | {r['calls']} | {r.get('success_rate_pct', '-')} | {r.get('avg_latency_ms', '-')} |")
     else:
-        a("| *No calls recorded yet* | — | — | — |")
+        a("| *No calls recorded yet* | - | - | - |")
     a("")
     a("---")
     a("")
@@ -319,7 +319,7 @@ def _render_markdown(
     a("- Scored history: `.claude/context/scored_recommendations.jsonl` (gitignored, local)")
     a("- Equity curve: `.claude/context/portfolio_history.jsonl` (gitignored, local)")
     a("- Backtest runs: `backend/.cache/backtests/` (gitignored, local)")
-    a("- This file: `TRACK_RECORD.md` — committed to repo, git-timestamped")
+    a("- This file: `TRACK_RECORD.md` - committed to repo, git-timestamped")
     a("")
     a("Git history of this file provides tamper-evident timestamps for each report version.")
     a("")
