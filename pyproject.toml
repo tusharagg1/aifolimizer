@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aifolimizer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Open-source MCP-native portfolio brain. Plugs a live brokerage account into Claude Desktop or Claude Code through a local backend, exposes 107 analysis tools across 15 data adapters, and ships 28 ready-to-run skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies."
 license = {text = "MIT"}
 requires-python = ">=3.12,<3.15"

@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "aifolimizer",
   "displayName": "aifolimizer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP-native portfolio brain for Claude. 107 analysis tools across 15 data adapters + 28 skills covering risk, earnings, macro, dividends, tax, technicals, and quant anomalies. Market-data tools work immediately; Wealthsimple portfolio awareness is opt-in.",
   "author": {
     "name": "Tushar Aggarwal",
