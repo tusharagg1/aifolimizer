@@ -1,5 +1,5 @@
 """
-aifolimizer MCP server — exposes Wealthsimple portfolio + quant analytics as MCP tools.
+aifolimizer MCP server - exposes Wealthsimple portfolio + quant analytics as MCP tools.
 
 Register with Claude Code:
   claude mcp add aifolimizer "<REPO_ROOT>\\backend\\.venv\\Scripts\\python.exe" "<REPO_ROOT>\\backend\\mcp_server.py"
@@ -24,7 +24,7 @@ from mcp.server.fastmcp import FastMCP
 
 load_dotenv()
 
-# Sentry init — opt-in via SENTRY_DSN. Gated by env-var presence to avoid
+# Sentry init - opt-in via SENTRY_DSN. Gated by env-var presence to avoid
 # importing app.core.config (and its dependency chain) when sentry is off,
 # preserving the fast MCP cold-start budget.
 if os.environ.get("SENTRY_DSN"):
@@ -78,6 +78,8 @@ options_svc = _LazyModule("app.services.options")
 trade_ticket_svc = _LazyModule("app.services.trade_ticket")
 memory_svc = _LazyModule("app.services.memory")
 decision_mem_svc = _LazyModule("app.services.decision_memory")
+journal_svc = _LazyModule("app.services.trade_journal")
+commentary_svc = _LazyModule("app.services.earnings_commentary")
 shadow_svc = _LazyModule("app.services.shadow_account")
 run_card_svc = _LazyModule("app.services.run_card")
 skill_runner_svc = _LazyModule("app.services.skill_runner")
@@ -117,8 +119,8 @@ _session_lock = asyncio.Lock()
 
 # WS blocking calls run on a dedicated pool, NOT the default asyncio.to_thread
 # executor. A stalled Wealthsimple/Cloudflare socket used to occupy default-pool
-# workers and starve every other tool — including ones with no network at all
-# (get_personal_context) — so the whole MCP server appeared to "stick".
+# workers and starve every other tool - including ones with no network at all
+# (get_personal_context) - so the whole MCP server appeared to "stick".
 _WS_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ws-op")
 # Hard async-layer ceiling on a single WS operation. The requests-level timeout
 # in wealthsimple.py is the first line of defense; this guarantees the tool
@@ -146,7 +148,7 @@ async def _ws_call(fn, *args):
         ) from e
 
 
-# Unified WS session file — same path _persist_session rewrites on token
+# Unified WS session file - same path _persist_session rewrites on token
 # refresh, so headless runs survive rotation for the full refresh-token life.
 _SESSION_FILE = Path.home() / ".aifolimizer" / "ws_session.json"
 
@@ -278,7 +280,7 @@ async def _ensure_session() -> str:
 # Cross-process portfolio snapshot cache. Every WS-touching tool funnels
 # through _load_portfolio; previously each call made a live Wealthsimple
 # round-trip (get_positions + enrich), so N MCP servers + cron all hammered
-# one contended single-use-token session through Cloudflare — the source of
+# one contended single-use-token session through Cloudflare - the source of
 # the lag/hang/fail skills hit on every MCP access. Now the enriched result
 # is cached to the shared L2 disk (default 90s) and served instantly; WS is
 # touched at most once per TTL per process. An in-process single-flight lock
@@ -332,7 +334,7 @@ async def _load_portfolio(account_id: str = "") -> PortfolioResponse:
         except Exception:
             stale = _portfolio_from_cache(_PORTFOLIO_LASTGOOD_NS, key)
             if stale is not None:
-                logging.getLogger(__name__).warning("[portfolio] live fetch failed — serving last-good snapshot")
+                logging.getLogger(__name__).warning("[portfolio] live fetch failed - serving last-good snapshot")
                 return stale
             raise
         payload = result.model_dump(mode="json")
@@ -347,7 +349,7 @@ async def _load_portfolio_live(account_id: str = "") -> PortfolioResponse:
     session = wealthsimple.get_session(session_id)
     profile = session.get("profile") if session else None
     if not profile:
-        raise RuntimeError("Session lost — please re-authenticate")
+        raise RuntimeError("Session lost - please re-authenticate")
 
     per_account = session.get("per_account", {})
     net_deposits_cad = float(session.get("net_deposits_cad") or 0.0)
@@ -398,12 +400,12 @@ async def get_profile() -> dict:
         session_id = await _ensure_session()
         session = wealthsimple.get_session(session_id)
         if not session or not session.get("profile"):
-            raise RuntimeError("Session lost — please re-authenticate via the web UI")
+            raise RuntimeError("Session lost - please re-authenticate via the web UI")
         profile = filter_user_context(session["profile"].model_dump())
     except Exception:
         stale = cache_layer.cache_get(_PROFILE_LASTGOOD_NS, _PROFILE_KEY)
         if stale is not None:
-            logging.getLogger(__name__).warning("[profile] live fetch failed — serving last-good (stale)")
+            logging.getLogger(__name__).warning("[profile] live fetch failed - serving last-good (stale)")
             return {**stale, "_stale": True}
         raise
     cache_layer.cache_set(_PROFILE_LASTGOOD_NS, _PROFILE_KEY, profile, _PROFILE_LASTGOOD_TTL_S)
@@ -413,7 +415,7 @@ async def get_profile() -> dict:
 # ────────────────────────────────────────────────────────────────────────────────
 # Personal-finance context (life context: salary/age/room/expenses/etc.)
 # Separate from get_profile (which returns WS-account data only).
-# All fields optional — skills must degrade gracefully when present=false.
+# All fields optional - skills must degrade gracefully when present=false.
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -423,14 +425,14 @@ async def get_personal_context() -> dict:
 
     Shape: {present: bool, context?: {...}, derived?: {...}, context_hash: str}.
     `derived` includes marginal_tax_rate_pct, emergency_fund_target_cad,
-    fhsa_priority_first, account_waterfall — pre-computed so skills don't
+    fhsa_priority_first, account_waterfall - pre-computed so skills don't
     duplicate the math. Returns {present: false} when user has not set up.
 
     Personal-portfolio skills (cash-deployment, tax-loss-review, dividend-strategy,
     portfolio-health, risk-assessment, daily-briefing, pre-trade-check, etc.)
     should call this AFTER get_profile to personalize. Stock-research skills
     (stock-analysis, momentum-scanner, adversarial-research) should NOT call
-    this — keeps research bias-free.
+    this - keeps research bias-free.
     """
     env = await asyncio.to_thread(personal_context_svc.envelope)
     return filter_personal_context_full(env)
@@ -460,7 +462,7 @@ async def set_personal_context_bulk(payload: dict) -> dict:
     """Replace personal context with a full payload. Validates entire object.
 
     Use this for the paste-template flow: user fills the JSON template and
-    submits the whole thing at once. Atomic — partial-write impossible.
+    submits the whole thing at once. Atomic - partial-write impossible.
     Unknown fields are ignored.
     """
     valid_fields = set(PersonalContext.model_fields.keys())
@@ -543,7 +545,7 @@ async def get_concentration_warnings(
 @mcp.tool()
 async def get_tax_loss_candidates(account_id: str = "", threshold_pct: float = -5.0) -> list[dict]:
     """
-    Lists positions currently below threshold % return — review for tax-loss harvesting.
+    Lists positions currently below threshold % return - review for tax-loss harvesting.
     Returns symbol, unrealized_loss, unrealized_loss_pct, and a Canadian-tax note.
     """
     session_id = await _ensure_session()
@@ -617,7 +619,7 @@ async def optimize_portfolio(
     risk_free_rate: annual risk-free rate for the Sharpe calc (default ~4.5%).
 
     Answers "how much of each position to add/trim for best risk-adjusted
-    return". Output is weights/changes in % only — no dollar balances.
+    return". Output is weights/changes in % only - no dollar balances.
     Cached 1h per symbol set.
     """
     portfolio = await _load_portfolio(account_id)
@@ -673,7 +675,7 @@ async def get_backtest_confidence(
     bands on total return, CAGR, and max drawdown (preserves autocorrelation).
     An order-shuffle Monte-Carlo gives the probability of a drawdown worse than
     `drawdown_threshold_pct`. Turns "CAGR 14%" into "CAGR 14% [5-95th: 2-23%],
-    20% chance of >25% drawdown" — material for real-money sizing.
+    20% chance of >25% drawdown" - material for real-money sizing.
 
     strategy: 'sma_cross' (default) or 'rsi_swing'. Reuses the live backtest
     engine; no new data sources.
@@ -792,7 +794,7 @@ async def get_geopolitical_signals(lookback_hours: int = 24) -> dict:
       market_implications: list of ETF/sector impacts (e.g. "XLE (Energy +)")
       articles_analyzed: total article count processed
 
-    lookback_hours: 6–168 (defaults 24h). Use 48-72h for broader signal.
+    lookback_hours: 6-168 (defaults 24h). Use 48-72h for broader signal.
     Cached 1h. Use alongside get_macro_snapshot in macro-impact skill.
     """
     return await asyncio.to_thread(geopolitical_svc.get_geopolitical_signals, lookback_hours)
@@ -801,7 +803,7 @@ async def get_geopolitical_signals(lookback_hours: int = 24) -> dict:
 @mcp.tool()
 async def get_boc_snapshot() -> dict:
     """
-    Bank of Canada macro via Valet API (free, no key). Official CAD source —
+    Bank of Canada macro via Valet API (free, no key). Official CAD source -
     complements FRED (US-centric). Returns BoC policy/target rate, USD/CAD,
     Government of Canada benchmark bond yields (2y/5y/10y), and the 10y-2y curve
     slope (curve_10y_2y_bps + curve_signal: inverted/normal). Cached 12h.
@@ -858,7 +860,7 @@ async def get_insider_sentiment(ticker: str) -> dict:
 async def get_economic_calendar() -> dict:
     """
     Upcoming macro releases via Finnhub. NOTE: economic calendar is PREMIUM on
-    most Finnhub plans — returns {"error": "premium_endpoint"} on a free key.
+    most Finnhub plans - returns {"error": "premium_endpoint"} on a free key.
     For free Canadian macro use get_boc_snapshot + get_statcan_snapshot instead.
     Cached 30m.
     """
@@ -876,7 +878,7 @@ async def get_search_interest(keywords: list[str], timeframe: str = "today 3-m")
     """
     Google Trends search interest via pytrends (free, no key; unofficial). Per
     keyword: current_interest (0-100), change_4w, peak, trend (rising/falling/flat).
-    Search-interest spikes are a retail-demand/crowding proxy — pair with
+    Search-interest spikes are a retail-demand/crowding proxy - pair with
     get_positioning_signals. Rate-limited; degrades gracefully on 429. Up to 5
     keywords. timeframe: pytrends syntax (e.g. "today 3-m", "today 12-m"). Cached 6h.
     """
@@ -1004,7 +1006,7 @@ async def get_technicals_mtf(
     Multi-timeframe technical analysis. Returns per-symbol signals for each
     timeframe plus a mtf_confluence summary.
 
-    timeframes: list of intervals to analyse — "1d" (daily), "1wk" (weekly),
+    timeframes: list of intervals to analyse - "1d" (daily), "1wk" (weekly),
     "1mo" (monthly). Defaults to ["1d", "1wk"].
 
     Per-TF fields: trend, rsi_14, rsi_signal, macd_hist, signal_agreement,
@@ -1016,7 +1018,7 @@ async def get_technicals_mtf(
       signal_alignment: "aligned_bullish" | "aligned_bearish" | "mixed" | "no_data"
       overall: "strong_bullish" | "strong_bearish" | "mixed" | "neutral"
 
-    Use when daily signal conflicts with weekly trend — MTF resolves ambiguity.
+    Use when daily signal conflicts with weekly trend - MTF resolves ambiguity.
     Cached 1h per (symbol, timeframes). If symbols=[], uses top 15 by weight.
     """
     session_id = await _ensure_session()
@@ -1045,9 +1047,9 @@ async def get_technicals_intraday(account_id: str = "", symbols: list[str] = [])
     Use for: day-trade entries, pre-trade-check on intraday horizon,
     daily-briefing intraday addendum, catalyst-day momentum scans.
 
-    NOT for swing/position — those use get_technicals (daily bars).
+    NOT for swing/position - those use get_technicals (daily bars).
 
-    Cached 60s — intraday bars stale fast. Yahoo 5m data is delayed ~15min.
+    Cached 60s - intraday bars stale fast. Yahoo 5m data is delayed ~15min.
     """
     session_id = await _ensure_session()
     session = wealthsimple.get_session(session_id)
@@ -1072,7 +1074,7 @@ async def get_earnings_calendar(
     Flags entries in the next 14 days as is_upcoming=True.
     Pass `symbols` to also include non-held names (e.g. watchlist tickers);
     they are unioned with holdings. Each entry has held=True/False.
-    Useful for pre-earnings analysis — call this before earnings_analyzer skill.
+    Useful for pre-earnings analysis - call this before earnings_analyzer skill.
     """
     portfolio = await _load_portfolio(account_id)
     held = [p.symbol for p in portfolio.positions]
@@ -1122,7 +1124,7 @@ async def get_dividend_calendar(
 
     Use for: don't-sell-before-ex-div timing, dividend-capture windows, and
     placing income names in the right account for the tax year. Public market
-    data (yfinance calendar) — no PII. Reuses the get_fundamentals fetch, so
+    data (yfinance calendar) - no PII. Reuses the get_fundamentals fetch, so
     no extra HTTP when fundamentals are already warm.
     """
     portfolio = await _load_portfolio(account_id)
@@ -1164,7 +1166,7 @@ async def get_dividend_calendar(
 @mcp.tool()
 async def get_watchlist() -> list[dict]:
     """
-    User-defined watchlist — symbols being tracked but not held.
+    User-defined watchlist - symbols being tracked but not held.
     Returns symbol, name, asset_class, notes, added_at. No PII (no positions).
     Pair with get_trade_ideas or get_earnings_calendar(symbols=...) to fold
     watchlist names into ranking / earnings checks.
@@ -1193,7 +1195,7 @@ async def get_trade_ideas(
     Top-N actionable trade ideas across holdings (+ watchlist), ranked by score.
 
     Reuses the backend recommendation engine (same scoring as the dashboard /
-    nightly signals) — no duplicated logic. Filters out non-actionable names
+    nightly signals) - no duplicated logic. Filters out non-actionable names
     (HOLD/WATCH/PASS/NO_EDGE), names whose entry timing says wait for a pullback,
     and ideas below `min_risk_reward`. Each idea carries entry/stop/target so it
     is directly tradeable. Use for "top stocks to trade today" / morning brief.
@@ -1249,7 +1251,7 @@ async def get_trade_ideas(
 
     # Risk-gate surfacing brake: the sync recommendation engine is gate-unaware
     # (risk_gate is async/DB-backed), so a portfolio-level halt/reduce must be
-    # applied here at the surfacing layer — otherwise halted BUYs still show as
+    # applied here at the surfacing layer - otherwise halted BUYs still show as
     # "top trades". Best-effort: never block idea generation if pool/gate is down.
     try:
         thash = _active_tenant_hash()
@@ -1277,11 +1279,11 @@ async def get_trade_ideas(
                     ranked["ideas"] = [i for i in ranked["ideas"] if i.get("action") not in ("BUY", "ADD")]
                     ranked["suppressed_by_risk_gate"] = len(longs)
                     ranked["risk_gate"]["note"] = (
-                        "Portfolio risk-gate HALT — new BUY/ADD ideas suppressed; defensive (SELL/TRIM) ideas retained."
+                        "Portfolio risk-gate HALT - new BUY/ADD ideas suppressed; defensive (SELL/TRIM) ideas retained."
                     )
                 elif state.status == "reduce_size":
                     ranked["risk_gate"]["note"] = (
-                        f"Portfolio risk-gate REDUCE_SIZE ({state.size_multiplier}x) — "
+                        f"Portfolio risk-gate REDUCE_SIZE ({state.size_multiplier}x) - "
                         "size fresh entries down or defer new BUYs."
                     )
     except Exception:
@@ -1294,7 +1296,7 @@ async def get_earnings_results(account_id: str = "", symbols: list[str] = [], qu
     """
     Historical EPS beat/miss results per ticker: last N quarters with
     actual vs estimate EPS, surprise %, and beat/meet/miss outcome.
-    Use for post-earnings analysis (postmortem) — pairs with get_earnings_calendar
+    Use for post-earnings analysis (postmortem) - pairs with get_earnings_calendar
     which only shows next upcoming date. Cached 12h per symbol (reported data is fixed).
     If symbols=[], uses top 15 holdings by weight. quarters clamped 1-12.
     """
@@ -1315,7 +1317,7 @@ async def get_earnings_results(account_id: str = "", symbols: list[str] = [], qu
 async def get_positioning_signals(account_id: str = "", symbols: list[str] = []) -> dict:
     """
     Crowding / positioning signals per ticker. Use BEFORE recommending an add
-    to a name — flags when a position is already consensus-crowded (negative
+    to a name - flags when a position is already consensus-crowded (negative
     expected alpha for late entries) vs contrarian (potential edge).
 
     Fields per symbol:
@@ -1327,7 +1329,7 @@ async def get_positioning_signals(account_id: str = "", symbols: list[str] = [])
 
     Cached 6h per symbol. If symbols=[], uses top 15 holdings by weight.
     Goldman / BlackRock 2025: AI-driven retail + quant crowding is the new
-    structural risk — late entries into consensus names underperform.
+    structural risk - late entries into consensus names underperform.
     """
     session_id = await _ensure_session()
     session = wealthsimple.get_session(session_id)
@@ -1346,7 +1348,7 @@ async def get_positioning_signals(account_id: str = "", symbols: list[str] = [])
 async def snapshot_positioning_history(account_id: str = "", symbols: list[str] = [], top_n: int = 15) -> dict:
     """
     Append today's crowding scores to .claude/context/crowding_history.jsonl.
-    Idempotent — same symbol on same day is skipped. Used to detect regime
+    Idempotent - same symbol on same day is skipped. Used to detect regime
     shifts (consensus → contrarian and vice versa) over time.
     If symbols=[], snapshots top_n holdings by weight.
     """
@@ -1415,7 +1417,7 @@ async def get_news_headlines(ticker: str = "", limit: int = 5) -> dict:
 @mcp.tool()
 async def get_community_sentiment(ticker: str) -> dict:
     """
-    Reddit community sentiment for a ticker — scored from public posts.
+    Reddit community sentiment for a ticker - scored from public posts.
 
     Searches r/stocks, r/investing, r/canadianinvestor for the past week.
     Returns community_score (0=all bearish, 50=neutral, 100=all bullish),
@@ -1423,21 +1425,21 @@ async def get_community_sentiment(ticker: str) -> dict:
     Cached 30 min. No API key required (Reddit public JSON API).
 
     Use alongside get_positioning_signals to separate institutional crowding
-    from retail/community sentiment — they frequently diverge.
+    from retail/community sentiment - they frequently diverge.
     """
     return await asyncio.to_thread(community_svc.get_reddit_sentiment, ticker.upper())
 
 
 @mcp.tool()
 async def get_stocktwits_sentiment(ticker: str) -> dict:
-    """StockTwits public stream — real-time retail trader sentiment, no API key required.
+    """StockTwits public stream - real-time retail trader sentiment, no API key required.
 
     Returns bull/bear message counts with explicit sentiment labels from StockTwits
     users. Complements Reddit (which is keyword-inferred) with labeled intent data.
 
     community_score: 0=all bear, 50=neutral, 100=all bull
     TSX tickers (.TO suffix) are handled automatically.
-    Cached 15 minutes (shorter than Reddit — StockTwits is real-time retail flow).
+    Cached 15 minutes (shorter than Reddit - StockTwits is real-time retail flow).
     """
     return await asyncio.to_thread(community_svc.get_stocktwits_sentiment, ticker.upper())
 
@@ -1493,7 +1495,7 @@ async def run_alerts_now(
     dry_run=True (default): log + dedup but do NOT push to Telegram.
     dry_run=False: also push via Telegram bot if credentials are set.
     Returns counts: {triggered, pushed, deduped}.
-    Use sparingly — this fetches live WS + yfinance data.
+    Use sparingly - this fetches live WS + yfinance data.
     """
     portfolio = await _load_portfolio(account_id)
     triggered = await asyncio.to_thread(alerts_svc.evaluate, portfolio, price_drop_pct=price_drop_pct)
@@ -1538,7 +1540,7 @@ async def backtest_portfolio(
     exclude_weekdays: list of weekday ints to skip entries on (0=Mon, 1=Tue, ..., 4=Fri).
       Pass [0] to test the "no Monday entries" filter from backtesting research.
     max_hold_days: force-exit positions after N calendar days (0=disabled). Adds
-      time-based exits independent of signal — reduces overnight/weekend exposure.
+      time-based exits independent of signal - reduces overnight/weekend exposure.
     profit_factor and insufficient_trades_warning (<150 trades) included in per-symbol output.
     Returns per-symbol metrics, weight-aggregated portfolio totals, delta-vs-buy-hold
     (positive = strategy beat passive). lookback_days clamped 30..730.
@@ -1584,7 +1586,7 @@ def _load_skill_index() -> list[dict]:
 
     Reads `.claude/skills/*/SKILL.md`, extracts the YAML-frontmatter
     `description` (1-line), and harvests every `mcp__aifolimizer__<tool>`
-    reference in the body. Cached for process lifetime — restart MCP to pick
+    reference in the body. Cached for process lifetime - restart MCP to pick
     up new skills. Used to be a hard-coded 13-entry list that drifted as
     skills were added; making it filesystem-driven prevents that recurrence.
     """
@@ -1624,7 +1626,7 @@ def _load_skill_index() -> list[dict]:
 
 @mcp.tool()
 def list_analysis_modes() -> list[dict]:
-    """Lists every Claude Code skill folder under .claude/skills/ — name,
+    """Lists every Claude Code skill folder under .claude/skills/ - name,
     one-line description, and the MCP tools each one references. Built from
     the filesystem so it cannot drift as skills are added or removed."""
     return _load_skill_index()
@@ -1680,7 +1682,7 @@ async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
     """Rolling forward-test stats from scored recommendations.
 
     Returns win-rate, avg return, by-conviction breakdown for 7/30/90d.
-    Covers only live recommendations logged via log_recommendation —
+    Covers only live recommendations logged via log_recommendation -
     NOT the historical backtest (use get_skill_track_record for that).
     """
     return await asyncio.to_thread(paper_trade_svc.get_track_record, windows_days)
@@ -1688,7 +1690,7 @@ async def get_live_track_record(windows_days: list[int] | None = None) -> dict:
 
 @mcp.tool()
 async def get_ticker_reflection(symbol: str, n: int = 3) -> dict:
-    """Prior recommendation history for a ticker — feeds reflection loop.
+    """Prior recommendation history for a ticker - feeds reflection loop.
 
     Returns last N logged recommendations for symbol with return_pct, alpha vs
     XEQT, status (open/target_hit/stopped_out), and truncated rationale.
@@ -1720,7 +1722,7 @@ async def _pg_or_jsonl_analytics(pg_fn, jsonl_call):
     PG is authoritative when docker is up; JSONL is the no-pool fallback.
 
     The pool is left open (init_pool is idempotent and pools are meant to be
-    long-lived) — closing it here would null the shared global mid-flight for
+    long-lived) - closing it here would null the shared global mid-flight for
     any concurrent PG op (e.g. the long-running backfill), silently turning its
     writes into no-ops.
     """
@@ -1757,7 +1759,7 @@ async def score_signal_horizons(horizons: list[int] | None = None) -> dict:
     elapsed, fetches historical bars and computes realized return at each
     horizon. SELL/TRIM returns are sign-flipped so positive == correct call.
 
-    Default horizons: full set (1, 3, 5, 10, 21, 42, 63) — must cover the
+    Default horizons: full set (1, 3, 5, 10, 21, 42, 63) - must cover the
     decay-curve queries; restricting to (5, 21) silently emptied 5 of 7
     decay buckets.
     When Postgres is up, fills signal_history.realized_return_*d (single source
@@ -1795,9 +1797,7 @@ async def get_signal_accuracy(horizon: int = 21, min_count: int = 5) -> dict:
 
         return await signal_analytics.accuracy_report(horizon, min_count=min_count)
 
-    return await _pg_or_jsonl_analytics(
-        _pg, lambda: signal_history_svc.accuracy_report(horizon, min_count=min_count)
-    )
+    return await _pg_or_jsonl_analytics(_pg, lambda: signal_history_svc.accuracy_report(horizon, min_count=min_count))
 
 
 @mcp.tool()
@@ -1846,7 +1846,7 @@ async def get_alpha_attribution(lookback_days: int = 365) -> dict:
 async def get_quote_with_source(symbol: str, max_age_s: int = 300) -> dict:
     """Live quote with explicit data-source attribution.
 
-    Source order is asset-class specific — see `data_router._chain_for` in
+    Source order is asset-class specific - see `data_router._chain_for` in
     `backend/app/services/data_router.py` (US/CA equities differ from crypto,
     FX, and indices). Returns price, prev_close, day_change_pct, source, and
     as_of timestamp. Use to verify provenance or when freshness matters more
@@ -1991,7 +1991,7 @@ async def get_covered_call_screen(
     breakeven, max_profit_per_contract (100 shares).
 
     min_annual_yield_pct: minimum annualised premium yield (default 10%).
-    max_delta: maximum delta — higher delta = higher chance of assignment
+    max_delta: maximum delta - higher delta = higher chance of assignment
     (default 0.40, i.e. ~40% chance of getting called away).
 
     Use when you want income on a long position without selling it.
@@ -2052,16 +2052,16 @@ async def get_trade_ticket(
     account_recommendation, and a plain-English instruction line.
 
     For BUY/ADD also returns:
-      entry_zone   — buy band {timing: buy_now|wait_pullback, low, high,
+      entry_zone   - buy band {timing: buy_now|wait_pullback, low, high,
                      reference, support_level, support_basis, note}
-      exit_ladder  — tiered profit-taking [{label T1/T2/T3, price, sell_pct,
+      exit_ladder  - tiered profit-taking [{label T1/T2/T3, price, sell_pct,
                      shares, gain_pct, rationale, gain_from_cost_pct?}]
     When the ticker is already held, a `position` block adds avg_cost,
     return_pct, and stop_below_cost.
 
     action: BUY | ADD | HOLD | TRIM | SELL | EXIT
       HOLD returns a management plan for a held name (stop + exit_ladder
-      from current price + position block) — no entry zone, no sizing.
+      from current price + position block) - no entry zone, no sizing.
     conviction: HIGH | MED | LOW
       HIGH → 7% size, 8% stop, exit ladder 2R/4R/6R
       MED  → 5% size, 6% stop, exit ladder 1.5R/3R/4.5R
@@ -2072,7 +2072,7 @@ async def get_trade_ticket(
     to the nearest support (SMA20/Bollinger); when price is stretched
     (>2x ATR above support or RSI ≥ 70) timing flips to wait_pullback.
 
-    Call get_profile first — portfolio_value, available_cash, and the
+    Call get_profile first - portfolio_value, available_cash, and the
     held-position cost basis are loaded automatically from the live session.
     """
     portfolio = await _load_portfolio(account_id)
@@ -2148,7 +2148,7 @@ async def remember_preference(
     content: plain-English description (e.g. "Prefer CAD-hedged ETFs for TFSA")
     tags: optional keywords for retrieval (e.g. ["TFSA", "ETF", "currency"])
 
-    Stored in ~/.aifolimizer/memory/ — survives session restarts.
+    Stored in ~/.aifolimizer/memory/ - survives session restarts.
     Retrieve later by calling recall_preferences (not automatic).
     """
     return await asyncio.to_thread(memory_svc.remember, memory_type, content, tags)
@@ -2186,7 +2186,7 @@ async def forget_memory(query: str) -> dict:
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Trade decision memory — per-ticker log with outcome tracking (TradingAgents pattern)
+# Trade decision memory - per-ticker log with outcome tracking (TradingAgents pattern)
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -2201,7 +2201,7 @@ async def log_trade_decision(
     thesis_summary: str,
     skill_used: str = "",
 ) -> dict:
-    """Phase A — record a trade decision for forward outcome tracking.
+    """Phase A - record a trade decision for forward outcome tracking.
 
     Call at the end of adversarial-research or cash-deployment after producing
     a final recommendation. Enables Phase B/C: outcome resolution and lesson
@@ -2227,7 +2227,7 @@ async def log_trade_decision(
 
 @mcp.tool()
 async def resolve_trade_outcomes(days_expiry: int = 90) -> dict:
-    """Phase B — mark-to-market all open trade decisions using live prices.
+    """Phase B - mark-to-market all open trade decisions using live prices.
 
     Fetches current price for each open-decision ticker via get_quotes_batch,
     then marks each as target_hit / stop_hit / expired.
@@ -2257,7 +2257,7 @@ async def resolve_trade_outcomes(days_expiry: int = 90) -> dict:
 
 @mcp.tool()
 async def get_ticker_decision_history(ticker: str, max_decisions: int = 5) -> list[dict]:
-    """Phase C — retrieve past trade decisions for a ticker (newest first).
+    """Phase C - retrieve past trade decisions for a ticker (newest first).
 
     Call at the START of adversarial-research or cash-deployment for the same
     ticker to inject prior decisions, outcomes, and reflections as context.
@@ -2271,18 +2271,126 @@ async def get_ticker_decision_history(ticker: str, max_decisions: int = 5) -> li
 
 @mcp.tool()
 async def get_cross_ticker_lessons(max_lessons: int = 3) -> list[dict]:
-    """Phase C — top resolved wins and losses across all tickers for cross-portfolio lessons.
+    """Phase C - top resolved wins and losses across all tickers for cross-portfolio lessons.
 
     Returns newest-first wins (target_hit) and losses (stop_hit), capped at
     max_lessons each. Each record includes ticker, action, outcome, P&L %, and
     a generated reflection. Inject into skill prompts to surface portfolio-level
-    patterns (e.g. 'last 3 TSX banks stopped out at SMA50 — avoid that entry').
+    patterns (e.g. 'last 3 TSX banks stopped out at SMA50 - avoid that entry').
     """
     return await asyncio.to_thread(decision_mem_svc.get_cross_ticker_lessons, max_lessons)
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Shadow account — behavioral rule extraction
+# Trade journal - qualitative felt-state capture + insights (psychological layer)
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def log_trade_journal(
+    ticker: str,
+    emotion: str,
+    conviction_source: str,
+    confidence_1to5: int,
+    plan_intended: str,
+    felt_note: str = "",
+    pre_trade_check_passed: bool = False,
+    linked_decision_utc: str = "",
+) -> dict:
+    """Capture psychological state at trade ENTRY (the trade-journal skill).
+
+    Records felt-state that decision_memory (facts) and shadow_account
+    (price/date biases) cannot derive. Feeds get_journal_insights.
+
+    emotion: calm | fomo | fear | revenge | conviction | bored | uncertain
+    conviction_source: thesis | chart | tip | social | news | gut
+    confidence_1to5: self-rated conviction, 1 (none) .. 5 (max)
+    plan_intended: the entry/stop/exit plan stated BEFORE the trade
+    pre_trade_check_passed: did the pre-trade-check gate pass?
+    """
+    return await asyncio.to_thread(
+        journal_svc.log_entry,
+        ticker,
+        emotion,
+        conviction_source,
+        confidence_1to5,
+        plan_intended,
+        felt_note,
+        pre_trade_check_passed,
+        linked_decision_utc,
+    )
+
+
+@mcp.tool()
+async def log_trade_journal_exit(
+    ticker: str,
+    plan_followed: bool,
+    exit_emotion: str,
+    outcome_surprise: str,
+    lesson: str,
+) -> dict:
+    """Reconcile a journal entry at trade EXIT - did you follow the plan, how did it feel.
+
+    Mutates the newest open entry for the ticker. No-op (reconciled=False) if
+    no open entry exists.
+
+    exit_emotion: calm | fomo | fear | revenge | conviction | bored | uncertain
+    outcome_surprise: expected | mild_surprise | shock
+    lesson: one-line takeaway - surfaced later in get_journal_insights / weekly-mirror
+    """
+    return await asyncio.to_thread(
+        journal_svc.log_exit,
+        ticker,
+        plan_followed,
+        exit_emotion,
+        outcome_surprise,
+        lesson,
+    )
+
+
+@mcp.tool()
+async def get_journal_insights() -> dict:
+    """Cross-tab felt-state against realized outcomes - which emotions lose money.
+
+    Joins journal entries to resolved decisions (target_hit=win, stop_hit=loss).
+    Returns win-rate by emotion, win-rate by conviction_source, and confidence
+    calibration (avg self-rated confidence on wins vs losses). The empirical
+    answer to "what's the real psychological reason behind my losing trades".
+
+    Run resolve_trade_outcomes first so decisions are marked-to-market.
+    """
+    return await asyncio.to_thread(journal_svc.get_insights)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Earnings commentary - management-language tone signal (post-earnings drift)
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def get_earnings_commentary(ticker: str) -> dict:
+    """Management-commentary language tone for the most recent earnings report.
+
+    The headline field is `mgmt_tone_trend` (improving/deteriorating/stable vs
+    prior quarters) - the PREDICTIVE signal. Absolute tone is unreliable (prepared
+    remarks are always promotional ~1.0), so trend matters, not level. PROBABILISTIC,
+    NOT a guarantee. Pair with EPS-surprise direction: `improving` after a beat
+    strengthens upward-drift; `deteriorating` after a beat is a caution flag.
+
+    Source chain (all free): Alpha Vantage EARNINGS_CALL_TRANSCRIPT (multi-quarter,
+    ALPHA_VANTAGE_KEY; uses AV's own LLM sentiment as the primary metric) -> SEC
+    EDGAR 8-K text (no key, lexicon-only). US-listed only. Cached 24h.
+
+    Returns: ticker, source ('alpha_vantage'|'edgar_8k'|None), mgmt_tone_trend,
+    primary_metric, relative, mgmt_tone, mgmt_tone_signal, av_sentiment,
+    tone_delta, av_sentiment_delta, quarters_analyzed, bull_hits, bear_hits,
+    n_words, as_of.
+    """
+    return await asyncio.to_thread(commentary_svc.get_commentary_tone, ticker)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Shadow account - behavioral rule extraction
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -2303,10 +2411,10 @@ async def analyze_shadow_account(transactions: list[dict]) -> dict:
     - summary: win-rate, avg return, avg holding days, symbols traded
     - extracted_rules: per-cluster behavioral rule with holding bounds + win-rate
     - behavioral_biases: disposition effect, gain/loss asymmetry, overtrading,
-      anchoring — each with evidence + a flagged bool (biases_flagged lists hits)
+      anchoring - each with evidence + a flagged bool (biases_flagged lists hits)
     - roundtrips: up to 100 FIFO-paired roundtrips with return_pct
 
-    No external dependencies — pure numpy k-means clustering.
+    No external dependencies - pure numpy k-means clustering.
     """
     return await asyncio.to_thread(shadow_svc.analyze_shadow_account, transactions)
 
@@ -2332,7 +2440,7 @@ async def list_run_cards(limit: int = 20) -> list[dict]:
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Accuracy layer — walk-forward, signal decay, attribution, calibration
+# Accuracy layer - walk-forward, signal decay, attribution, calibration
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -2347,7 +2455,7 @@ async def walk_forward_backtest_skill(
     """Run walk-forward OOS backtest of one skill across the default 40+ symbol unbiased universe.
 
     Returns aggregate stats, per-window stability, regime split (bull/bear/sideways),
-    and deflated Sharpe (Bailey–López de Prado) to flag potential overfit.
+    and deflated Sharpe (Bailey-López de Prado) to flag potential overfit.
     """
     return await asyncio.to_thread(
         skill_bt_svc.walk_forward_backtest,
@@ -2370,7 +2478,7 @@ async def walk_forward_backtest_all(
     """Walk-forward all codified skills across the default 40+ symbol universe.
 
     Persists to .cache/backtests/walk_forward_*.json. Use to gate any skill
-    whose deflated_sharpe < 0.5 — those are statistically indistinguishable
+    whose deflated_sharpe < 0.5 - those are statistically indistinguishable
     from luck and should not emit live recommendations.
     """
     return await asyncio.to_thread(
@@ -2392,7 +2500,7 @@ async def get_signal_decay_curve(
     """Empirical decay curve across 1d/3d/5d/10d/21d/42d/63d horizons.
 
     Identifies the peak holding period for the signal type. Anything held
-    beyond peak is signal decay — exits should happen at or before peak.
+    beyond peak is signal decay - exits should happen at or before peak.
     """
     h = signal_history_svc._DEFAULT_HORIZONS
 
@@ -2416,7 +2524,7 @@ async def get_signal_source_attribution(
 
     Buckets signals where one sub-score dominates (others near zero) so the
     dominant source's stand-alone alpha can be measured. Sources with
-    avg_ret <= 0 or win_rate < 50% are adding noise — candidates for
+    avg_ret <= 0 or win_rate < 50% are adding noise - candidates for
     down-weighting in the composite engine.
     """
 
@@ -2447,7 +2555,7 @@ async def calibrate_confidence_labels(horizon: int = 21) -> dict:
 
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Codified skill snapshots — read pre-computed background runner output
+# Codified skill snapshots - read pre-computed background runner output
 # ────────────────────────────────────────────────────────────────────────────────
 
 
@@ -2460,7 +2568,7 @@ async def get_skill_snapshot(skill: str) -> dict:
     includes summary, actionable items, alerts, and a `fresh` flag.
 
     LLM-only skills (adversarial-research / earnings-postmortem / stock-compare)
-    are not codified — invoke them via Claude on demand.
+    are not codified - invoke them via Claude on demand.
     """
     snap = await asyncio.to_thread(skill_runner_svc.read_snapshot, skill)
     if snap is None:
@@ -2609,7 +2717,7 @@ async def get_risk_gate_state() -> dict:
     """Phase 12: current portfolio-level risk gate state. Tells you if the
     system is currently allowing new BUYs, scaling them down, or halting
     them entirely due to drawdown / VIX / loss-streak / calibration
-    triggers. Includes valid_until — gate auto-clears after that.
+    triggers. Includes valid_until - gate auto-clears after that.
     """
     thash = _active_tenant_hash()
     if not thash:
@@ -2632,7 +2740,7 @@ async def get_risk_gate_state() -> dict:
 async def get_live_kpis(window_days: int = 30) -> dict:
     """Phase 10: live EV / PF / Sharpe / Sortino / Max DD / regime-breakdown
     over trailing window for the active session. The headline metrics you
-    actually want to optimize for — not 'accuracy'.
+    actually want to optimize for - not 'accuracy'.
     """
     thash = _active_tenant_hash()
     if not thash:
@@ -2668,7 +2776,7 @@ async def get_calibration_report(horizon_days: int = 21) -> dict:
             return {
                 "report": r,
                 "reason": (
-                    f"no scored (win_prob, outcome) pairs at h{horizon_days} yet — "
+                    f"no scored (win_prob, outcome) pairs at h{horizon_days} yet - "
                     "shorter horizons populate first; a 21-trading-day window needs "
                     "~30 calendar days of signal age"
                 ),
@@ -2767,7 +2875,7 @@ async def get_sentry_issues(limit: int = 10) -> dict:
 
 
 # ── Meta-tools: batch related calls into one tool invocation ──────────────
-# Additive — individual tools remain. Use meta-tools when you need a full
+# Additive - individual tools remain. Use meta-tools when you need a full
 # picture; use individual tools for surgical single-signal queries.
 
 
@@ -2914,7 +3022,7 @@ def _warn_if_second_instance() -> None:
 
     aifolimizer over stdio is one process per MCP client. Two clients (a stray
     .claude.json entry alongside project .mcp.json) spawn two servers that fight
-    over one rotating WS token — surfacing as stalls + spurious MFA prompts that
+    over one rotating WS token - surfacing as stalls + spurious MFA prompts that
     look like a backend bug. The first instance takes this advisory lock
     silently; any later instance fails the non-blocking acquire and logs loudly
     so the real cause (a second registration) is visible immediately. Non-fatal:
@@ -2946,7 +3054,7 @@ if __name__ == "__main__":
     # imported lazily inside the concurrent account-enrich ThreadPool on the
     # first get_profile: N enrich threads hit the first-ever import together and
     # convoyed on Python's import lock behind a multi-minute cold numpy .pyd load
-    # (Windows Defender scan + multi-instance disk contention) — get_profile hung
+    # (Windows Defender scan + multi-instance disk contention) - get_profile hung
     # until killed. Importing here makes that lazy import a warm sys.modules hit.
     try:
         importlib.import_module("app.services.market_data")

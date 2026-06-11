@@ -5,14 +5,14 @@ description: Run a post-earnings report breakdown on a specific ticker - beat/mi
 
 # Earnings Postmortem (Post-Report Breakdown)
 
-## Stage 0 — Decision Memory (load BEFORE forming any verdict)
+## Stage 0 - Decision Memory (load BEFORE forming any verdict)
 
 Before fetching market data, load prior decisions on this ticker so the verdict stays consistent across sessions:
-- `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER, max_decisions=5` — prior actions, outcomes, reflections
-- `mcp__aifolimizer__get_ticker_reflection` with `symbol=TICKER, n=3` — prior recs + realized alpha
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_ticker_decision_history` with `ticker=TICKER, max_decisions=5` - prior actions, outcomes, reflections
+- `mcp__aifolimizer__get_ticker_reflection` with `symbol=TICKER, n=3` - prior recs + realized alpha
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## How to run
 
@@ -48,7 +48,8 @@ Render markdown table. Columns: Quarter | EPS Estimate | EPS Actual | Surprise %
 Below table: one sentence on pattern (improving beats, deteriorating, choppy).
 
 ### 4. Management commentary signal
-- Guidance: raised / maintained / lowered (require WebSearch - yfinance doesn't carry guidance)
+- Call `mcp__aifolimizer__get_earnings_commentary` with `ticker=<TICKER>` FIRST. Lead with **`mgmt_tone_trend`** (improving/deteriorating/stable vs prior quarters) - this is the predictive field. IGNORE the absolute `mgmt_tone`/`mgmt_tone_signal` in isolation: prepared remarks are always promotional, so absolute tone is near-1.0 every quarter. `primary_metric` shows the trend source (av_sentiment = AV's LLM model, preferred; lexicon_tone = EDGAR-only). Probabilistic drift read, NOT a verdict: `improving` trend agreeing with a beat strengthens the upward-drift thesis; `deteriorating` after a beat (tone worse despite good numbers) is a strong caution flag. If `relative` is false (only one quarter / non-US) or `source` is None, fall back to WebSearch.
+- Guidance: raised / maintained / lowered (commentary tool gives language tone; WebSearch for the exact guidance numbers - yfinance doesn't carry guidance)
 - Key segment commentary (e.g., cloud growth, ad revenue, subscriber net adds)
 - New risks called out by management
 - Capital allocation changes (buybacks, dividend, capex)

@@ -5,13 +5,13 @@ description: Track Post-Earnings Announcement Drift (PEAD) across ALL portfolio 
 
 # PEAD Tracker (Post-Earnings Announcement Drift)
 
-## Stage 0 — Decision Memory (load FIRST)
+## Stage 0 - Decision Memory (load FIRST)
 
 Before analysis, load prior decisions so verdicts stay consistent across sessions:
-- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` — portfolio-level win/loss patterns
+- `mcp__aifolimizer__get_cross_ticker_lessons` with `max_lessons=3` - portfolio-level win/loss patterns
 - For any name you issue a per-ticker BUY/SELL/TRIM/HOLD on, also load `mcp__aifolimizer__get_ticker_decision_history` (`ticker=…, max_decisions=5`) and `mcp__aifolimizer__get_ticker_reflection` (`symbol=…, n=3`).
 
-Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision — that drift is exactly what this prevents.
+Reconciliation rule: if a prior decision exists and your new read flips it, state explicitly WHY it changed (new data / catalyst / price move). Never silently contradict a logged decision - that drift is exactly what this prevents.
 
 ## Research basis
 
@@ -31,7 +31,7 @@ Call steps 3-5 in parallel after step 2 resolves.
 
 ## Drift window logic
 
-Use ONE clock — calendar days — throughout, to avoid mixing trading-day and calendar-day units. The ~60-trading-day Bernard-Thomas window ≈ 85 calendar days; we measure everything against that 85-day calendar window.
+Use ONE clock - calendar days - throughout, to avoid mixing trading-day and calendar-day units. The ~60-trading-day Bernard-Thomas window ≈ 85 calendar days; we measure everything against that 85-day calendar window.
 
 For each holding with a recorded earnings report:
 - Compute calendar days since report date (use today's date)
@@ -81,8 +81,9 @@ For each `ride` or `trim` action that conflicts with current portfolio weight:
 
 For each Active play with action `ride` (ADD) or `trim`/`exit soon` (TRIM/EXIT):
 
-- If the action is `ride` (ADD), first call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]`. If `crowding_score >= 70` the drift is already consensus-crowded (late entry = negative expected alpha) — downgrade to HOLD or cap the incremental add hard; this is a momentum overlay, not a conviction buy. Favor names with `crowding_score <= 30`.
-- Then call `mcp__aifolimizer__log_recommendation` with `skill="pead-tracker"` (the param is `skill`, not `skill_used` — that belongs to `log_trade_decision`), `ticker`, `action` (ADD/HOLD/TRIM/SELL), `conviction` (HIGH/MED/LOW per surprise magnitude + days remaining), `target_pct` + `stop_pct` (% from entry — the schema takes percentages, not absolute prices), `rationale` (1-line citing surprise % + drift days remaining). Skip `flat` (no edge). Feeds forward win-rate / track-record loop.
+- If the action is `ride` (ADD), first call `mcp__aifolimizer__get_positioning_signals` with `symbols=[ticker]`. If `crowding_score >= 70` the drift is already consensus-crowded (late entry = negative expected alpha) - downgrade to HOLD or cap the incremental add hard; this is a momentum overlay, not a conviction buy. Favor names with `crowding_score <= 30`.
+- Optional drift confirmation: call `mcp__aifolimizer__get_earnings_commentary` with `ticker=<ticker>`. Use **`mgmt_tone_trend`** (relative vs prior quarters), NOT the absolute tone. `improving` after a beat (or `deteriorating` after a miss) = the language confirms the drift direction → keep conviction. Divergence (beat but `deteriorating` tone) → downgrade one notch. Skip if `relative` is false or `source` is None.
+- Then call `mcp__aifolimizer__log_recommendation` with `skill="pead-tracker"` (the param is `skill`, not `skill_used` - that belongs to `log_trade_decision`), `ticker`, `action` (ADD/HOLD/TRIM/SELL), `conviction` (HIGH/MED/LOW per surprise magnitude + days remaining), `target_pct` + `stop_pct` (% from entry - the schema takes percentages, not absolute prices), `rationale` (1-line citing surprise % + drift days remaining). Skip `flat` (no edge). Feeds forward win-rate / track-record loop.
 
 ## Rules
 
