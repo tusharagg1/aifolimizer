@@ -1738,10 +1738,15 @@ async def _pg_or_jsonl_analytics(pg_fn, jsonl_call):
             # one-time migrate_jsonl_to_postgres hasn't been run). Once PG is
             # populated this branch returns the PG result directly.
             if not (isinstance(result, dict) and result.get("error")):
+                if isinstance(result, dict):
+                    result.setdefault("_source", "postgres")
                 return result
         except Exception as e:
             logging.getLogger(__name__).warning("PG signal analytics failed, JSONL fallback: %s", e)
-    return await asyncio.to_thread(jsonl_call)
+    jsonl_result = await asyncio.to_thread(jsonl_call)
+    if isinstance(jsonl_result, dict):
+        jsonl_result.setdefault("_source", "jsonl")
+    return jsonl_result
 
 
 @mcp.tool()

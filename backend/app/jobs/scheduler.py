@@ -419,6 +419,7 @@ async def _run_for_session(sid: str) -> dict:
         #    w_skill=0.5 from Postgres weights). Cache key inside
         #    get_recommendations includes evidence digest.
         from app.services import recommendations as rec_svc
+        from app.core.config import settings as _settings
 
         positions = [
             {
@@ -437,6 +438,7 @@ async def _run_for_session(sid: str) -> dict:
             rec_svc.get_recommendations,
             positions,
             evidence_map,
+            log_jsonl=not _settings.postgres_dsn,
         )
 
         # 5. Persist integrated signals (per-holding 5-signal row).

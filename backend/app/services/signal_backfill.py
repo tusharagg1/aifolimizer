@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import date, datetime
 
 from app.services import data_router
 from app.services.signal_history import _close_at_offset
@@ -28,6 +29,17 @@ _LOG = logging.getLogger(__name__)
 
 _DEFAULT_HORIZONS: tuple[int, ...] = (1, 3, 5, 10, 21, 42, 63)
 _LONG_ACTIONS = frozenset({"BUY", "ADD"})
+
+
+def _earliest_bar_date(bars: list[dict]) -> date | None:
+    """First parseable bar date (bars are ascending, so this is the earliest)."""
+    for b in bars:
+        s = (b.get("date") or "")[:10]
+        try:
+            return datetime.fromisoformat(s).date()
+        except ValueError:
+            continue
+    return None
 
 
 def compute_return(entry: float, exit_close: float, action: str) -> float | None:
@@ -80,6 +92,15 @@ async def run(
 
             bars = await _bars(symbol, bars_cache)
             if not bars:
+                skipped_data += 1
+                continue
+
+            # Mirror the legacy age cap (signal_history.score_horizons). Bars
+            # only span ~1y; a signal predating the earliest bar would anchor
+            # both entry and exit to bars[0] via _close_at_offset, writing a
+            # return against the wrong prices. Skip rather than corrupt.
+            first_bd = _earliest_bar_date(bars)
+            if first_bd is not None and ts.date() < first_bd:
                 skipped_data += 1
                 continue
 

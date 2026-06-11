@@ -912,6 +912,8 @@ def _decide_action(
 def get_recommendations(
     portfolio_positions: list[dict],
     skill_evidence_map: dict[str, dict] | None = None,
+    *,
+    log_jsonl: bool = True,
 ) -> list[dict]:
     """Score all positions. Returns list sorted by action urgency
     (SELL→BUY→WATCH→HOLD).
@@ -988,13 +990,14 @@ def get_recommendations(
         )
     )
 
-    # Forward-horizon accuracy auditing. Postgres signal_history is the
-    # canonical store, written by the scheduler (_persist_integrated_signals).
-    # Only fall back to JSONL logging when no Postgres DSN is configured
-    # (no-docker single-user) to avoid a redundant, split-brain second store.
-    from app.core.config import settings as _settings
-
-    if not _settings.postgres_dsn:
+    # Forward-horizon accuracy auditing. The scheduler persists per-holding
+    # rows to Postgres (with a tenant_hash) and passes log_jsonl=False to skip
+    # this append, so holdings are not double-stored. Ad-hoc / tenant-less
+    # callers (discovery scans, REST, skill_runner) keep log_jsonl=True: PG
+    # never receives their signals, so JSONL is the only forward-audit corpus
+    # for them. Gating this purely on postgres_dsn silently dropped all those
+    # signals once PG was configured.
+    if log_jsonl:
         for rec in results:
             try:
                 signal_history.log_signal(rec, source="recommendations")
