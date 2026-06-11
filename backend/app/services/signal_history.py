@@ -233,6 +233,7 @@ def accuracy_report(
     horizon: int = 21,
     *,
     min_count: int = 5,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Per-action precision/recall/F1 + calibration table for one horizon.
 
@@ -251,17 +252,9 @@ def accuracy_report(
         "as_of": iso,
       }
     """
-    if not _HIST_FILE.exists():
-        return {"error": "no signal_history.jsonl — log signals first"}
-
-    rows = []
-    for line in _HIST_FILE.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+    rows = rows if rows is not None else _load_history()
+    if not rows:
+        return {"error": "no signal history — log signals first"}
 
     key = f"h{horizon}"
     scored = [
@@ -319,6 +312,7 @@ def calibrate_thresholds(
     horizon: int = 21,
     *,
     min_count: int = 10,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Sweep BUY/WATCH/SELL thresholds to maximize expectancy on history.
 
@@ -328,17 +322,9 @@ def calibrate_thresholds(
 
     Caveat: small-sample fits. Surface n alongside metrics so user can judge.
     """
-    if not _HIST_FILE.exists():
-        return {"error": "no signal_history.jsonl"}
-
-    rows = []
-    for line in _HIST_FILE.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+    rows = rows if rows is not None else _load_history()
+    if not rows:
+        return {"error": "no signal history"}
 
     key = f"h{horizon}"
     scored = [
@@ -493,6 +479,7 @@ def signal_decay_curve(
     *,
     action_filter: str | None = None,
     min_count: int = 5,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Average realized return per horizon to find peak holding period.
 
@@ -504,7 +491,7 @@ def signal_decay_curve(
     None, pools all directional actions (long-side returns + flipped
     short-side returns so direction is normalized).
     """
-    rows = _load_history()
+    rows = rows if rows is not None else _load_history()
     if not rows:
         return {"error": "no signal history"}
 
@@ -555,6 +542,7 @@ def per_signal_source_attribution(
     horizon: int = 21,
     *,
     min_count: int = 5,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Isolate each sub-signal's contribution to realized return.
 
@@ -565,7 +553,7 @@ def per_signal_source_attribution(
     Dominance rule: |dominant_source_score| >= 2 * max(|other_sources|).
     Sources tested: tech_score, fund_score, macro_score, sentiment.
     """
-    rows = _load_history()
+    rows = rows if rows is not None else _load_history()
     if not rows:
         return {"error": "no signal history"}
 
@@ -640,6 +628,7 @@ def calibrate_confidence(
     horizon: int = 21,
     *,
     min_count_per_bucket: int = 5,
+    rows: list[dict] | None = None,
 ) -> dict:
     """Map confidence label (high/medium/low) to empirical hit rate.
 
@@ -649,7 +638,7 @@ def calibrate_confidence(
 
     Returns per-bucket stats + a calibration verdict + suggested action.
     """
-    rows = _load_history()
+    rows = rows if rows is not None else _load_history()
     if not rows:
         return {"error": "no signal history"}
 

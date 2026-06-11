@@ -67,6 +67,7 @@ from app.services.data_sources.massive_src import MassiveSource
 from app.services.data_sources.openerapi_src import OpenErApiSource
 from app.services.data_sources.stooq_src import StooqSource
 from app.services.data_sources.symbol_classifier import (
+    CA_SUFFIXES,
     classify_asset,
     expected_currencies,
     staleness_budget_s,
@@ -136,6 +137,21 @@ def _order_chain(chain: list[DataSource]) -> list[DataSource]:
 
 def _quote_chain(symbol: str) -> list[DataSource]:
     return _order_chain(_quote_chain_base(symbol))
+
+
+def _resolve_fetch_symbol(symbol: str) -> str:
+    """Exchange-qualify a bare symbol for provider lookup.
+
+    Wealthsimple reports TSX-listed names without an exchange suffix (e.g.
+    "XEQT", "VFV"), which yahoo/most providers 404. When such a symbol is
+    classified ca_equity (via KNOWN_CANADIAN) but carries no CA suffix, append
+    ".TO" for the fetch. Caching + chain selection stay keyed on the original
+    symbol so holdings logic is unaffected. US/crypto/fx/index untouched.
+    """
+    info = classify_asset(symbol)
+    if info.asset_class == "ca_equity" and not symbol.upper().endswith(CA_SUFFIXES):
+        return f"{symbol}.TO"
+    return symbol
 
 
 def _history_chain(symbol: str) -> list[DataSource]:
@@ -281,8 +297,9 @@ def get_quote(
     primary_latency = 0.0
     errors: list[str] = []
 
+    fetch_sym = _resolve_fetch_symbol(symbol)
     for src in _quote_chain(symbol):
-        ok, payload, err, latency = _try_source(src, lambda s: s.get_quote(symbol))
+        ok, payload, err, latency = _try_source(src, lambda s: s.get_quote(fetch_sym))
         if ok and isinstance(payload, Quote):
             d = payload.to_dict()
             if not _validate_currency(d, info.asset_class):
@@ -499,10 +516,11 @@ def get_history(
         if cached:
             return cached
     errors: list[str] = []
+    fetch_sym = _resolve_fetch_symbol(symbol)
     for src in _history_chain(symbol):
         ok, payload, err, _ = _try_source(
             src,
-            lambda s: s.get_history(symbol, period=period, interval=interval),
+            lambda s: s.get_history(fetch_sym, period=period, interval=interval),
         )
         if ok and isinstance(payload, list) and payload:
             bars = [b.to_dict() if isinstance(b, PriceBar) else b for b in payload]
@@ -519,8 +537,9 @@ def get_fundamentals(symbol: str, max_age_s: float = 21600) -> dict:
         if cached:
             return cached
     errors: list[str] = []
+    fetch_sym = _resolve_fetch_symbol(symbol)
     for src in _fundamentals_chain(symbol):
-        ok, payload, err, _ = _try_source(src, lambda s: s.get_fundamentals(symbol))
+        ok, payload, err, _ = _try_source(src, lambda s: s.get_fundamentals(fetch_sym))
         if ok and isinstance(payload, Fundamentals):
             d = payload.to_dict()
             cache.put_fundamentals(symbol, src.name, d)
@@ -567,9 +586,13 @@ def get_quotes_batch(symbols: list[str], max_age_s: float | None = None) -> dict
 
     if to_fetch:
         start = time.perf_counter()
+        # Exchange-qualify CA names (XEQT -> XEQT.TO) for the yahoo batch, but
+        # key results back to the original WS symbol.
+        fetch_for = {sym: _resolve_fetch_symbol(sym) for sym in to_fetch}
+        fetch_list = list(fetch_for.values())
         try:
             df = yf.download(
-                to_fetch,
+                fetch_list,
                 period="5d",
                 interval="1d",
                 progress=False,
@@ -582,15 +605,16 @@ def get_quotes_batch(symbols: list[str], max_age_s: float | None = None) -> dict
             if isinstance(df.columns, pd.MultiIndex):
                 close_df = df["Close"]
             else:
-                if len(to_fetch) == 1:
-                    close_df = df[["Close"]].rename(columns={"Close": to_fetch[0]})
+                if len(fetch_list) == 1:
+                    close_df = df[["Close"]].rename(columns={"Close": fetch_list[0]})
                 else:
                     raise ValueError("unexpected flat columns for multi-symbol")
 
             for sym in to_fetch:
-                if sym not in close_df.columns:
+                fsym = fetch_for[sym]
+                if fsym not in close_df.columns:
                     continue
-                prices = close_df[sym].dropna()
+                prices = close_df[fsym].dropna()
                 if len(prices) < 2:
                     continue
                 price = float(prices.iloc[-1])

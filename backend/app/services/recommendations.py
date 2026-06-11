@@ -912,6 +912,8 @@ def _decide_action(
 def get_recommendations(
     portfolio_positions: list[dict],
     skill_evidence_map: dict[str, dict] | None = None,
+    *,
+    log_jsonl: bool = True,
 ) -> list[dict]:
     """Score all positions. Returns list sorted by action urgency
     (SELL→BUY→WATCH→HOLD).
@@ -988,14 +990,19 @@ def get_recommendations(
         )
     )
 
-    # Append each rec to signal_history.jsonl for forward-horizon accuracy
-    # auditing. Idempotent per (date, source, symbol, action) — duplicate
-    # same-day signals are skipped inside log_signal.
-    for rec in results:
-        try:
-            signal_history.log_signal(rec, source="recommendations")
-        except Exception:
-            _log.debug("suppressed exception", exc_info=True)
+    # Forward-horizon accuracy auditing. The scheduler persists per-holding
+    # rows to Postgres (with a tenant_hash) and passes log_jsonl=False to skip
+    # this append, so holdings are not double-stored. Ad-hoc / tenant-less
+    # callers (discovery scans, REST, skill_runner) keep log_jsonl=True: PG
+    # never receives their signals, so JSONL is the only forward-audit corpus
+    # for them. Gating this purely on postgres_dsn silently dropped all those
+    # signals once PG was configured.
+    if log_jsonl:
+        for rec in results:
+            try:
+                signal_history.log_signal(rec, source="recommendations")
+            except Exception:
+                _log.debug("suppressed exception", exc_info=True)
 
     # Full-contract trade log into paper_trade for benchmark-relative
     # alpha scoring. Single benchmark fetch shared across the whole batch.

@@ -782,6 +782,54 @@ def _extract_currency(raw: Any, default: str = "CAD") -> str:
     return default
 
 
+# WS prefixes each symbol with its listing exchange (e.g. "TSX:XEQT",
+# "NYSE:T", "NASDAQ:MSFT", "NEO:HBND", "CSE:XYZ"). That prefix is the
+# authoritative market info — it is what disambiguates dual-listed tickers
+# (TSX:T = Telus -> T.TO  vs  NYSE:T = AT&T -> T). Map it to the Yahoo suffix
+# once, at ingestion, so downstream resolution never needs a live WS session.
+_EXCHANGE_SUFFIX = {
+    "TSX": ".TO",
+    "TSE": ".TO",
+    "TSXV": ".V",
+    "TSX-V": ".V",
+    "VENTURE": ".V",
+    "NEO": ".NE",
+    "CBOE": ".NE",
+    "CBOECA": ".NE",
+    "CXC": ".NE",
+    "CSE": ".CN",
+    "CNSX": ".CN",
+}
+_US_EXCHANGES = {"NYSE", "NASDAQ", "NASD", "AMEX", "ARCA", "BATS", "OTC", "OTCMKTS", "US"}
+_CA_SUFFIXES = (".TO", ".V", ".NE", ".CN")
+
+
+def _qualify_symbol(raw: Any) -> str:
+    """Resolve a WS symbol to its exchange-qualified Yahoo form.
+
+    Uses the WS exchange prefix when present (authoritative, no live session
+    needed). US exchanges -> bare ticker; Canadian -> the matching suffix.
+    Prefix-less symbols are returned bare and left to the offline classifier
+    (KNOWN_CANADIAN) + data_router._resolve_fetch_symbol fallback.
+    """
+    s = str(raw).upper().strip()
+    if ":" in s:
+        exch, _, tick = s.partition(":")
+        exch = exch.strip().replace(" ", "")
+        tick = tick.strip()
+        if not tick:
+            return s.replace(":", "")
+        if tick.endswith(_CA_SUFFIXES):
+            return tick
+        if exch in _US_EXCHANGES:
+            return tick
+        suf = _EXCHANGE_SUFFIX.get(exch)
+        if suf:
+            return f"{tick}{suf}"
+        return tick  # unknown exchange: best-effort bare ticker
+    return s
+
+
 def _to_position_dict(item: dict) -> dict:
     """Convert ws-api position node into the shape market_data.enrich expects."""
     if "legs" in item and isinstance(item["legs"], list) and item["legs"]:
@@ -799,7 +847,7 @@ def _to_position_dict(item: dict) -> dict:
         or item.get("ticker")
         or ""
     )
-    symbol = str(symbol).upper().replace("TSX:", "").replace("NASDAQ:", "").replace("NYSE:", "")
+    symbol = _qualify_symbol(symbol)
 
     name = (
         stock.get("name") or (security.get("name") if isinstance(security, dict) else "") or item.get("name") or symbol

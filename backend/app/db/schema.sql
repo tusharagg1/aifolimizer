@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS signal_history (
 CREATE INDEX IF NOT EXISTS idx_signal_history_symbol_ts ON signal_history (symbol, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_signal_history_tenant_ts ON signal_history (tenant_hash, ts DESC);
 
+-- entry_price + extra horizons added when JSONL realized-return scorer was
+-- ported to PG (signal_history becomes single source of truth). Additive +
+-- idempotent so existing hypertables upgrade in place; also applied at app
+-- startup via pool._apply_migrations for already-initialized containers.
+ALTER TABLE signal_history ADD COLUMN IF NOT EXISTS entry_price         NUMERIC;
+ALTER TABLE signal_history ADD COLUMN IF NOT EXISTS realized_return_3d  NUMERIC;
+ALTER TABLE signal_history ADD COLUMN IF NOT EXISTS realized_return_10d NUMERIC;
+ALTER TABLE signal_history ADD COLUMN IF NOT EXISTS realized_return_42d NUMERIC;
+
 -- ---------------------------------------------------------------------------
 -- Recommendations (one row per logged rec)
 -- ---------------------------------------------------------------------------
