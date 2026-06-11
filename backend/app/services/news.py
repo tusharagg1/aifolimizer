@@ -32,7 +32,7 @@ import yfinance as yf
 
 from app.security import get_logger
 from app.services import data_cache as cache
-from app.services.data_sources.base import fetch_json
+from app.services.data_sources.base import fetch_json, redact_secrets
 from app.services.data_sources.circuit_breaker import default_breaker
 from app.services.data_sources.symbol_classifier import classify_asset
 
@@ -213,9 +213,10 @@ def _fetch_chain(symbol: str) -> list[dict]:
                 return trimmed
         except Exception as e:
             latency = (time.perf_counter() - start) * 1000
-            cache.log_source_call(f"news:{source}", False, latency, str(e)[:200])
+            safe_err = redact_secrets(e)
+            cache.log_source_call(f"news:{source}", False, latency, safe_err[:200])
             _breaker.record(source, ok=False)
-            errors.append(f"{source}: {e}")
+            errors.append(f"{source}: {safe_err}")
 
     if errors:
         _LOG.warning("[news] all sources failed for %s: %s", symbol, "; ".join(errors))

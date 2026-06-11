@@ -2,6 +2,12 @@
 
 Append-only. Most recent at top.
 
+## 2026-06-11 - cleanup: news.py sink redaction + tiingo through fetch_json (post-eed3528 /simplify)
+- news._fetch_chain: redaction moved from producer-only to the recording SINK. Both drains (cache.log_source_call + errors.append/_LOG.warning) now wrap str(e) in redact_secrets via a shared safe_err. U4a (eed3528) only redacted because the two keyed fetchers route through fetch_json; this hardens the layer that RECORDS, so any future news source doing its own httpx.get (the original leak pattern) can't leak through the unchanged raw str(e) sink.
+- tiingo_src.get_history: converted hand-rolled httpx.get/raise_for_status/json block to base.fetch_json(name="tiingo", symbol=..., default=[]) - closes the last U1 reuse residual. Dropped httpx import. NOT a security fix (tiingo's key is in the Authorization header, never in httpx error strings) - reuse/consistency + defense-in-depth. Behavior preserved: error msg format `tiingo http {symbol}: ...` unchanged, `resp.json() or []` -> default=[] equivalent.
+- Skipped (behavior change / out of diff): fetch_json `resp.json() or default` simplification (reverted - contract + test expect default-omitted->{}); telegram half-migration of discovery.py + signal_change_detector.py (outside diff, deferred U5); backtest_core->quant.py consolidation (cross-module).
+- Verified: pytest 397 pass/3 skip, ruff clean, import+construct ok.
+
 ---
 
 ## 2026-06-11 - Signal PG-port review fixes: signal-loss gate, stale-bar guard, source marker

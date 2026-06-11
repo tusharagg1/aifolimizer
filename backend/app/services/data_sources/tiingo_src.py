@@ -10,13 +10,12 @@ import os
 import time
 from datetime import date, timedelta
 
-import httpx
-
 from app.services.data_sources.base import (
     DataSource,
     PriceBar,
     Quote,
     SourceUnavailable,
+    fetch_json,
 )
 
 _BASE = "https://api.tiingo.com"
@@ -66,17 +65,15 @@ class TiingoSource(DataSource):
         days = _PERIOD_DAYS.get(period, 365)
         start = (date.today() - timedelta(days=days)).isoformat()
         sym = self._tg_symbol(symbol)
-        try:
-            resp = httpx.get(
-                f"{_BASE}/tiingo/daily/{sym}/prices",
-                params={"startDate": start},
-                headers=self._headers(),
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            data = resp.json() or []
-        except Exception as e:
-            raise SourceUnavailable(f"tiingo http {symbol}: {e}") from e
+        data = fetch_json(
+            f"{_BASE}/tiingo/daily/{sym}/prices",
+            name="tiingo",
+            symbol=symbol,
+            params={"startDate": start},
+            headers=self._headers(),
+            timeout=15.0,
+            default=[],
+        )
 
         if not data:
             raise SourceUnavailable(f"tiingo: empty history for {symbol}")
