@@ -71,6 +71,12 @@ _REGIME_SELL_HOSTILE = frozenset({"bull_low_fear"})
 
 _ETF_ASSET_CLASSES = {"etf", "index", "mutual_fund"}
 
+# Asset classes the equity signal engine must NOT score. A WS PRECIOUS_METAL
+# holding (e.g. "GOLD") otherwise gets equity-priced via yahoo "GOLD" = Barrick
+# Gold — a different security — and emitted as a bogus equity signal. Fixed
+# income / cash have no equity technicals either. Equity/ETF/crypto still score.
+_NON_SCOREABLE_ASSET_CLASSES = frozenset({"commodity", "bond", "cash"})
+
 # ── Output cache ───────────────────────────────────────────────────────────────
 _REC_CACHE: dict[str, tuple[list, float]] = {}
 _REC_CACHE_TTL = 1800  # 30 minutes
@@ -923,6 +929,15 @@ def get_recommendations(
     signals. Cache key includes skill_evidence digest so evidence changes
     invalidate the cache.
     """
+    if not portfolio_positions:
+        return []
+
+    # Drop non-equity holdings (precious metal, fixed income, cash) — the
+    # equity engine would mis-price and mis-signal them. Done before symbol
+    # fetch so e.g. GOLD is never fetched as Barrick. Equity/ETF/crypto pass.
+    portfolio_positions = [
+        p for p in portfolio_positions if str(p.get("asset_class") or "").lower() not in _NON_SCOREABLE_ASSET_CLASSES
+    ]
     if not portfolio_positions:
         return []
 
