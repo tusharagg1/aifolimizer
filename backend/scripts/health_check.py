@@ -151,6 +151,51 @@ def _check_mcp_registered() -> None:
         _add("mcp_registered", _WARN, "not registered — run setup.sh / setup.ps1")
 
 
+def _check_signal_freshness() -> None:
+    """Flag a stale PG signal_history (scheduler down). Skips cleanly when no
+    POSTGRES_DSN (JSONL-only deployments). Isolated 5s connection — never the
+    app pool, never hangs the doctor."""
+    try:
+        from app.core.config import settings
+    except Exception as exc:
+        _add("signal_freshness", _WARN, f"config import failed: {exc}")
+        return
+    if not settings.postgres_dsn:
+        _add("signal_freshness", _OK, "no POSTGRES_DSN — signals via JSONL fallback")
+        return
+    try:
+        import asyncio
+        import datetime as _dt
+
+        import asyncpg
+
+        async def _q():
+            conn = await asyncpg.connect(settings.postgres_dsn, timeout=5)
+            try:
+                return await conn.fetchrow(
+                    "SELECT max(ts) AS latest, "
+                    "count(*) FILTER (WHERE ts > now() - INTERVAL '7 days') AS last7 "
+                    "FROM signal_history"
+                )
+            finally:
+                await conn.close()
+
+        row = asyncio.run(_q())
+    except Exception as exc:
+        _add("signal_freshness", _WARN, f"PG unreachable (docker down?): {str(exc)[:60]}")
+        return
+
+    latest = row["latest"] if row else None
+    if latest is None:
+        _add("signal_freshness", _WARN, "signal_history empty — run scheduler / migrate_jsonl_to_postgres")
+        return
+    age_h = (_dt.datetime.now(_dt.timezone.utc) - latest).total_seconds() / 3600
+    if age_h > 72:
+        _add("signal_freshness", _WARN, f"stale: newest signal {age_h:.0f}h old — scheduler may be down")
+    else:
+        _add("signal_freshness", _OK, f"fresh: newest {age_h:.0f}h ago, {row['last7']} rows/7d")
+
+
 def main() -> int:
     _check_python()
     _check_mcp_server()
@@ -159,6 +204,7 @@ def main() -> int:
     _check_settings_hooks()
     _check_env_file()
     _check_mcp_registered()
+    _check_signal_freshness()
 
     width = max(len(n) for n, _, _ in _results)
     print("aifolimizer health check")
